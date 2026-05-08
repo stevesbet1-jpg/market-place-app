@@ -13,19 +13,23 @@ import {
 
 export default function ResetPasswordScreen() {
   const insets = useSafeAreaInsets();
-  const { oobCode, mode } = useLocalSearchParams<{ oobCode?: string; mode?: string }>();
+  const { oobCode } = useLocalSearchParams<{ oobCode?: string; mode?: string }>();
 
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [manualOobCode, setManualOobCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hasOobCode, setHasOobCode] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
 
   useEffect(() => {
-    if (oobCode && mode === 'resetPassword') {
+    const code = typeof oobCode === 'string' ? oobCode : undefined;
+    if (code && code.length > 0) {
       setHasOobCode(true);
+      setManualOobCode(code);
     }
-  }, [oobCode, mode]);
+  }, [oobCode]);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -69,6 +73,8 @@ export default function ResetPasswordScreen() {
     }
   };
 
+  const activeOobCode = typeof oobCode === 'string' && oobCode.length > 0 ? oobCode : manualOobCode.trim();
+
   const handleConfirmReset = async () => {
     if (!newPassword.trim()) {
       Alert.alert('Password Required', 'Please enter your new password.');
@@ -85,7 +91,7 @@ export default function ResetPasswordScreen() {
       return;
     }
 
-    if (!oobCode) {
+    if (!activeOobCode) {
       Alert.alert('Error', 'Invalid reset link. Please request a new one.');
       return;
     }
@@ -98,7 +104,7 @@ export default function ResetPasswordScreen() {
     setIsLoading(true);
 
     try {
-      await confirmFirebasePasswordReset(oobCode, newPassword);
+      await confirmFirebasePasswordReset(activeOobCode, newPassword);
       Alert.alert(
         'Password Reset',
         'Your password has been updated successfully. Please sign in with your new password.',
@@ -139,8 +145,31 @@ export default function ResetPasswordScreen() {
           </Text>
         </View>
 
-        {hasOobCode ? (
+        {hasOobCode || showManualEntry ? (
           <>
+            {showManualEntry && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Reset Code</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="key-outline"
+                    size={20}
+                    color={LuxuryColors.textSecondary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Paste reset code from email"
+                    placeholderTextColor={LuxuryColors.textSecondary}
+                    value={manualOobCode}
+                    onChangeText={setManualOobCode}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
+            )}
+
             <View style={styles.inputContainer}>
               <Text style={styles.label}>New Password</Text>
               <View style={styles.inputWrapper}>
@@ -233,6 +262,33 @@ export default function ResetPasswordScreen() {
               </LinearGradient>
             </TouchableOpacity>
           </>
+        )}
+
+        {!hasOobCode && !showManualEntry && (
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => setShowManualEntry(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.linkText}>
+              Have a reset code? <Text style={styles.linkHighlight}>Enter it manually</Text>
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {showManualEntry && (
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => {
+              setShowManualEntry(false);
+              setManualOobCode('');
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.linkText}>
+              <Text style={styles.linkHighlight}>Back to email reset</Text>
+            </Text>
+          </TouchableOpacity>
         )}
 
         <TouchableOpacity
@@ -336,6 +392,18 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textSecondary,
   },
   backToLoginHighlight: {
+    color: LuxuryColors.gold,
+    fontWeight: '700',
+  },
+  linkButton: {
+    alignItems: 'center',
+    marginTop: LuxurySpacing.lg,
+  },
+  linkText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+  },
+  linkHighlight: {
     color: LuxuryColors.gold,
     fontWeight: '700',
   },
