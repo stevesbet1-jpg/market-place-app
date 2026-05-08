@@ -1,0 +1,122 @@
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { View, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+
+export default function TabLayout() {
+  return (
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={styles.innerContainer}>
+        <Tabs
+          screenOptions={{
+            tabBarActiveTintColor: LuxuryColors.gold,
+            tabBarInactiveTintColor: LuxuryColors.textTertiary,
+            tabBarStyle: {
+              backgroundColor: 'rgba(7, 17, 32, 0.9)',
+              borderTopWidth: 0,
+              height: 80,
+              paddingTop: LuxurySpacing.sm,
+              paddingBottom: LuxurySpacing.xl,
+              marginHorizontal: LuxurySpacing.xl,
+              marginBottom: LuxurySpacing.lg,
+              borderRadius: LuxuryBorderRadius.xxxl,
+              borderWidth: 1,
+              borderColor: LuxuryColors.glassBorder,
+              ...LuxuryShadow.strong,
+            },
+            headerShown: false,
+            tabBarLabelStyle: {
+              fontSize: 10,
+              fontWeight: '600',
+            },
+          }}
+        >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Explore',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="compass" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="trips"
+        options={{
+          title: 'Journeys',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="airplane" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="ai-concierge"
+        options={{
+          title: 'Concierge',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.conciergeIcon, focused && styles.conciergeIconFocused]}>
+              <LinearGradient colors={LuxuryGradients.goldDeep} style={styles.conciergeGradient}>
+                <Ionicons name="sparkles" size={24} color="#FFFFFF" />
+              </LinearGradient>
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="membership"
+        options={{
+          title: 'Membership',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="card" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
+          ),
+        }}
+      />
+      </Tabs>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: LuxuryColors.background,
+  },
+  innerContainer: {
+    flex: 1,
+    backgroundColor: LuxuryColors.background,
+  },
+  conciergeIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: LuxuryColors.surfaceLight,
+    borderWidth: 1,
+    borderColor: LuxuryColors.glassBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -28,
+    overflow: 'hidden',
+  },
+  conciergeIconFocused: {
+    borderWidth: 2,
+    borderColor: LuxuryColors.gold,
+  },
+  conciergeGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
