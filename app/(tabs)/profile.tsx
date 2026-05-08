@@ -52,11 +52,11 @@ export default function ProfileScreen() {
       {/* Menu Items */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
-        {( [
+        {[
           { icon: 'person-outline', title: 'Personal Information', desc: 'Update your details' },
           { icon: 'card-outline', title: 'Payment Methods', desc: 'Manage cards and wallets' },
           { icon: 'shield-checkmark-outline', title: 'Security', desc: 'Password and 2FA' },
-        ] ?? []).map((item, index) => (
+        ].map((item, index) => (
           <TouchableOpacity 
             key={index} 
             style={styles.menuItem}
@@ -77,11 +77,11 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
-        {( [
+        {[
           { icon: 'notifications-outline', title: 'Notifications', desc: 'Push and email alerts' },
           { icon: 'language-outline', title: 'Language', desc: 'English (US)' },
           { icon: 'moon-outline', title: 'Dark Mode', desc: 'Always on' },
-        ] ?? []).map((item, index) => (
+        ].map((item, index) => (
           <TouchableOpacity 
             key={index} 
             style={styles.menuItem}
@@ -102,10 +102,10 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Support</Text>
-        {( [
+        {[
           { icon: 'help-circle-outline', title: 'Help Center', desc: 'FAQs and guides' },
           { icon: 'chatbubble-outline', title: 'Contact Support', desc: '24/7 assistance' },
-        ] ?? []).map((item, index) => (
+        ].map((item, index) => (
           <TouchableOpacity 
             key={index} 
             style={styles.menuItem}

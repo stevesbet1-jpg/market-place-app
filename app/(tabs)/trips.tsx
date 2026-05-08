@@ -46,10 +46,10 @@ export default function TripsScreen() {
       {/* Past Trips */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Past Journeys</Text>
-        {( [
+        {[
           { name: 'Santorini Sunset Retreat', date: 'December 2025', gradient: LuxuryGradients.violetDeep },
           { name: 'Maldives Paradise Escape', date: 'October 2025', gradient: LuxuryGradients.violetGold },
-        ] ?? []).map((trip, index) => (
+        ].map((trip, index) => (
           <TouchableOpacity 
             key={index} 
             style={styles.pastTripCard}

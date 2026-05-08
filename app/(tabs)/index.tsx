@@ -77,12 +77,12 @@ export default function ExploreScreen() {
           </TouchableOpacity>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.collectionScroll}>
-          {( [
+          {[
             { name: 'Santorini', tag: 'Private Villas' },
             { name: 'Kyoto', tag: 'Cultural' },
             { name: 'Amalfi', tag: 'Coastal' },
             { name: 'Patagonia', tag: 'Expedition' },
-          ] ?? []).map((dest, index) => (
+          ].map((dest, index) => (
             <TouchableOpacity 
               key={index} 
               style={styles.collectionCard}

@@ -91,12 +91,12 @@ export default function AIConciergeScreen() {
       {/* Quick Requests */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Requests</Text>
-        {( [
+        {[
           { icon: 'car', title: 'Chauffeur Service', desc: 'On-demand luxury transport' },
           { icon: 'calendar', title: 'Event Tickets', desc: 'VIP access to events' },
           { icon: 'gift', title: 'Gift Arrangements', desc: 'Curated luxury gifting' },
           { icon: 'call', title: '24/7 Support', desc: 'Direct concierge line' },
-        ] ?? []).map((request, index) => (
+        ].map((request, index) => (
           <TouchableOpacity 
             key={index} 
             style={styles.requestCard}
