@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
 import { validatePassword } from './authStorage';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { registerWithFirebaseEmail, isFirebaseConfigured } from '../../lib/firebaseAuth';
 
 export default function SignupScreen() {
   const insets = useSafeAreaInsets();
@@ -112,7 +113,20 @@ export default function SignupScreen() {
         return;
       }
 
-      console.log('SIGNUP: Success', data);
+      console.log('SIGNUP: Supabase success', data);
+
+      // Also create user in Firebase Auth for password reset support
+      if (isFirebaseConfigured()) {
+        try {
+          const firebaseResult = await registerWithFirebaseEmail(
+            email.trim().toLowerCase(),
+            password
+          );
+          console.log('SIGNUP: Firebase registration result', firebaseResult);
+        } catch (firebaseError: any) {
+          console.log('SIGNUP: Firebase registration error (non-critical)', firebaseError.message);
+        }
+      }
 
       // Send welcome email via Edge Function
       try {

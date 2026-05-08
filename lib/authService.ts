@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { socialLogin, loginUser, setCurrentSession, clearSession } from '../app/(auth)/authStorage';
 import { isSupabaseConfigured, supabase } from './supabase';
+import { loginWithFirebaseEmail, logoutFromFirebase } from './firebaseAuth';
 
 // Environment helpers
 export const isExpoGo = (): boolean => {
@@ -74,11 +75,27 @@ export interface EmailLoginParams {
 
 export async function loginWithEmail({ email, password, loginUser }: EmailLoginParams): Promise<any> {
   try {
-    console.log('EMAIL_AUTH: Attempting login');
-    
+    console.log('EMAIL_AUTH: Attempting Firebase login first');
+
+    const firebaseResult = await loginWithFirebaseEmail(email, password);
+
+    if (firebaseResult.success && firebaseResult.userId) {
+      const user = {
+        id: firebaseResult.userId,
+        email: firebaseResult.email || email,
+        name: firebaseResult.email || email,
+        provider: 'firebase',
+      };
+      setCurrentSession(user);
+      console.log('EMAIL_AUTH: Firebase login successful', user);
+      return user;
+    }
+
+    console.log('EMAIL_AUTH: Firebase login failed or not configured, falling back to local', firebaseResult.error);
+
     const user = await loginUser(email, password);
     setCurrentSession(user);
-    console.log('EMAIL_AUTH: Login successful', user);
+    console.log('EMAIL_AUTH: Local login successful', user);
     return user;
   } catch (error: any) {
     console.error('EMAIL_AUTH_ERROR:', {
@@ -94,11 +111,14 @@ export async function logout(): Promise<void> {
   try {
     console.log('AUTH: Logging out');
     
+    // Sign out from Firebase
+    await logoutFromFirebase();
+
     // Sign out from Supabase if configured
     if (isSupabaseConfigured()) {
       await supabase.auth.signOut();
     }
-    
+
     clearSession();
   } catch (error: any) {
     console.error('LOGOUT_ERROR:', {
