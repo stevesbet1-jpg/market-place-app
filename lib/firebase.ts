@@ -1,4 +1,5 @@
 import { initializeApp, FirebaseApp, getApps } from 'firebase/app';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || '',
@@ -18,6 +19,7 @@ export const isFirebaseConfigured = (): boolean => {
 };
 
 let app: FirebaseApp | null = null;
+let db: Firestore | null = null;
 
 export const getFirebaseApp = (): FirebaseApp => {
   if (!app) {
@@ -28,4 +30,11 @@ export const getFirebaseApp = (): FirebaseApp => {
     }
   }
   return app;
+};
+
+export const getFirestoreDb = (): Firestore => {
+  if (!db) {
+    db = getFirestore(getFirebaseApp());
+  }
+  return db;
 };
