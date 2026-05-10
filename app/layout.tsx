@@ -1,9 +1,27 @@
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { View, StyleSheet, StatusBar } from 'react-native';
+import { View, StyleSheet, StatusBar, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import { LuxuryColors } from '../constants/luxuryTheme';
+import { printFirebaseDiagnostics, runFirebaseAuthDiagnostics } from '../lib/firebase';
+
+// ─── Suppress LogBox red screens for handled auth errors ───────────
+// These errors are caught and handled gracefully in the UI.
+// Showing a red screen would confuse users and crash the app flow.
+LogBox.ignoreLogs([
+  'auth/user-not-found',
+  'auth/invalid-email',
+  'auth/invalid-credential',
+  'auth/too-many-requests',
+  'auth/expired-action-code',
+  'auth/invalid-action-code',
+  'auth/weak-password',
+  'SEND_RESET_ERROR',
+  'CONFIRM_RESET_ERROR',
+  'fetchSignInMethodsForEmail',
+  '[FirebaseAuth] BLOCKED', // legacy log pattern
+]);
 
 function DeepLinkHandler({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -83,6 +101,13 @@ function DeepLinkHandler({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  // ─── Run Firebase diagnostics once on app startup ──────────────
+  useEffect(() => {
+    printFirebaseDiagnostics();
+    // Test the specific email the user is having trouble with
+    runFirebaseAuthDiagnostics('stevesbet1@gmail.com');
+  }, []);
+
   return (
     <SafeAreaProvider>
       <View style={styles.container}>

@@ -45,9 +45,11 @@ export interface FirebaseAuthResult {
   error?: string;
 }
 
-// ─── Strict email existence check ────────────────────────────────────
-// Returns true ONLY if the email is registered in Firebase Auth.
-// This is called BEFORE sendPasswordResetEmail to prevent fake success.
+// ─── Diagnostic-only sign-in methods check ─────────────────────────
+// NOTE: fetchSignInMethodsForEmail is NOT a reliable user existence check.
+// When Firebase Email Enumeration Protection is enabled (default for new projects),
+// this returns an empty array for ALL emails — registered or not.
+// Use this ONLY for diagnostics, NEVER as a gate for sending reset emails.
 
 export async function checkEmailExistsInFirebase(email: string): Promise<boolean> {
   if (!_isFirebaseConfigured()) {
@@ -59,11 +61,11 @@ export async function checkEmailExistsInFirebase(email: string): Promise<boolean
     const auth = getAuth(getFirebaseApp());
     const methods = await fetchSignInMethodsForEmail(auth, email);
     const exists = methods.length > 0;
-    console.log('[FirebaseAuth] Email existence check:', email, '→ methods:', methods, '→ exists:', exists);
+    console.log('[FirebaseAuth] fetchSignInMethodsForEmail result:', email, '→ methods:', methods, '→ exists:', exists);
+    console.log('[FirebaseAuth] ⚠️  This result is UNRELIABLE when Email Enumeration Protection is enabled.');
     return exists;
   } catch (error: any) {
     console.error('[FirebaseAuth] fetchSignInMethodsForEmail failed:', error.code, error.message);
-    // Fail closed: if we can't verify, assume not exists to prevent fake success
     return false;
   }
 }
@@ -89,8 +91,14 @@ export async function verifyResetCode(oobCode: string): Promise<string> {
 }
 
 // ─── Send password reset email ─────────────────────────────────────
-// STRICT: throws if email is NOT registered in Firebase Auth.
-// This prevents the fake "email sent" message for unregistered emails.
+// FIREBASE SECURITY MODEL: We do NOT block based on fetchSignInMethodsForEmail.
+// That API is unreliable when Email Enumeration Protection is enabled (default).
+// Firebase intentionally returns success for sendPasswordResetEmail for ALL emails
+// to prevent account enumeration attacks. This is the correct production behavior.
+//
+// CACHE CLEAR REQUIRED after changing .env:
+//   npx expo start --clear   (clears Metro cache)
+//   or: rm -rf node_modules/.cache && npx expo start --clear
 
 export const sendFirebasePasswordReset = async (email: string): Promise<void> => {
   if (!_isFirebaseConfigured()) {
@@ -105,17 +113,11 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
   console.log('[FirebaseAuth] Firebase projectId:', config.projectId);
   console.log('[FirebaseAuth] Firebase authDomain:', config.authDomain);
 
-  // ── STEP 1: Verify email exists in Firebase Auth ───────────────
-  console.log('[FirebaseAuth] Checking if email is registered in Firebase Auth...');
-  const exists = await checkEmailExistsInFirebase(email);
-
-  if (!exists) {
-    console.error('[FirebaseAuth] BLOCKED: Email', email, 'is NOT registered in Firebase Auth.');
-    console.error('[FirebaseAuth] Firebase will NOT send a reset email to an unregistered address.');
-    throw new Error('This email is not registered. Please create an account first.');
-  }
-
-  console.log('[FirebaseAuth] Email exists check PASSED. Proceeding to send reset email.');
+  // ── STEP 1: Diagnostic check (NOT a gate) ──────────────────────
+  // This logs sign-in methods for debugging only. We send regardless.
+  console.log('[FirebaseAuth] Diagnostic: checking sign-in methods (not blocking)...');
+  const diagnosticMethods = await checkEmailExistsInFirebase(email);
+  console.log('[FirebaseAuth] Diagnostic result (ignored for send decision):', diagnosticMethods);
 
   // ── STEP 2: Configure action code settings ──────────────────────
   const actionCodeSettings = {
@@ -137,7 +139,9 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
   // ── STEP 3: Send the reset email ────────────────────────────────
   try {
     await sendPasswordResetEmail(auth, email, actionCodeSettings);
-    console.log('[FirebaseAuth] Password reset email SENT successfully for:', email);
+    console.log('[FirebaseAuth] Password reset email request COMPLETED for:', email);
+    console.log('[FirebaseAuth] If this email is registered in Firebase Auth, the email was sent.');
+    console.log('[FirebaseAuth] If NOT registered, Firebase silently dropped it (by design).');
   } catch (error: any) {
     const code = error.code || 'unknown';
     const message = error.message || 'Unknown error';
@@ -155,7 +159,6 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
         'Go to Firebase Console → Authentication → Settings → Authorized domains → Add: ' +
         (config.authDomain || 'your-auth-domain'),
       'auth/too-many-requests': 'Too many requests. Please wait a few minutes and try again.',
-      'auth/user-not-found': 'No user found with this email.',
     };
 
     const friendlyMessage = errorMessages[code] || message;
