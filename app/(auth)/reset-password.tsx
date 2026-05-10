@@ -57,15 +57,19 @@ export default function ResetPasswordScreen() {
 
     setIsLoading(true);
 
+    const normalizedEmail = email.trim().toLowerCase();
+    console.log('[ResetPassword] Requesting reset for email:', normalizedEmail);
+
     try {
-      await sendFirebasePasswordReset(email.trim().toLowerCase());
+      await sendFirebasePasswordReset(normalizedEmail);
+      console.log('[ResetPassword] Firebase sendPasswordResetEmail returned success for:', normalizedEmail);
       Alert.alert(
         'Reset Email Sent',
-        'Check your inbox for a password reset link. Tap the link to open the app and set your new password.',
+        'If this account exists, a reset email was sent.\n\nCheck your inbox (and spam folder). Tap the link in the email to set your new password.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
-      console.error('SEND_RESET_ERROR:', error);
+      console.error('[ResetPassword] SEND_RESET_ERROR:', error);
       const message = error?.message || 'Failed to send reset email. Please try again.';
       Alert.alert('Error', message);
     } finally {

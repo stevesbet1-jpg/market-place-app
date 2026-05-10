@@ -61,29 +61,37 @@ export const isSupabaseConfigured = (): boolean => {
 
 let _supabaseClient: SupabaseClient | null = null;
 
-export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
-  get(_target, prop) {
-    if (!isSupabaseConfigured()) {
-      throw new Error(
-        'Supabase is not configured. Missing: ' +
-        missing.join(', ') +
-        '. Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in .env'
-      );
-    }
-    if (!_supabaseClient) {
-      _supabaseClient = createClient(cleanUrl, supabaseAnonKey, {
-        auth: {
-          autoRefreshToken: true,
-          persistSession: true,
-          detectSessionInUrl: true,
-        },
-      });
-      console.log('[SupabaseConfig] Client initialized successfully');
-    }
-    // @ts-ignore
-    return _supabaseClient[prop];
-  },
-});
+function getSupabaseClient(): SupabaseClient {
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      'Supabase is not configured. Missing: ' +
+      missing.join(', ') +
+      '. Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in .env'
+    );
+  }
+  if (!_supabaseClient) {
+    _supabaseClient = createClient(cleanUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+      },
+    });
+    console.log('[SupabaseConfig] Client initialized successfully');
+  }
+  return _supabaseClient;
+}
+
+/** Safe wrapper — lazily creates the real client on first property access. */
+export const supabase = {
+  get auth() { return getSupabaseClient().auth; },
+  get functions() { return getSupabaseClient().functions; },
+  get from() { return getSupabaseClient().from; },
+  get storage() { return getSupabaseClient().storage; },
+  get rpc() { return getSupabaseClient().rpc; },
+  get channel() { return getSupabaseClient().channel; },
+  get realtime() { return getSupabaseClient().realtime; },
+};
 
 // Startup health check
 export async function healthCheckSupabase(): Promise<{ success: boolean; status?: number; error?: string }> {

@@ -25,7 +25,9 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
   const auth = getAuth(getFirebaseApp());
 
   const actionCodeSettings = {
-    url: 'https://marketplace.app/reset-password',
+    // Use Firebase's own authorized domain to ensure emails are actually sent.
+    // Custom domains require verification in Firebase Console → Auth → Settings → Authorized domains.
+    url: 'https://marketplace-app-3b3f7.firebaseapp.com/__/auth/action',
     handleCodeInApp: true,
     iOS: {
       bundleId: 'com.anonymous.Matketplace',
@@ -37,7 +39,18 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
     },
   };
 
-  await sendPasswordResetEmail(auth, email, actionCodeSettings);
+  console.log('[FirebaseAuth] Sending password reset email to:', email);
+  console.log('[FirebaseAuth] Action code settings:', JSON.stringify(actionCodeSettings));
+
+  try {
+    await sendPasswordResetEmail(auth, email, actionCodeSettings);
+    console.log('[FirebaseAuth] sendPasswordResetEmail completed without error for:', email);
+    console.log('[FirebaseAuth] NOTE: Firebase returns success even if email does not exist in Auth.');
+  } catch (error: any) {
+    console.error('[FirebaseAuth] sendPasswordResetEmail FAILED:', error.code, error.message);
+    console.error('[FirebaseAuth] Full error:', error);
+    throw error;
+  }
 };
 
 export const confirmFirebasePasswordReset = async (
