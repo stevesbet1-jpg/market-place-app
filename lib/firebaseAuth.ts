@@ -1,3 +1,29 @@
+/**
+ * FIREBASE CONSOLE VERIFICATION CHECKLIST
+ * ======================================
+ * Before password reset emails will actually be delivered, verify:
+ *
+ * 1. Authentication → Users
+ *    - The target email MUST exist as a user in Firebase Auth.
+ *    - Firebase silently drops reset emails for unregistered addresses.
+ *
+ * 2. Authentication → Sign-in method
+ *    - Email/Password provider MUST be enabled.
+ *
+ * 3. Authentication → Templates → Password reset
+ *    - Template MUST be enabled (it is by default).
+ *
+ * 4. Authentication → Settings → Authorized domains
+ *    - Must include:
+ *      • localhost
+ *      • marketplace-app-3b3f7.firebaseapp.com
+ *      • marketplace-app-3b3f7.web.app
+ *
+ * 5. Hosting (for deep-link bridge page)
+ *    - Deploy public/reset-password.html via Firebase CLI:
+ *      firebase deploy --only hosting
+ */
+
 import {
   getAuth,
   sendPasswordResetEmail,
@@ -19,7 +45,9 @@ export interface FirebaseAuthResult {
   error?: string;
 }
 
-// ─── Email existence check (debug only — do NOT leak to UI) ──────
+// ─── Strict email existence check ────────────────────────────────────
+// Returns true ONLY if the email is registered in Firebase Auth.
+// This is called BEFORE sendPasswordResetEmail to prevent fake success.
 
 export async function checkEmailExistsInFirebase(email: string): Promise<boolean> {
   if (!_isFirebaseConfigured()) {
@@ -35,6 +63,7 @@ export async function checkEmailExistsInFirebase(email: string): Promise<boolean
     return exists;
   } catch (error: any) {
     console.error('[FirebaseAuth] fetchSignInMethodsForEmail failed:', error.code, error.message);
+    // Fail closed: if we can't verify, assume not exists to prevent fake success
     return false;
   }
 }
@@ -60,6 +89,8 @@ export async function verifyResetCode(oobCode: string): Promise<string> {
 }
 
 // ─── Send password reset email ─────────────────────────────────────
+// STRICT: throws if email is NOT registered in Firebase Auth.
+// This prevents the fake "email sent" message for unregistered emails.
 
 export const sendFirebasePasswordReset = async (email: string): Promise<void> => {
   if (!_isFirebaseConfigured()) {
@@ -67,26 +98,27 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
   }
 
   const auth = getAuth(getFirebaseApp());
-
-  // Log Firebase config for diagnostics
   const config = getFirebaseApp().options;
-  console.log('[FirebaseAuth] Firebase project:', config.projectId);
+
+  console.log('[FirebaseAuth] === PASSWORD RESET REQUEST ===');
+  console.log('[FirebaseAuth] Email:', email);
+  console.log('[FirebaseAuth] Firebase projectId:', config.projectId);
   console.log('[FirebaseAuth] Firebase authDomain:', config.authDomain);
 
-  // Check if email exists BEFORE sending (debug only)
+  // ── STEP 1: Verify email exists in Firebase Auth ───────────────
+  console.log('[FirebaseAuth] Checking if email is registered in Firebase Auth...');
   const exists = await checkEmailExistsInFirebase(email);
+
   if (!exists) {
-    console.warn(
-      '[FirebaseAuth] CRITICAL: Email', email,
-      'is NOT registered in Firebase Auth.\n' +
-      'Firebase will return HTTP 200 but will NOT send any email.\n' +
-      'To fix: create a user with this email in Firebase Console → Authentication → Users → Add user'
-    );
+    console.error('[FirebaseAuth] BLOCKED: Email', email, 'is NOT registered in Firebase Auth.');
+    console.error('[FirebaseAuth] Firebase will NOT send a reset email to an unregistered address.');
+    throw new Error('This email is not registered. Please create an account first.');
   }
 
+  console.log('[FirebaseAuth] Email exists check PASSED. Proceeding to send reset email.');
+
+  // ── STEP 2: Configure action code settings ──────────────────────
   const actionCodeSettings = {
-    // The continue URL MUST be in Firebase's authorized domains list.
-    // We use Firebase's own hosting domain (always authorized) and redirect to the app from there.
     url: 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html',
     handleCodeInApp: true,
     iOS: {
@@ -99,24 +131,19 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
     },
   };
 
-  console.log('[FirebaseAuth] Sending password reset email to:', email);
   console.log('[FirebaseAuth] Action code settings:', JSON.stringify(actionCodeSettings, null, 2));
+  console.log('[FirebaseAuth] Calling sendPasswordResetEmail...');
 
+  // ── STEP 3: Send the reset email ────────────────────────────────
   try {
     await sendPasswordResetEmail(auth, email, actionCodeSettings);
-    console.log('[FirebaseAuth] sendPasswordResetEmail returned SUCCESS for:', email);
-    console.log(
-      '[FirebaseAuth] IMPORTANT: Firebase returns success for ALL emails (even non-existent ones).\n' +
-      'If the email is not in Firebase Auth, NO email was actually sent.\n' +
-      'If the email IS in Firebase Auth, check inbox/spam. It can take 1-5 minutes.'
-    );
+    console.log('[FirebaseAuth] Password reset email SENT successfully for:', email);
   } catch (error: any) {
     const code = error.code || 'unknown';
     const message = error.message || 'Unknown error';
     console.error('[FirebaseAuth] sendPasswordResetEmail FAILED:', code, message);
     console.error('[FirebaseAuth] Full error:', error);
 
-    // Map specific Firebase errors to actionable messages
     const errorMessages: Record<string, string> = {
       'auth/invalid-email': 'The email address is not valid.',
       'auth/missing-android-pkg-name': 'Android package name is missing in actionCodeSettings.',
