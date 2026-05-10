@@ -2,11 +2,11 @@
 require('dotenv').config({ path: '../.env' });
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 console.log('=== SUPABASE EMAIL RECOVERY TEST ===');
 console.log('URL:', SUPABASE_URL);
-console.log('Key:', SUPABASE_KEY ? SUPABASE_KEY.substring(0, 20) + '...' : 'MISSING');
+console.log('Key:', SUPABASE_KEY ? SUPABASE_KEY.substring(0, 12) + '...' : 'MISSING');
 console.log('=====================================');
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {

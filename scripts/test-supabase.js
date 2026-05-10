@@ -4,23 +4,23 @@
 require('dotenv').config({ path: '../.env' });
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 console.log('=== SUPABASE NODE TEST ===');
 console.log('URL:', SUPABASE_URL || 'MISSING');
-console.log('Key prefix:', SUPABASE_PUBLISHABLE_KEY ? SUPABASE_PUBLISHABLE_KEY.substring(0, 20) : 'MISSING');
-console.log('Key length:', SUPABASE_PUBLISHABLE_KEY?.length || 0);
+console.log('Key prefix:', SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.substring(0, 12) + '...' : 'MISSING');
+console.log('Key length:', SUPABASE_ANON_KEY?.length || 0);
 console.log('=========================');
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error('FAIL: Missing URL or key in .env');
   process.exit(1);
 }
 
 fetch(`${SUPABASE_URL}/auth/v1/settings`, {
   headers: {
-    'apikey': SUPABASE_PUBLISHABLE_KEY,
-    'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
   },
 })
   .then((response) => {

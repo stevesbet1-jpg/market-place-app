@@ -1,60 +1,107 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+// ─── Primary source: Expo environment variables ──────────────────
 
-// Runtime environment diagnostics
+let supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+let supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
+const SOURCE_PRIMARY = 'EXPO_PUBLIC_';
+let source = SOURCE_PRIMARY;
+
+// ─── Fallback: Constants.expoConfig.extra ──────────────────────────
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  const extra = Constants.expoConfig?.extra;
+  if (extra?.supabaseUrl && extra?.supabaseAnonKey) {
+    supabaseUrl = extra.supabaseUrl;
+    supabaseAnonKey = extra.supabaseAnonKey;
+    source = 'Constants.expoConfig.extra';
+  }
+}
+
+// ─── Runtime diagnostics (safe: never logs full key) ──────────────
+
 console.log('=== SUPABASE RUNTIME CONFIG ===');
-console.log('EXPO_PUBLIC_SUPABASE_URL:', supabaseUrl || 'MISSING');
-console.log('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (first 20 chars):', supabasePublishableKey ? supabasePublishableKey.substring(0, 20) : 'MISSING');
-console.log('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (full length):', supabasePublishableKey?.length || 0);
-console.log('Key format:', supabasePublishableKey?.startsWith('sb_publishable_') ? 'NEW publishable key format' : 'Legacy format');
+console.log('Source:', source);
+console.log('Supabase URL exists:', !!supabaseUrl);
+console.log('Supabase URL value:', supabaseUrl || 'MISSING');
+console.log('Supabase anon key exists:', !!supabaseAnonKey);
+console.log('Supabase anon key (first 12 chars):', supabaseAnonKey ? supabaseAnonKey.substring(0, 12) + '...' : 'MISSING');
+console.log('Supabase anon key length:', supabaseAnonKey?.length || 0);
 console.log('================================');
 
-// Basic validation - only check presence, not format
+// ─── Validation before creating client ─────────────────────────────
+
+const missing: string[] = [];
+
 if (!supabaseUrl) {
-  console.warn('EXPO_PUBLIC_SUPABASE_URL is missing in .env file');
+  missing.push('EXPO_PUBLIC_SUPABASE_URL');
+}
+if (!supabaseAnonKey) {
+  missing.push('EXPO_PUBLIC_SUPABASE_ANON_KEY');
 }
 
-if (!supabasePublishableKey) {
-  console.warn('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is missing in .env file');
+if (missing.length > 0) {
+  console.warn(
+    '[SupabaseConfig] MISSING environment variables:',
+    missing.join(', '),
+    '| Add them to .env and restart with npx expo start --clear'
+  );
 }
+
+// Strip trailing slash and /rest/v1 from URL to keep it clean
+const cleanUrl = supabaseUrl.replace(/\/$/, '').replace(/\/rest\/v1$/, '');
 
 export const isSupabaseConfigured = (): boolean => {
-  return !!(supabaseUrl && supabasePublishableKey);
+  return !!(cleanUrl && supabaseAnonKey);
 };
 
-// Supabase client - works with new sb_publishable_ key format
-// The new publishable keys are used the same way as anon keys
-export const supabase = createClient(
-  supabaseUrl ?? '',
-  supabasePublishableKey ?? '',
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-    },
-  }
-);
+// ─── Lazy client creation (only when values are valid) ───────────
+
+let _supabaseClient: SupabaseClient | null = null;
+
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    if (!isSupabaseConfigured()) {
+      throw new Error(
+        'Supabase is not configured. Missing: ' +
+        missing.join(', ') +
+        '. Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in .env'
+      );
+    }
+    if (!_supabaseClient) {
+      _supabaseClient = createClient(cleanUrl, supabaseAnonKey, {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true,
+        },
+      });
+      console.log('[SupabaseConfig] Client initialized successfully');
+    }
+    // @ts-ignore
+    return _supabaseClient[prop];
+  },
+});
 
 // Startup health check
 export async function healthCheckSupabase(): Promise<{ success: boolean; status?: number; error?: string }> {
-  if (!supabaseUrl || !supabasePublishableKey) {
+  if (!cleanUrl || !supabaseAnonKey) {
     console.error('SUPABASE_HEALTH_CHECK: Missing URL or key');
     return { success: false, error: 'Missing URL or key' };
   }
 
   console.log('=== SUPABASE HEALTH CHECK ===');
-  console.log('Testing URL:', supabaseUrl);
-  console.log('Key length:', supabasePublishableKey.length);
+  console.log('Testing URL:', cleanUrl);
+  console.log('Key length:', supabaseAnonKey.length);
 
   try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+    const response = await fetch(`${cleanUrl}/auth/v1/settings`, {
       method: 'GET',
       headers: {
-        'apikey': supabasePublishableKey,
-        'Authorization': `Bearer ${supabasePublishableKey}`,
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
       },
     });
 

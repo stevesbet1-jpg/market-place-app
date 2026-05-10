@@ -41,7 +41,9 @@
       "router": {},
       "eas": {
         "projectId": "7f407ae8-4e8a-4780-9087-f81351109e8e"
-      }
+      },
+      "supabaseUrl": "",
+      "supabaseAnonKey": ""
     },
     "owner": "stevesbete1"
   }
