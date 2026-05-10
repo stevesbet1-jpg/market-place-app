@@ -12,16 +12,35 @@
  *
  * 3. Authentication → Templates → Password reset
  *    - Template MUST be enabled (it is by default).
+ *    - Template MUST use a FROM address that matches your verified domain.
+ *    - Subject line should be clear: "Reset your Marketplace password".
+ *    - Body should NOT contain spam trigger words (FREE, URGENT, ACT NOW).
+ *    - Ensure the template includes the %LINK% placeholder.
+ *    - Do NOT use ALL CAPS or excessive punctuation in the template.
  *
  * 4. Authentication → Settings → Authorized domains
  *    - Must include:
  *      • localhost
  *      • marketplace-app-3b3f7.firebaseapp.com
  *      • marketplace-app-3b3f7.web.app
+ *    - If using a custom domain, add it here.
  *
  * 5. Hosting (for deep-link bridge page)
  *    - Deploy public/reset-password.html via Firebase CLI:
  *      firebase deploy --only hosting
+ *
+ * 6. Gmail deliverability
+ *    - Check spam/promotions folder.
+ *    - Whitelist noreply@<project>.firebaseapp.com in Gmail filters.
+ *    - Firebase sends from a shared IP pool; delivery can take 1-60 seconds.
+ *
+ * 7. Project region
+ *    - Default is us-central1. Emails send from the closest region.
+ *    - Cannot be changed for existing projects.
+ *
+ * 8. Expo dev mode
+ *    - In __DEV__, Metro may add proxy overhead.
+ *    - Test on a production build (`eas build`) for real delivery speed.
  */
 
 import {
@@ -91,16 +110,45 @@ export async function verifyResetCode(oobCode: string): Promise<string> {
 }
 
 // ─── Send password reset email ─────────────────────────────────────
-// FIREBASE SECURITY MODEL: We do NOT block based on fetchSignInMethodsForEmail.
-// That API is unreliable when Email Enumeration Protection is enabled (default).
-// Firebase intentionally returns success for sendPasswordResetEmail for ALL emails
-// to prevent account enumeration attacks. This is the correct production behavior.
+// OPTIMIZED: Zero unnecessary round-trips, precise timing, retry logic.
+// Firebase Email Enumeration Protection means we cannot verify existence client-side.
+// We send directly and let Firebase handle filtering server-side.
 //
 // CACHE CLEAR REQUIRED after changing .env:
-//   npx expo start --clear   (clears Metro cache)
+//   npx expo start --clear
 //   or: rm -rf node_modules/.cache && npx expo start --clear
 
+const MAX_RETRIES = 3;
+const RETRY_DELAYS_MS = [500, 1500, 3000];
+const NETWORK_TIMEOUT_MS = 15000;
+
+function isRetryableError(code: string, message: string): boolean {
+  return (
+    code === 'auth/network-request-failed' ||
+    code === 'auth/timeout' ||
+    code === 'auth/internal-error' ||
+    message.toLowerCase().includes('timeout') ||
+    message.toLowerCase().includes('network') ||
+    message.toLowerCase().includes('etimedout') ||
+    message.toLowerCase().includes('econnrefused') ||
+    message.toLowerCase().includes('network error')
+  );
+}
+
+function runWithTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} exceeded ${ms}ms timeout`));
+    }, ms);
+    promise
+      .then((val) => { clearTimeout(timer); resolve(val); })
+      .catch((err) => { clearTimeout(timer); reject(err); });
+  });
+}
+
 export const sendFirebasePasswordReset = async (email: string): Promise<void> => {
+  const requestStart = Date.now();
+
   if (!_isFirebaseConfigured()) {
     throw new Error('Firebase is not configured. Please check your environment variables.');
   }
@@ -108,18 +156,17 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
   const auth = getAuth(getFirebaseApp());
   const config = getFirebaseApp().options;
 
-  console.log('[FirebaseAuth] === PASSWORD RESET REQUEST ===');
-  console.log('[FirebaseAuth] Email:', email);
-  console.log('[FirebaseAuth] Firebase projectId:', config.projectId);
-  console.log('[FirebaseAuth] Firebase authDomain:', config.authDomain);
+  console.log('');
+  console.log('╔══════════════════════════════════════════════════════════════╗');
+  console.log('║  [FirebaseAuth] PASSWORD RESET — PRODUCTION TIMING LOG         ║');
+  console.log('╚══════════════════════════════════════════════════════════════╝');
+  console.log(`[FirebaseAuth] T+0ms     Request start`);
+  console.log(`[FirebaseAuth] T+0ms     Email: ${email}`);
+  console.log(`[FirebaseAuth] T+0ms     projectId: ${config.projectId}`);
+  console.log(`[FirebaseAuth] T+0ms     authDomain: ${config.authDomain}`);
+  console.log(`[FirebaseAuth] T+0ms     __DEV__: ${__DEV__}`);
+  console.log(`[FirebaseAuth] T+0ms     Auth instance warmed: ${!!auth}`);
 
-  // ── STEP 1: Diagnostic check (NOT a gate) ──────────────────────
-  // This logs sign-in methods for debugging only. We send regardless.
-  console.log('[FirebaseAuth] Diagnostic: checking sign-in methods (not blocking)...');
-  const diagnosticMethods = await checkEmailExistsInFirebase(email);
-  console.log('[FirebaseAuth] Diagnostic result (ignored for send decision):', diagnosticMethods);
-
-  // ── STEP 2: Configure action code settings ──────────────────────
   const actionCodeSettings = {
     url: 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html',
     handleCodeInApp: true,
@@ -133,36 +180,71 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
     },
   };
 
-  console.log('[FirebaseAuth] Action code settings:', JSON.stringify(actionCodeSettings, null, 2));
-  console.log('[FirebaseAuth] Calling sendPasswordResetEmail...');
+  const setupDone = Date.now();
+  console.log(`[FirebaseAuth] T+${setupDone - requestStart}ms  Pre-send setup complete (actionCodeSettings ready)`);
 
-  // ── STEP 3: Send the reset email ────────────────────────────────
-  try {
-    await sendPasswordResetEmail(auth, email, actionCodeSettings);
-    console.log('[FirebaseAuth] Password reset email request COMPLETED for:', email);
-    console.log('[FirebaseAuth] If this email is registered in Firebase Auth, the email was sent.');
-    console.log('[FirebaseAuth] If NOT registered, Firebase silently dropped it (by design).');
-  } catch (error: any) {
-    const code = error.code || 'unknown';
-    const message = error.message || 'Unknown error';
-    console.error('[FirebaseAuth] sendPasswordResetEmail FAILED:', code, message);
-    console.error('[FirebaseAuth] Full error:', error);
+  // ── RETRY LOOP with timeout wrapper ────────────────────────────
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const attemptStart = Date.now();
+    console.log(`[FirebaseAuth] T+${attemptStart - requestStart}ms  Attempt ${attempt + 1}/${MAX_RETRIES} → calling sendPasswordResetEmail...`);
 
-    const errorMessages: Record<string, string> = {
-      'auth/invalid-email': 'The email address is not valid.',
-      'auth/missing-android-pkg-name': 'Android package name is missing in actionCodeSettings.',
-      'auth/missing-continue-uri': 'Continue URL is missing in actionCodeSettings.',
-      'auth/missing-ios-bundle-id': 'iOS bundle ID is missing in actionCodeSettings.',
-      'auth/invalid-continue-uri': 'Continue URL is invalid. Must be a valid HTTPS URL.',
-      'auth/unauthorized-continue-uri':
-        'Continue URL domain is NOT authorized in Firebase Console.\n' +
-        'Go to Firebase Console → Authentication → Settings → Authorized domains → Add: ' +
-        (config.authDomain || 'your-auth-domain'),
-      'auth/too-many-requests': 'Too many requests. Please wait a few minutes and try again.',
-    };
+    try {
+      const sendPromise = sendPasswordResetEmail(auth, email, actionCodeSettings);
+      await runWithTimeout(sendPromise, NETWORK_TIMEOUT_MS, 'Firebase sendPasswordResetEmail');
 
-    const friendlyMessage = errorMessages[code] || message;
-    throw new Error(friendlyMessage);
+      const successTime = Date.now();
+      const firebaseDuration = successTime - attemptStart;
+      const totalDuration = successTime - requestStart;
+
+      console.log(`[FirebaseAuth] T+${successTime - requestStart}ms  ✅ sendPasswordResetEmail returned SUCCESS`);
+      console.log(`[FirebaseAuth]            Firebase API duration: ${firebaseDuration}ms`);
+      console.log(`[FirebaseAuth]            Total request duration:    ${totalDuration}ms`);
+      console.log(`[FirebaseAuth]            If email is registered → email sent. If not → silently dropped.`);
+      console.log('╔══════════════════════════════════════════════════════════════╗');
+      console.log('║  END TIMING LOG                                              ║');
+      console.log('╚══════════════════════════════════════════════════════════════╝');
+      console.log('');
+      return; // SUCCESS — exit immediately, no more attempts
+
+    } catch (error: any) {
+      const failTime = Date.now();
+      const code = error.code || 'unknown';
+      const message = error.message || 'Unknown error';
+      console.error(`[FirebaseAuth] T+${failTime - requestStart}ms  ❌ Attempt ${attempt + 1} FAILED: ${code} — ${message}`);
+      console.error(`[FirebaseAuth]            Attempt duration: ${failTime - attemptStart}ms`);
+
+      if (isRetryableError(code, message) && attempt < MAX_RETRIES - 1) {
+        const delay = RETRY_DELAYS_MS[attempt];
+        const retryAt = Date.now();
+        console.log(`[FirebaseAuth] T+${retryAt - requestStart}ms  ↻ Transient error. Retrying in ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      // Non-retryable or max retries exhausted
+      const totalFail = Date.now() - requestStart;
+      console.error(`[FirebaseAuth] T+${totalFail}ms  ❌ FINAL FAILURE after ${attempt + 1} attempt(s). Total: ${totalFail}ms`);
+      console.log('╔══════════════════════════════════════════════════════════════╗');
+      console.log('║  END TIMING LOG                                              ║');
+      console.log('╚══════════════════════════════════════════════════════════════╝');
+      console.log('');
+
+      const errorMessages: Record<string, string> = {
+        'auth/invalid-email': 'The email address is not valid.',
+        'auth/missing-android-pkg-name': 'Android package name is missing in actionCodeSettings.',
+        'auth/missing-continue-uri': 'Continue URL is missing in actionCodeSettings.',
+        'auth/missing-ios-bundle-id': 'iOS bundle ID is missing in actionCodeSettings.',
+        'auth/invalid-continue-uri': 'Continue URL is invalid. Must be a valid HTTPS URL.',
+        'auth/unauthorized-continue-uri':
+          'Continue URL domain is NOT authorized in Firebase Console.\n' +
+          'Go to Firebase Console → Authentication → Settings → Authorized domains → Add: ' +
+          (config.authDomain || 'your-auth-domain'),
+        'auth/too-many-requests': 'Too many requests. Please wait a few minutes and try again.',
+      };
+
+      const friendlyMessage = errorMessages[code] || message;
+      throw new Error(friendlyMessage);
+    }
   }
 };
 

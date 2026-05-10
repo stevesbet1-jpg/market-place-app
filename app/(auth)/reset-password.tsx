@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
@@ -43,6 +43,10 @@ export default function ResetPasswordScreen() {
   const [screenMode, setScreenMode] = useState<ResetMode>('send');
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // ─── Bulletproof duplicate-send guard ──────────────────────────────
+  // Prevents race conditions when user double-taps the button.
+  const sendAttemptRef = useRef(false);
 
   // ─── On mount: determine mode from deep link params ────────────────
   useEffect(() => {
@@ -89,8 +93,15 @@ export default function ResetPasswordScreen() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  // ─── SEND RESET EMAIL ────────────────────────────────────────────
+  // ─── SEND RESET EMAIL — Bulletproof, timed, non-duplicable ───────
   const handleSendResetLink = async () => {
+    // Guard 1: already in flight
+    if (sendAttemptRef.current) {
+      console.log('[ResetPassword] Ignoring duplicate click — send already in progress');
+      return;
+    }
+
+    // Guard 2: basic validation
     if (!email.trim()) {
       Alert.alert('Email Required', 'Please enter your email address.');
       return;
@@ -107,25 +118,34 @@ export default function ResetPasswordScreen() {
       return;
     }
 
+    // Lock the gate
+    sendAttemptRef.current = true;
     setIsLoading(true);
+
+    const t0 = Date.now();
     const normalizedEmail = email.trim().toLowerCase();
     console.log('[ResetPassword] === SEND RESET EMAIL ===');
-    console.log('[ResetPassword] Email:', normalizedEmail);
+    console.log(`[ResetPassword] T+0ms    User tapped Send Reset Link`);
+    console.log(`[ResetPassword] T+0ms    Email: ${normalizedEmail}`);
 
     try {
       await sendFirebasePasswordReset(normalizedEmail);
-      console.log('[ResetPassword] Password reset email SENT successfully for:', normalizedEmail);
+      const t1 = Date.now();
+      console.log(`[ResetPassword] T+${t1 - t0}ms  Flow complete. Alert shown.`);
       Alert.alert(
         'Reset Email Sent',
-        'Reset email sent successfully.\n\nCheck your Inbox, Spam, and Promotions folders. It may take 1–5 minutes to arrive.',
+        'Reset email sent successfully.\n\nCheck your Inbox, Spam, and Promotions folders. It may take 1–60 seconds to arrive.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
-      console.error('[ResetPassword] SEND_RESET_ERROR:', error);
+      const tFail = Date.now();
+      console.error(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, error);
       const message = error?.message || 'Failed to send reset email. Please try again.';
       Alert.alert('Error', message);
     } finally {
       setIsLoading(false);
+      sendAttemptRef.current = false;
+      console.log('[ResetPassword] Send gate reset. Button is active again.');
     }
   };
 

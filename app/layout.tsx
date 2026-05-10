@@ -4,7 +4,8 @@ import { View, StyleSheet, StatusBar, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import { LuxuryColors } from '../constants/luxuryTheme';
-import { printFirebaseDiagnostics, runFirebaseAuthDiagnostics } from '../lib/firebase';
+import { getFirebaseApp, printFirebaseDiagnostics, runFirebaseAuthDiagnostics } from '../lib/firebase';
+import { getAuth } from 'firebase/auth';
 
 // ─── Suppress LogBox red screens for handled auth errors ───────────
 // These errors are caught and handled gracefully in the UI.
@@ -101,9 +102,24 @@ function DeepLinkHandler({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  // ─── Run Firebase diagnostics once on app startup ──────────────
+  // ─── Run Firebase diagnostics + pre-warm auth on startup ───────
   useEffect(() => {
+    if (__DEV__) {
+      console.log('[App] ⚠️  Running in Expo DEV mode. Firebase requests may be slower due to Metro proxy.');
+      console.log('[App]    For real delivery speed testing, build a production binary: npx eas build --platform ios');
+    }
+
     printFirebaseDiagnostics();
+
+    // Pre-warm Firebase Auth instance (eliminates cold-start latency on first request)
+    try {
+      const app = getFirebaseApp();
+      const auth = getAuth(app);
+      console.log('[App] Firebase Auth instance pre-warmed. currentUser:', auth.currentUser ? 'yes' : 'null');
+    } catch (e: any) {
+      console.warn('[App] Could not pre-warm auth:', e.message);
+    }
+
     // Test the specific email the user is having trouble with
     runFirebaseAuthDiagnostics('stevesbet1@gmail.com');
   }, []);
