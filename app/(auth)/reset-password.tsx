@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,28 +8,58 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import {
   sendFirebasePasswordReset,
   confirmFirebasePasswordReset,
+  verifyResetCode,
   isFirebaseConfigured,
 } from '../../lib/firebaseAuth';
 
+type ResetMode = 'send' | 'verify' | 'reset';
+
 export default function ResetPasswordScreen() {
   const insets = useSafeAreaInsets();
-  const { oobCode } = useLocalSearchParams<{ oobCode?: string; mode?: string }>();
+  const { oobCode, mode } = useLocalSearchParams<{ oobCode?: string; mode?: string }>();
 
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [manualOobCode, setManualOobCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [hasOobCode, setHasOobCode] = useState(false);
-  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [screenMode, setScreenMode] = useState<ResetMode>('send');
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
 
+  // Determine initial mode from deep link params
   useEffect(() => {
     const code = typeof oobCode === 'string' ? oobCode : undefined;
+    const linkMode = typeof mode === 'string' ? mode : undefined;
+
+    console.log('[ResetPassword] Mount. oobCode:', code ? 'present' : 'missing', 'mode:', linkMode);
+
     if (code && code.length > 0) {
-      setHasOobCode(true);
+      setScreenMode('verify');
       setManualOobCode(code);
+      verifyCodeOnMount(code);
     }
-  }, [oobCode]);
+  }, [oobCode, mode]);
+
+  const verifyCodeOnMount = async (code: string) => {
+    setIsLoading(true);
+    setCodeError(null);
+    console.log('[ResetPassword] Verifying oobCode on mount:', code.substring(0, 8) + '...');
+
+    try {
+      const associatedEmail = await verifyResetCode(code);
+      setVerifiedEmail(associatedEmail);
+      setScreenMode('reset');
+      console.log('[ResetPassword] Code verified. Associated email:', associatedEmail);
+    } catch (error: any) {
+      const msg = error?.message || 'Invalid or expired reset link.';
+      setCodeError(msg);
+      setScreenMode('send');
+      console.error('[ResetPassword] Code verification failed:', msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -65,7 +95,7 @@ export default function ResetPasswordScreen() {
       console.log('[ResetPassword] Firebase sendPasswordResetEmail returned success for:', normalizedEmail);
       Alert.alert(
         'Reset Email Sent',
-        'If this account exists, a reset email was sent.\n\nCheck your inbox (and spam folder). Tap the link in the email to set your new password.',
+        'If this account exists, a reset email was sent.\n\nCheck your inbox (and spam/promotions folder). It may take 1-5 minutes to arrive.\n\nIf you do not see it, the email may not be registered in Firebase Auth.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
@@ -106,22 +136,36 @@ export default function ResetPasswordScreen() {
     }
 
     setIsLoading(true);
+    console.log('[ResetPassword] Confirming password reset for:', verifiedEmail || 'unknown email');
 
     try {
       await confirmFirebasePasswordReset(activeOobCode, newPassword);
+      console.log('[ResetPassword] Password reset confirmed successfully');
       Alert.alert(
         'Password Reset',
         'Your password has been updated successfully. Please sign in with your new password.',
         [{ text: 'Sign In', onPress: () => router.replace('/(auth)/login') }]
       );
     } catch (error: any) {
-      console.error('CONFIRM_RESET_ERROR:', error);
+      console.error('[ResetPassword] CONFIRM_RESET_ERROR:', error);
       const message = error?.message || 'Failed to reset password. The link may have expired.';
       Alert.alert('Error', message);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // ─── Loading state while verifying code ─────────────────────────
+  if (screenMode === 'verify') {
+    return (
+      <View style={[styles.container, { paddingBottom: insets.bottom, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={LuxuryColors.gold} />
+        <Text style={[styles.description, { marginTop: LuxurySpacing.lg }]}>
+          Verifying reset link...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -143,34 +187,28 @@ export default function ResetPasswordScreen() {
         {/* Description */}
         <View style={styles.descriptionContainer}>
           <Text style={styles.description}>
-            {hasOobCode
+            {screenMode === 'reset' && verifiedEmail
+              ? `Reset password for ${verifiedEmail}`
+              : screenMode === 'reset'
               ? 'Enter your new password below.'
               : 'Enter your email and we will send you a reset link.'}
           </Text>
         </View>
 
-        {hasOobCode || showManualEntry ? (
+        {/* Error banner for invalid code */}
+        {codeError && (
+          <View style={styles.errorBanner}>
+            <Ionicons name="warning-outline" size={20} color="#FF6B6B" />
+            <Text style={styles.errorBannerText}>{codeError}</Text>
+          </View>
+        )}
+
+        {screenMode === 'reset' ? (
           <>
-            {showManualEntry && (
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Reset Code</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons
-                    name="key-outline"
-                    size={20}
-                    color={LuxuryColors.textSecondary}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Paste reset code from email"
-                    placeholderTextColor={LuxuryColors.textSecondary}
-                    value={manualOobCode}
-                    onChangeText={setManualOobCode}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
+            {verifiedEmail && (
+              <View style={styles.infoBanner}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={LuxuryColors.gold} />
+                <Text style={styles.infoBannerText}>Reset code verified for {verifiedEmail}</Text>
               </View>
             )}
 
@@ -185,7 +223,7 @@ export default function ResetPasswordScreen() {
                 />
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter new password"
+                  placeholder="Enter new password (min 8 chars)"
                   placeholderTextColor={LuxuryColors.textSecondary}
                   value={newPassword}
                   onChangeText={setNewPassword}
@@ -268,31 +306,40 @@ export default function ResetPasswordScreen() {
           </>
         )}
 
-        {!hasOobCode && !showManualEntry && (
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={() => setShowManualEntry(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.linkText}>
-              Have a reset code? <Text style={styles.linkHighlight}>Enter it manually</Text>
-            </Text>
-          </TouchableOpacity>
-        )}
+        {/* Manual code entry toggle */}
+        {screenMode === 'send' && (
+          <>
+            {!manualOobCode && (
+              <TouchableOpacity
+                style={styles.linkButton}
+                onPress={() => {
+                  setScreenMode('reset');
+                  setCodeError(null);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.linkText}>
+                  Have a reset code? <Text style={styles.linkHighlight}>Enter it manually</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
 
-        {showManualEntry && (
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={() => {
-              setShowManualEntry(false);
-              setManualOobCode('');
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.linkText}>
-              <Text style={styles.linkHighlight}>Back to email reset</Text>
-            </Text>
-          </TouchableOpacity>
+            {manualOobCode && (
+              <TouchableOpacity
+                style={styles.linkButton}
+                onPress={() => {
+                  setManualOobCode('');
+                  setScreenMode('send');
+                  setCodeError(null);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.linkText}>
+                  <Text style={styles.linkHighlight}>Back to email reset</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
         <TouchableOpacity
@@ -410,5 +457,39 @@ const styles = StyleSheet.create({
   linkHighlight: {
     color: LuxuryColors.gold,
     fontWeight: '700',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    borderWidth: 1,
+    borderColor: '#FF6B6B',
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.lg,
+    gap: LuxurySpacing.sm,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: LuxuryFontSize.sm,
+    color: '#FF6B6B',
+    fontWeight: '600',
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+    borderWidth: 1,
+    borderColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.lg,
+    gap: LuxurySpacing.sm,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
   },
 });
