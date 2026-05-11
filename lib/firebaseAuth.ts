@@ -169,15 +169,7 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
 
   const actionCodeSettings = {
     url: 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html',
-    handleCodeInApp: true,
-    iOS: {
-      bundleId: 'com.anonymous.Matketplace',
-    },
-    android: {
-      packageName: 'com.anonymous.Matketplace',
-      installApp: false,
-      minimumVersion: '1',
-    },
+    handleCodeInApp: false,
   };
 
   const setupDone = Date.now();
