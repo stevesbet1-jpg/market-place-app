@@ -4,7 +4,7 @@ import { View, StyleSheet, StatusBar, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import { LuxuryColors } from '../constants/luxuryTheme';
-import { getFirebaseApp, printFirebaseDiagnostics, runFirebaseAuthDiagnostics } from '../lib/firebase';
+import { getFirebaseApp, printFirebaseDiagnostics, runFirebaseAuthDiagnostics, printFirebaseConsoleChecklist } from '../lib/firebase';
 import { getAuth } from 'firebase/auth';
 
 // ─── Suppress LogBox red screens for handled auth errors ───────────
@@ -122,6 +122,9 @@ export default function RootLayout() {
 
     // Test the specific email the user is having trouble with
     runFirebaseAuthDiagnostics('stevesbet1@gmail.com');
+
+    // Print the manual checklist for Firebase Console verification
+    printFirebaseConsoleChecklist();
   }, []);
 
   return (

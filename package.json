@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test:reset-email": "node scripts/send-reset-email-test.js",
+    "test:reset-link": "node scripts/generate-reset-link-admin.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

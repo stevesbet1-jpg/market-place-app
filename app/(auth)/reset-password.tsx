@@ -133,8 +133,8 @@ export default function ResetPasswordScreen() {
       const t1 = Date.now();
       console.log(`[ResetPassword] T+${t1 - t0}ms  Flow complete. Alert shown.`);
       Alert.alert(
-        'Reset Email Sent',
-        'Reset email sent successfully.\n\nCheck your Inbox, Spam, and Promotions folders. It may take 1–60 seconds to arrive.',
+        'Request Accepted',
+        'Firebase accepted the reset request.\n\nCheck your Inbox, Spam, and Promotions folders. If no email arrives within 2 minutes, the address may not be registered in Firebase Auth.\n\nRun the terminal test for proof: node scripts/send-reset-email-test.js',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
