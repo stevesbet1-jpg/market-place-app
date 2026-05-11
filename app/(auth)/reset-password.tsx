@@ -133,8 +133,8 @@ export default function ResetPasswordScreen() {
       const t1 = Date.now();
       console.log(`[ResetPassword] T+${t1 - t0}ms  Flow complete. Alert shown.`);
       Alert.alert(
-        'Request Accepted',
-        'Firebase accepted the reset request.\n\nCheck your Inbox, Spam, and Promotions folders. If no email arrives within 2 minutes, the address may not be registered in Firebase Auth.\n\nRun the terminal test for proof: node scripts/send-reset-email-test.js',
+        'Request Queued',
+        'Your reset request has been queued.\n\nIf you are using the Resend delivery system, the branded email will arrive within seconds.\n\nOtherwise, Firebase\'s default delivery may take 1–60 seconds and can be blocked by spam filters.\n\nFor guaranteed delivery, use: npm run send:reset-resend',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {

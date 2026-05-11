@@ -6,6 +6,7 @@
 **Run:**
 ```bash
 node scripts/send-reset-email-test.js
+# or: npm run test:reset-email
 ```
 
 **Why use it:**
@@ -29,6 +30,7 @@ node scripts/send-reset-email-test.js
 npm install -D firebase-admin
 # then download service account (see below)
 node scripts/generate-reset-link-admin.js
+# or: npm run test:reset-link
 ```
 
 **Why use it:**
@@ -44,10 +46,59 @@ node scripts/generate-reset-link-admin.js
 
 ---
 
+## `send-reset-via-resend.js` ⭐ RECOMMENDED
+**What it does:** Replaces Firebase's default email delivery with Resend's dedicated infrastructure.
+
+**Run:**
+```bash
+npm install -D resend firebase-admin
+# then set up Resend (see below)
+npm run send:reset-resend
+# or: node scripts/send-reset-via-resend.js stevesbet1@gmail.com
+```
+
+**Why use it:**
+- **Guaranteed inbox delivery** — Resend uses dedicated IPs, not shared pools
+- **Branded HTML emails** — Beautiful dark-theme template with your logo
+- **Real delivery tracking** — Resend dashboard shows open/click/delivery status
+- **Fast delivery** — Typically arrives within 1–10 seconds
+- **No spam folder** — Proper domain verification + DKIM/SPF
+
+**Setup:**
+1. Sign up at https://resend.com
+2. Create an API key → add to `.env`: `RESEND_API_KEY=re_your_key`
+3. Verify a domain (e.g., `yourdomain.com`) or use `onboarding@resend.dev` for testing
+4. Add to `.env`: `EMAIL_FROM=noreply@yourdomain.com`
+5. Download `serviceAccount.json` from Firebase Console → Service accounts
+6. Save to `scripts/serviceAccount.json`
+
+**What happens:**
+1. Firebase Admin SDK generates a real reset link
+2. Resend sends a branded HTML email with CTA button + fallback link
+3. Full delivery logging: Resend email ID, duration, acceptance status
+
+---
+
 ## Troubleshooting Flow
 
-1. Run `send-reset-email-test.js`
+### Quick Check (Firebase default delivery)
+1. Run `npm run test:reset-email`
 2. If HTTP 200 → Check Gmail Inbox/Spam/Promotions. Wait 1-60s.
-3. If no email after 2 minutes → Run `generate-reset-link-admin.js`
+3. If no email after 2 minutes → Run `npm run test:reset-link`
 4. If link generates successfully → Copy it, send it via WhatsApp/Email to yourself
 5. If Admin SDK fails with `auth/user-not-found` → The user does NOT exist in Firebase Auth. Create it.
+
+### Production Solution (Resend delivery) ⭐
+1. Set up Resend account + API key + domain verification
+2. Run `npm run send:reset-resend`
+3. Email arrives in inbox within seconds with branded template
+4. Track delivery in Resend dashboard: https://resend.com/emails
+
+### Full Production Setup (Cloud Function)
+For automatic delivery without manual script execution, deploy the Cloud Function in `functions/sendPasswordReset.js`:
+```bash
+cd functions
+npm install
+firebase deploy --only functions
+```
+This intercepts Firebase Auth password reset events and sends via Resend automatically.
