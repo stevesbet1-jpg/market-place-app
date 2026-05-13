@@ -147,14 +147,42 @@ app.post('/api/send-reset', async (req, res) => {
 
   try {
     // 1. Generate reset link via Firebase Admin
-    const resetLink = await admin.auth().generatePasswordResetLink(normalizedEmail, {
+    const generatedLink = await admin.auth().generatePasswordResetLink(normalizedEmail, {
       url: CONTINUE_URL,
       handleCodeInApp: false,
     });
     const linkGenMs = Date.now() - t0;
-    console.log(`[Server] Link generated in ${linkGenMs}ms`);
+    console.log(`[Server] Firebase link generated in ${linkGenMs}ms`);
+    console.log(`[Server] Generated link: ${generatedLink.substring(0, 120)}...`);
 
-    // 2. Load templates
+    // 2. Extract oobCode and apiKey from the generated Firebase link
+    //    Firebase returns: https://host/__/auth/action?mode=resetPassword&oobCode=XXX&apiKey=YYY&...
+    //    We construct a direct link to our custom reset page so the user lands on it
+    //    with the oobCode in the URL, instead of Firebase's default handler.
+    let directResetLink;
+    try {
+      const generatedUrl = new URL(generatedLink);
+      const oobCode = generatedUrl.searchParams.get('oobCode');
+      const apiKey = generatedUrl.searchParams.get('apiKey');
+      const mode = generatedUrl.searchParams.get('mode') || 'resetPassword';
+
+      if (!oobCode) {
+        console.warn('[Server] No oobCode found in generated link. Falling back to raw generated link.');
+        directResetLink = generatedLink;
+      } else {
+        const directUrl = new URL(CONTINUE_URL);
+        directUrl.searchParams.set('oobCode', oobCode);
+        directUrl.searchParams.set('mode', mode);
+        if (apiKey) directUrl.searchParams.set('apiKey', apiKey);
+        directResetLink = directUrl.toString();
+        console.log(`[Server] Direct reset link constructed: ${directResetLink.substring(0, 120)}...`);
+      }
+    } catch (parseErr) {
+      console.warn('[Server] Failed to parse generated link:', parseErr.message);
+      directResetLink = generatedLink;
+    }
+
+    // 3. Load templates
     const htmlTemplate = loadTemplate('reset-password.html');
     const textTemplate = loadTemplate('reset-password.txt');
 
@@ -162,8 +190,8 @@ app.post('/api/send-reset', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Email templates missing.' });
     }
 
-    const html = buildEmailBody(resetLink, normalizedEmail, htmlTemplate);
-    const text = buildEmailBody(resetLink, normalizedEmail, textTemplate);
+    const html = buildEmailBody(directResetLink, normalizedEmail, htmlTemplate);
+    const text = buildEmailBody(directResetLink, normalizedEmail, textTemplate);
 
     // 3. Send via Resend
     const resendResponse = await resend.emails.send({

@@ -167,23 +167,41 @@ async function generateResetLink(email) {
   console.log('[ResendDelivery]   ContinueURL:', CONTINUE_URL);
   console.log('[ResendDelivery]   handleCodeInApp: false (redirects to continue URL for universal compatibility)');
 
-  const link = await admin.auth().generatePasswordResetLink(email, {
+  const generatedLink = await admin.auth().generatePasswordResetLink(email, {
     url: CONTINUE_URL,
     handleCodeInApp: false,
   });
 
   const duration = Date.now() - t0;
-  console.log(`[ResendDelivery] ✅ Link generated in ${duration}ms`);
-  console.log('[ResendDelivery]   Link: ', link);
+  console.log(`[ResendDelivery] ✅ Firebase link generated in ${duration}ms`);
+  console.log('[ResendDelivery]   Generated link: ', generatedLink);
 
-  // Parse and log the link structure
-  const url = new URL(link);
+  // Extract oobCode/apiKey from the generated link and construct a direct URL
+  // to our custom reset page so the user lands on it with the code in the URL.
+  const url = new URL(generatedLink);
   const oobCode = url.searchParams.get('oobCode');
-  const mode = url.searchParams.get('mode');
+  const apiKey = url.searchParams.get('apiKey');
+  const mode = url.searchParams.get('mode') || 'resetPassword';
+
   console.log('[ResendDelivery]   Parsed oobCode:', oobCode ? oobCode.substring(0, 8) + '...***' : 'MISSING');
   console.log('[ResendDelivery]   Parsed mode:  ', mode);
+  console.log('[ResendDelivery]   Parsed apiKey:', apiKey ? 'yes' : 'no');
+
+  let directLink;
+  if (!oobCode) {
+    console.warn('[ResendDelivery]   ⚠️ No oobCode found. Falling back to raw generated link.');
+    directLink = generatedLink;
+  } else {
+    const directUrl = new URL(CONTINUE_URL);
+    directUrl.searchParams.set('oobCode', oobCode);
+    directUrl.searchParams.set('mode', mode);
+    if (apiKey) directUrl.searchParams.set('apiKey', apiKey);
+    directLink = directUrl.toString();
+    console.log('[ResendDelivery]   Direct page link:', directLink);
+  }
+
   console.log('');
-  return link;
+  return directLink;
 }
 
 // ─── Phase 6: Build Email Content ────────────────────────────────
