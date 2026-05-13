@@ -57,26 +57,39 @@ function initFirebaseAdmin() {
     }
   }
 
+  console.log('[Server] Firebase Admin init starting...');
+  console.log('[Server]   Service account file found:', serviceAccountPath ? 'YES' : 'NO');
+  if (serviceAccountPath) {
+    console.log('[Server]   Service account path:', serviceAccountPath);
+  }
+
   try {
     admin = require('firebase-admin');
     if (admin.apps.length === 0) {
       if (serviceAccountPath) {
         const serviceAccount = require(serviceAccountPath);
+        console.log('[Server]   ServiceAccount.project_id:', serviceAccount.project_id || 'MISSING');
+        console.log('[Server]   ServiceAccount.client_email:', serviceAccount.client_email || 'MISSING');
+        console.log('[Server]   ServiceAccount has private_key:', !!serviceAccount.private_key);
+        if (!serviceAccount.private_key || serviceAccount.private_key.length < 100) {
+          console.error('[Server]   ⚠️  Service account private_key is missing or malformed');
+        }
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
           projectId: 'marketplace-app-3b3f7',
         });
-        console.log('[Server] Firebase Admin initialized with service account:', serviceAccountPath);
+        console.log('[Server] ✅ Firebase Admin initialized with service account');
       } else {
         // Attempt default credentials (GCP / Cloud Run / GAE)
         admin.initializeApp({ projectId: 'marketplace-app-3b3f7' });
-        console.log('[Server] Firebase Admin initialized with default credentials');
+        console.log('[Server] ✅ Firebase Admin initialized with default credentials');
       }
     }
     adminInitialized = true;
     return true;
   } catch (err) {
-    console.error('[Server] Firebase Admin initialization failed:', err.message);
+    console.error('[Server] ❌ Firebase Admin initialization failed:', err.message);
+    if (err.stack) console.error('[Server]   stack:', err.stack);
     return false;
   }
 }
@@ -86,7 +99,7 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
-const CONTINUE_URL = 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html';
+const CONTINUE_URL = 'https://marketplace-app-3b3f7.web.app/reset-password.html';
 
 // ─── Email template helpers ──────────────────────────────────────
 function loadTemplate(fileName) {
@@ -147,12 +160,29 @@ app.post('/api/send-reset', async (req, res) => {
 
   try {
     // 1. Generate reset link via Firebase Admin
-    const generatedLink = await admin.auth().generatePasswordResetLink(normalizedEmail, {
+    const actionCodeSettings = {
       url: CONTINUE_URL,
       handleCodeInApp: false,
-    });
+    };
+    console.log('[Server] Calling admin.auth().generatePasswordResetLink...');
+    console.log('[Server]   Email:', normalizedEmail);
+    console.log('[Server]   actionCodeSettings:', JSON.stringify(actionCodeSettings));
+
+    let generatedLink;
+    try {
+      generatedLink = await admin.auth().generatePasswordResetLink(normalizedEmail, actionCodeSettings);
+    } catch (linkErr) {
+      console.error('[Server] ❌ generatePasswordResetLink FAILED');
+      console.error('[Server]   error.code   :', linkErr.code);
+      console.error('[Server]   error.message:', linkErr.message);
+      if (linkErr.stack) {
+        console.error('[Server]   error.stack  :', linkErr.stack);
+      }
+      throw linkErr; // re-throw so outer catch handles it
+    }
+
     const linkGenMs = Date.now() - t0;
-    console.log(`[Server] Firebase link generated in ${linkGenMs}ms`);
+    console.log(`[Server] ✅ Firebase link generated in ${linkGenMs}ms`);
     console.log(`[Server] Generated link: ${generatedLink.substring(0, 120)}...`);
 
     // 2. Extract oobCode and apiKey from the generated Firebase link
@@ -240,6 +270,21 @@ app.post('/api/send-reset', async (req, res) => {
         success: false,
         error: 'Invalid email address.',
         code: 'auth/invalid-email',
+      });
+    }
+
+    if (error.code === 'auth/internal-error' && error.message.includes('Unable to create the email action link')) {
+      return res.status(500).json({
+        success: false,
+        error:
+          'Firebase could not generate the reset link. This usually means the continue URL domain is not authorized.\n' +
+          'CHECKLIST:\n' +
+          '1. Firebase Console → Authentication → Settings → Authorized domains\n' +
+          '   → Add: marketplace-app-3b3f7.web.app\n' +
+          '2. Firebase Console → Authentication → Templates → Email action settings\n' +
+          '   → Ensure password reset uses https://marketplace-app-3b3f7.web.app\n' +
+          '3. Verify serviceAccount.json has valid private_key.',
+        code: 'auth/internal-error',
       });
     }
 

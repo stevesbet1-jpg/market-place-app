@@ -158,7 +158,7 @@ async function checkDomainStatus() {
 }
 
 // ─── Phase 5: Generate Password Reset Link ───────────────────────
-const CONTINUE_URL = 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html';
+const CONTINUE_URL = 'https://marketplace-app-3b3f7.web.app/reset-password.html';
 
 async function generateResetLink(email) {
   const t0 = Date.now();
@@ -167,10 +167,23 @@ async function generateResetLink(email) {
   console.log('[ResendDelivery]   ContinueURL:', CONTINUE_URL);
   console.log('[ResendDelivery]   handleCodeInApp: false (redirects to continue URL for universal compatibility)');
 
-  const generatedLink = await admin.auth().generatePasswordResetLink(email, {
+  const actionCodeSettings = {
     url: CONTINUE_URL,
     handleCodeInApp: false,
-  });
+  };
+
+  let generatedLink;
+  try {
+    generatedLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+  } catch (linkErr) {
+    console.error('[ResendDelivery] ❌ generatePasswordResetLink FAILED');
+    console.error('[ResendDelivery]   error.code   :', linkErr.code);
+    console.error('[ResendDelivery]   error.message:', linkErr.message);
+    if (linkErr.stack) {
+      console.error('[ResendDelivery]   error.stack  :', linkErr.stack);
+    }
+    throw linkErr;
+  }
 
   const duration = Date.now() - t0;
   console.log(`[ResendDelivery] ✅ Firebase link generated in ${duration}ms`);
