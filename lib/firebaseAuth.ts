@@ -252,6 +252,77 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
   }
 };
 
+// ─── Send password reset via backend API (Resend) ────────────────
+// This calls the local Express server which uses Firebase Admin + Resend
+// for reliable email delivery with tracking, instead of Firebase's default.
+
+const DEFAULT_RESET_API_URL = 'http://localhost:3001';
+
+export interface BackendResetResult {
+  success: boolean;
+  emailId?: string;
+  error?: string;
+  code?: string;
+}
+
+export const sendPasswordResetViaBackend = async (
+  email: string,
+  apiBaseUrl?: string
+): Promise<BackendResetResult> => {
+  const baseUrl = apiBaseUrl || process.env.EXPO_PUBLIC_RESET_API_URL || DEFAULT_RESET_API_URL;
+  const url = `${baseUrl}/api/send-reset`;
+
+  console.log('[FirebaseAuth] Calling backend reset API:', url);
+  console.log('[FirebaseAuth] Email:', email);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      console.log('[FirebaseAuth] Backend reset SUCCESS. Resend emailId:', data.emailId);
+      return {
+        success: true,
+        emailId: data.emailId,
+        error: undefined,
+      };
+    }
+
+    console.error('[FirebaseAuth] Backend reset FAILED:', data.error, '| code:', data.code);
+    return {
+      success: false,
+      error: data.error || 'Failed to send reset email',
+      code: data.code,
+    };
+  } catch (error: any) {
+    const message = error.message || 'Unknown error';
+    console.error('[FirebaseAuth] Backend reset NETWORK/EXCEPTION:', message);
+
+    if (message.includes('abort') || message.includes('Abort')) {
+      return {
+        success: false,
+        error: 'Request timed out. Make sure the reset API server is running (npm run server).',
+      };
+    }
+
+    return {
+      success: false,
+      error: `Cannot reach reset API server. Ensure it is running at ${baseUrl} (npm run server).`,
+    };
+  }
+};
+
 // ─── Confirm password reset ────────────────────────────────────────
 
 export const confirmFirebasePasswordReset = async (

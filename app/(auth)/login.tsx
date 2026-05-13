@@ -54,7 +54,8 @@ export default function LoginScreen() {
       await loginWithEmail({ email, password, loginUser });
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Login failed', 'Please try again.');
+      const message = error?.message || 'Please try again.';
+      Alert.alert('Login failed', message);
     }
   };
 

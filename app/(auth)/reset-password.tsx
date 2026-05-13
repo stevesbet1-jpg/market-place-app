@@ -13,6 +13,7 @@ import {
 } from '../../constants/luxuryTheme';
 import {
   sendFirebasePasswordReset,
+  sendPasswordResetViaBackend,
   confirmFirebasePasswordReset,
   verifyResetCode,
   isFirebaseConfigured,
@@ -93,7 +94,7 @@ export default function ResetPasswordScreen() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  // ─── SEND RESET EMAIL — Bulletproof, timed, non-duplicable ───────
+  // ─── SEND RESET EMAIL — Resend backend first, Firebase fallback ──
   const handleSendResetLink = async () => {
     // Guard 1: already in flight
     if (sendAttemptRef.current) {
@@ -129,14 +130,38 @@ export default function ResetPasswordScreen() {
     console.log(`[ResetPassword] T+0ms    Email: ${normalizedEmail}`);
 
     try {
+      // ── Attempt 1: Resend backend API ──────────────────────────
+      const backendResult = await sendPasswordResetViaBackend(normalizedEmail);
+
+      if (backendResult.success && backendResult.emailId) {
+        const t1 = Date.now();
+        console.log(`[ResetPassword] T+${t1 - t0}ms  Resend backend SUCCESS. emailId: ${backendResult.emailId}`);
+        Alert.alert(
+          'Reset Email Sent',
+          `Your password reset email has been sent via Resend.\n\nEmail ID: ${backendResult.emailId}\n\nPlease check your inbox (and spam folder) for the reset link.`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+        return;
+      }
+
+      // Backend returned an explicit error (e.g. user not found, Resend key invalid)
+      if (backendResult.error && !backendResult.error.includes('Cannot reach reset API') && !backendResult.error.includes('timed out')) {
+        console.warn('[ResetPassword] Backend returned business error:', backendResult.error);
+        throw new Error(backendResult.error);
+      }
+
+      // ── Attempt 2: Backend unreachable → Firebase default fallback ─
+      console.warn('[ResetPassword] Backend unavailable. Falling back to Firebase default delivery...');
       await sendFirebasePasswordReset(normalizedEmail);
+
       const t1 = Date.now();
-      console.log(`[ResetPassword] T+${t1 - t0}ms  Flow complete. Alert shown.`);
+      console.log(`[ResetPassword] T+${t1 - t0}ms  Firebase default fallback SUCCESS.`);
       Alert.alert(
-        'Reset Link Generated',
-        'A password reset link has been generated for this account.\n\nIf your app uses Resend delivery, the email will arrive within seconds in your Inbox.\n\nIf using Firebase default delivery, check Spam and Promotions folders — delivery is not guaranteed.\n\nFor production, always use: npm run send:reset-resend',
+        'Reset Link Queued',
+        'Your reset request has been queued via Firebase.\n\nDelivery is not guaranteed and may take 1–60 seconds. Check your Spam and Promotions folders.\n\nFor reliable delivery, run the local API server: npm run server',
         [{ text: 'OK', onPress: () => router.back() }]
       );
+
     } catch (error: any) {
       const tFail = Date.now();
       console.error(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, error);

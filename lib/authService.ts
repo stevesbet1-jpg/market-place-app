@@ -91,8 +91,37 @@ export async function loginWithEmail({ email, password, loginUser }: EmailLoginP
       return user;
     }
 
-    console.log('EMAIL_AUTH: Firebase login failed or not configured, falling back to local', firebaseResult.error);
+    // ── Firebase configured but returned an auth error ──────────
+    // Do NOT fall back to local in-memory auth — it will show "Account not found"
+    // because the local array is empty after app restart.
+    // Instead, show the REAL Firebase error so the user knows what's wrong.
+    if (firebaseResult.error && firebaseResult.error !== 'Firebase not configured') {
+      console.error('EMAIL_AUTH: Firebase returned an error:', firebaseResult.error);
 
+      // If user not found in Firebase, try Supabase before giving up
+      if (
+        firebaseResult.error.includes('No account found') ||
+        firebaseResult.error.includes('Invalid email or password') ||
+        firebaseResult.error.includes('Incorrect password')
+      ) {
+        console.log('EMAIL_AUTH: Trying Supabase fallback for:', email);
+        const supabaseUser = await trySupabaseLogin(email, password);
+        if (supabaseUser) {
+          return supabaseUser;
+        }
+      }
+
+      throw new Error(firebaseResult.error);
+    }
+
+    // ── Firebase NOT configured → fallback chain ─────────────────
+    console.log('EMAIL_AUTH: Firebase not configured. Trying Supabase...');
+    const supabaseUser = await trySupabaseLogin(email, password);
+    if (supabaseUser) {
+      return supabaseUser;
+    }
+
+    console.log('EMAIL_AUTH: No Supabase user either. Falling back to local auth.');
     const user = await loginUser(email, password);
     setCurrentSession(user);
     console.log('EMAIL_AUTH: Local login successful', user);
@@ -103,6 +132,44 @@ export async function loginWithEmail({ email, password, loginUser }: EmailLoginP
       stack: error.stack,
     });
     throw error;
+  }
+}
+
+async function trySupabaseLogin(email: string, password: string): Promise<any | null> {
+  if (!isSupabaseConfigured()) {
+    console.log('EMAIL_AUTH: Supabase not configured, skipping Supabase fallback');
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (error) {
+      console.error('EMAIL_AUTH: Supabase login error:', error.message);
+      return null;
+    }
+
+    if (!data.user) {
+      console.warn('EMAIL_AUTH: Supabase signInWithPassword returned no user');
+      return null;
+    }
+
+    const user = {
+      id: data.user.id,
+      email: data.user.email || email,
+      name: data.user.user_metadata?.full_name || email,
+      provider: 'supabase',
+    };
+
+    setCurrentSession(user);
+    console.log('EMAIL_AUTH: Supabase login successful', user);
+    return user;
+  } catch (error: any) {
+    console.error('EMAIL_AUTH: Supabase login exception:', error.message);
+    return null;
   }
 }
 
