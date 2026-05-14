@@ -332,7 +332,7 @@ app.post('/api/send-confirmation', async (req, res) => {
     const resendResponse = await resend.emails.send({
       from: EMAIL_FROM,
       to: [normalizedEmail],
-      subject: 'Your Marketplace password was changed',
+      subject: 'Your Marketplace Password Was Changed',
       html,
       text,
     });
