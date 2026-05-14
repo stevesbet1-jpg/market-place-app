@@ -296,6 +296,79 @@ app.post('/api/send-reset', async (req, res) => {
   }
 });
 
+// ─── Send confirmation endpoint ──────────────────────────────────
+app.post('/api/send-confirmation', async (req, res) => {
+  const t0 = Date.now();
+  const { email } = req.body;
+
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ success: false, error: 'Email is required.' });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return res.status(400).json({ success: false, error: 'Invalid email format.' });
+  }
+
+  if (!resend) {
+    return res.status(500).json({ success: false, error: 'Resend API key not configured.' });
+  }
+
+  if (!EMAIL_FROM) {
+    return res.status(500).json({ success: false, error: 'EMAIL_FROM not configured in .env' });
+  }
+
+  try {
+    const htmlTemplate = loadTemplate('password-changed.html');
+    const textTemplate = loadTemplate('password-changed.txt');
+
+    if (!htmlTemplate || !textTemplate) {
+      return res.status(500).json({ success: false, error: 'Email templates missing.' });
+    }
+
+    const html = buildEmailBody('', normalizedEmail, htmlTemplate);
+    const text = buildEmailBody('', normalizedEmail, textTemplate);
+
+    const resendResponse = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: [normalizedEmail],
+      subject: 'Your Marketplace password was changed',
+      html,
+      text,
+    });
+
+    const totalMs = Date.now() - t0;
+
+    if (resendResponse.error) {
+      console.error('[Server] Confirmation email Resend rejected:', resendResponse.error);
+      return res.status(502).json({
+        success: false,
+        error: `Resend rejected: ${JSON.stringify(resendResponse.error)}`,
+      });
+    }
+
+    const emailId = resendResponse.data?.id;
+    console.log(`[Server] ✅ Confirmation email sent via Resend. ID: ${emailId} | Total: ${totalMs}ms`);
+
+    return res.json({
+      success: true,
+      emailId,
+      recipient: normalizedEmail,
+      durationMs: totalMs,
+      message: 'Confirmation email sent.',
+    });
+
+  } catch (error) {
+    const totalMs = Date.now() - t0;
+    console.error(`[Server] ❌ Confirmation email failed after ${totalMs}ms:`, error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code || 'unknown',
+    });
+  }
+});
+
 // ─── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n╔════════════════════════════════════════════════════════════╗`);
@@ -304,5 +377,6 @@ app.listen(PORT, () => {
   console.log(`║  Listening on http://localhost:${PORT}                       ║`);
   console.log(`║  Health:   http://localhost:${PORT}/api/health             ║`);
   console.log(`║  Reset:    POST http://localhost:${PORT}/api/send-reset    ║`);
+  console.log(`║  Confirm:  POST http://localhost:${PORT}/api/send-confirmation ║`);
   console.log(`╚════════════════════════════════════════════════════════════╝\n`);
 });

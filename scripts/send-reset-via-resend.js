@@ -15,7 +15,7 @@
  *
  * RUN:
  *   npm run send:reset-resend
- *   or: node scripts/send-reset-via-resend.js stevesbet1@gmail.com
+ *   or: node scripts/send-reset-via-resend.js user@example.com
  *
  * EXPECTED OUTPUT:
  *   ✅ Reset link generated in 400ms
@@ -34,7 +34,11 @@ const EMAIL_FROM = process.env.EMAIL_FROM;
 const PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
 const AUTH_DOMAIN = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN;
 
-const TEST_EMAIL = process.argv[2] || 'stevesbet1@gmail.com';
+const TEST_EMAIL = process.argv[2];
+if (!TEST_EMAIL) {
+  console.error('Usage: node scripts/send-reset-via-resend.js <email>');
+  process.exit(1);
+}
 const SERVICE_ACCOUNT_PATH = path.join(__dirname, 'serviceAccount.json');
 const HTML_TEMPLATE_PATH = path.join(__dirname, 'email-templates', 'reset-password.html');
 const TEXT_TEMPLATE_PATH = path.join(__dirname, 'email-templates', 'reset-password.txt');

@@ -120,8 +120,9 @@ export default function RootLayout() {
       console.warn('[App] Could not pre-warm auth:', e.message);
     }
 
-    // Test the specific email the user is having trouble with
-    runFirebaseAuthDiagnostics('stevesbet1@gmail.com');
+    // Run auth diagnostics with a generic placeholder (no hardcoded email)
+    // In dev, replace with the email you want to test.
+    runFirebaseAuthDiagnostics('test@example.com');
 
     // Print the manual checklist for Firebase Console verification
     printFirebaseConsoleChecklist();

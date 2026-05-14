@@ -246,7 +246,7 @@ export function printFirebaseConsoleChecklist(): void {
   // Manual checks (no client-side API for these)
   console.log('─── MANUAL CHECKS (Firebase Console) ───');
   console.log('  ☐ 1. Authentication → Sign-in method → Email/Password = ENABLED');
-  console.log('  ☐ 2. Authentication → Users → stevesbet1@gmail.com EXISTS');
+  console.log('  ☐ 2. Authentication → Users → Your test email EXISTS');
   console.log('     (If missing, reset emails are SILENTLY dropped by Firebase)');
   console.log('  ☐ 3. Authentication → Templates → Password reset = ENABLED');
   console.log('  ☐ 4. Authentication → Settings → Authorized domains includes:');

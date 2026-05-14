@@ -44,6 +44,7 @@ export default function ResetPasswordScreen() {
   const [screenMode, setScreenMode] = useState<ResetMode>('send');
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // ─── Bulletproof duplicate-send guard ──────────────────────────────
   // Prevents race conditions when user double-taps the button.
@@ -370,9 +371,20 @@ export default function ResetPasswordScreen() {
                   placeholderTextColor={LuxuryColors.textSecondary}
                   value={newPassword}
                   onChangeText={setNewPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   autoCapitalize="none"
                 />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  activeOpacity={0.7}
+                  style={styles.toggleIcon}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={LuxuryColors.textSecondary}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -391,9 +403,20 @@ export default function ResetPasswordScreen() {
                   placeholderTextColor={LuxuryColors.textSecondary}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   autoCapitalize="none"
                 />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  activeOpacity={0.7}
+                  style={styles.toggleIcon}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={LuxuryColors.textSecondary}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -524,6 +547,10 @@ const styles = StyleSheet.create({
   },
   inputIcon: {
     marginRight: LuxurySpacing.sm,
+  },
+  toggleIcon: {
+    marginLeft: LuxurySpacing.sm,
+    padding: LuxurySpacing.xs,
   },
   input: {
     flex: 1,

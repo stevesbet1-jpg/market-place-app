@@ -2,10 +2,10 @@
  * FIREBASE PASSWORD RESET — TERMINAL DELIVERY TEST
  * =================================================
  * This script calls the SAME Firebase Identity Toolkit REST API that the app uses.
- * It sends a password reset email for stevesbet1@gmail.com and logs everything.
+ * It sends a password reset email for the provided address and logs everything.
  *
  * RUN:
- *   node scripts/send-reset-email-test.js
+ *   node scripts/send-reset-email-test.js user@example.com
  *
  * REQUIREMENTS:
  *   - .env file with EXPO_PUBLIC_FIREBASE_API_KEY set
@@ -17,7 +17,11 @@ require('dotenv').config({ path: './.env' });
 const API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
 const AUTH_DOMAIN = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN;
 const PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
-const TEST_EMAIL = 'stevesbet1@gmail.com';
+const TEST_EMAIL = process.argv[2];
+if (!TEST_EMAIL) {
+  console.error('Usage: node scripts/send-reset-email-test.js <email>');
+  process.exit(1);
+}
 
 const CONTINUE_URL = 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html';
 
@@ -68,7 +72,7 @@ console.log('☐ 1. Firebase Console → Build → Authentication → Sign-in me
 console.log('      → Email/Password provider is ENABLED');
 console.log('');
 console.log('☐ 2. Firebase Console → Build → Authentication → Users');
-console.log('      → stevesbet1@gmail.com EXISTS in the list');
+console.log('      → ' + TEST_EMAIL + ' EXISTS in the list');
 console.log('      → If NOT listed, the email will be SILENTLY dropped');
 console.log('');
 console.log('☐ 3. Firebase Console → Build → Authentication → Templates');
@@ -147,7 +151,7 @@ fetch(endpoint, {
       console.log('  1. Check your Gmail Inbox, Spam, and Promotions NOW.');
       console.log('  2. Wait 1–60 seconds (Firebase shared IP pool delivery time).');
       console.log('  3. If no email arrives after 2 minutes:');
-      console.log('     a. Verify stevesbet1@gmail.com exists in Firebase Console → Users');
+      console.log('     a. Verify ' + TEST_EMAIL + ' exists in Firebase Console → Users');
       console.log('     b. Check spam filters / corporate firewalls');
       console.log('     c. Run: node scripts/generate-reset-link-admin.js');
       console.log('        (generates a direct reset link you can send manually)');

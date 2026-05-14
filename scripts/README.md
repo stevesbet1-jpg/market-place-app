@@ -54,7 +54,7 @@ node scripts/generate-reset-link-admin.js
 npm install -D resend firebase-admin
 # then set up Resend (see below)
 npm run send:reset-resend
-# or: node scripts/send-reset-via-resend.js stevesbet1@gmail.com
+# or: node scripts/send-reset-via-resend.js user@example.com
 ```
 
 **Why use it:**

@@ -30,7 +30,11 @@ require('dotenv').config({ path: './.env' });
 const fs = require('fs');
 const path = require('path');
 
-const TEST_EMAIL = 'stevesbet1@gmail.com';
+const TEST_EMAIL = process.argv[2];
+if (!TEST_EMAIL) {
+  console.error('Usage: node scripts/generate-reset-link-admin.js <email>');
+  process.exit(1);
+}
 const PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
 const CONTINUE_URL = 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html';
 const SERVICE_ACCOUNT_PATH = path.join(__dirname, 'serviceAccount.json');
@@ -165,7 +169,7 @@ admin
     console.log('');
 
     if (error.code === 'auth/user-not-found') {
-      console.log('DIAGNOSIS: stevesbet1@gmail.com does NOT exist in Firebase Auth.');
+      console.log('DIAGNOSIS: ' + TEST_EMAIL + ' does NOT exist in Firebase Auth.');
       console.log('FIX: Create the user first in Firebase Console → Authentication → Users');
     } else if (error.code === 'auth/invalid-email') {
       console.log('DIAGNOSIS: Invalid email format.');
