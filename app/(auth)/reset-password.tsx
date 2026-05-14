@@ -86,7 +86,7 @@ export default function ResetPasswordScreen() {
       setVerifiedEmail(null);
       setScreenMode('error');
       setErrorMessage(msg);
-      console.error('[ResetPassword] oobCode verification FAILED:', msg);
+      console.log('[ResetPassword] oobCode verification FAILED:', msg);
     }
   };
 
@@ -137,36 +137,31 @@ export default function ResetPasswordScreen() {
         const t1 = Date.now();
         console.log(`[ResetPassword] T+${t1 - t0}ms  Resend backend SUCCESS. emailId: ${backendResult.emailId}`);
         Alert.alert(
-          'Reset Email Sent',
-          `Your password reset email has been sent via Resend.\n\nEmail ID: ${backendResult.emailId}\n\nPlease check your inbox (and spam folder) for the reset link.`,
+          'Reset Link Sent',
+          'Reset link sent. Check your email.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
         return;
       }
 
-      // Backend returned an explicit error (e.g. user not found, Resend key invalid)
-      if (backendResult.error && !backendResult.error.includes('Cannot reach reset API') && !backendResult.error.includes('timed out')) {
-        console.warn('[ResetPassword] Backend returned business error:', backendResult.error);
-        throw new Error(backendResult.error);
-      }
+      // Any backend failure (timeout, network, business error) → fallback to Firebase
+      console.log('[ResetPassword] Backend failed:', backendResult.error, 'Falling back to Firebase...');
 
-      // ── Attempt 2: Backend unreachable → Firebase default fallback ─
-      console.warn('[ResetPassword] Backend unavailable. Falling back to Firebase default delivery...');
+      // ── Attempt 2: Firebase default fallback ─────────────────────
       await sendFirebasePasswordReset(normalizedEmail);
 
       const t1 = Date.now();
-      console.log(`[ResetPassword] T+${t1 - t0}ms  Firebase default fallback SUCCESS.`);
+      console.log(`[ResetPassword] T+${t1 - t0}ms  Firebase fallback SUCCESS.`);
       Alert.alert(
-        'Reset Link Queued',
-        'Your reset request has been queued via Firebase.\n\nDelivery is not guaranteed and may take 1–60 seconds. Check your Spam and Promotions folders.\n\nFor reliable delivery, run the local API server: npm run server',
+        'Reset Link Sent',
+        'Reset link sent. Check your email.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
 
     } catch (error: any) {
       const tFail = Date.now();
-      console.error(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, error);
-      const message = error?.message || 'Failed to send reset email. Please try again.';
-      Alert.alert('Error', message);
+      console.log(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, error.message || error);
+      Alert.alert('Error', 'Failed to send reset email. Please try again.');
     } finally {
       setIsLoading(false);
       sendAttemptRef.current = false;
@@ -210,7 +205,7 @@ export default function ResetPasswordScreen() {
       console.log('[ResetPassword] confirmPasswordReset SUCCESS');
       setScreenMode('success');
     } catch (error: any) {
-      console.error('[ResetPassword] CONFIRM_RESET_ERROR:', error);
+      console.log('[ResetPassword] CONFIRM_RESET_ERROR:', error.message || error);
       const message = error?.message || 'Failed to reset password. The link may have expired.';
       Alert.alert('Error', message);
     } finally {

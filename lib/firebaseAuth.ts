@@ -214,8 +214,8 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
       const failTime = Date.now();
       const code = error.code || 'unknown';
       const message = error.message || 'Unknown error';
-      console.error(`[FirebaseAuth] T+${failTime - requestStart}ms  ❌ Attempt ${attempt + 1} FAILED: ${code} — ${message}`);
-      console.error(`[FirebaseAuth]            Attempt duration: ${failTime - attemptStart}ms`);
+      console.log(`[FirebaseAuth] T+${failTime - requestStart}ms  ❌ Attempt ${attempt + 1} FAILED: ${code} — ${message}`);
+      console.log(`[FirebaseAuth]            Attempt duration: ${failTime - attemptStart}ms`);
 
       if (isRetryableError(code, message) && attempt < MAX_RETRIES - 1) {
         const delay = RETRY_DELAYS_MS[attempt];
@@ -227,7 +227,7 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
 
       // Non-retryable or max retries exhausted
       const totalFail = Date.now() - requestStart;
-      console.error(`[FirebaseAuth] T+${totalFail}ms  ❌ FINAL FAILURE after ${attempt + 1} attempt(s). Total: ${totalFail}ms`);
+      console.log(`[FirebaseAuth] T+${totalFail}ms  ❌ FINAL FAILURE after ${attempt + 1} attempt(s). Total: ${totalFail}ms`);
       console.log('╔══════════════════════════════════════════════════════════════╗');
       console.log('║  END TIMING LOG                                              ║');
       console.log('╚══════════════════════════════════════════════════════════════╝');
@@ -299,7 +299,7 @@ export const sendPasswordResetViaBackend = async (
       };
     }
 
-    console.error('[FirebaseAuth] Backend reset FAILED:', data.error, '| code:', data.code);
+    console.log('[FirebaseAuth] Backend reset FAILED:', data.error, '| code:', data.code);
     return {
       success: false,
       error: data.error || 'Failed to send reset email',
@@ -307,18 +307,18 @@ export const sendPasswordResetViaBackend = async (
     };
   } catch (error: any) {
     const message = error.message || 'Unknown error';
-    console.error('[FirebaseAuth] Backend reset NETWORK/EXCEPTION:', message);
+    console.log('[FirebaseAuth] Backend reset NETWORK/EXCEPTION:', message);
 
     if (message.includes('abort') || message.includes('Abort')) {
       return {
         success: false,
-        error: 'Request timed out. Make sure the reset API server is running (npm run server).',
+        error: 'Backend request timed out. Falling back to Firebase default.',
       };
     }
 
     return {
       success: false,
-      error: `Cannot reach reset API server. Ensure it is running at ${baseUrl} (npm run server).`,
+      error: `Cannot reach reset API server at ${baseUrl}. Falling back to Firebase default.`,
     };
   }
 };
@@ -342,7 +342,7 @@ export const confirmFirebasePasswordReset = async (
   } catch (error: any) {
     const code = error.code || 'unknown';
     const message = error.message || 'Unknown error';
-    console.error('[FirebaseAuth] confirmPasswordReset FAILED:', code, message);
+    console.log('[FirebaseAuth] confirmPasswordReset FAILED:', code, message);
 
     const errorMessages: Record<string, string> = {
       'auth/expired-action-code': 'The reset link has expired. Please request a new one.',
