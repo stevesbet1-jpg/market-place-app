@@ -377,7 +377,7 @@ export const loginWithFirebaseEmail = async (
       email: userCredential.user.email || email,
     };
   } catch (error: any) {
-    console.error('[FirebaseAuth] Login FAILED:', error.code, error.message);
+    console.log('[FirebaseAuth] Login FAILED:', error.code, error.message);
     const errorMessages: Record<string, string> = {
       'auth/invalid-email': 'Invalid email address.',
       'auth/user-disabled': 'This account has been disabled.',
