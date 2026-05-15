@@ -1,0 +1,88 @@
+[debug] [2026-05-15T01:39:10.629Z] ----------------------------------------------------------------------
+[debug] [2026-05-15T01:39:10.636Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\steve_teepc37\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions --debug
+[debug] [2026-05-15T01:39:10.637Z] CLI Version:   15.17.0
+[debug] [2026-05-15T01:39:10.637Z] Platform:      win32
+[debug] [2026-05-15T01:39:10.638Z] Node Version:  v22.22.2
+[debug] [2026-05-15T01:39:10.638Z] Time:          Fri May 15 2026 04:39:10 GMT+0300 (Israel Daylight Time)
+[debug] [2026-05-15T01:39:10.639Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-05-15T01:39:14.407Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-05-15T01:39:14.409Z] > authorizing via signed-in user (stevesbet1@gmail.com)
+[debug] [2026-05-15T01:39:14.409Z] [iam] checking project marketplace-app-3b3f7 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2026-05-15T01:39:14.413Z] Checked if tokens are valid: false, expires at: 1778809950001
+[debug] [2026-05-15T01:39:14.413Z] Checked if tokens are valid: false, expires at: 1778809950001
+[debug] [2026-05-15T01:39:14.414Z] > refreshing access token with scopes: []
+[debug] [2026-05-15T01:39:14.420Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-05-15T01:39:14.421Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-05-15T01:39:14.963Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-05-15T01:39:14.964Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-05-15T01:39:14.989Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7:testIamPermissions [none]
+[debug] [2026-05-15T01:39:14.989Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7:testIamPermissions  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:14.989Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-05-15T01:39:15.551Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7:testIamPermissions 200
+[debug] [2026-05-15T01:39:15.552Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-05-15T01:39:15.553Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:15.553Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:15.553Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/marketplace-app-3b3f7/serviceAccounts/marketplace-app-3b3f7@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-05-15T01:39:15.553Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/marketplace-app-3b3f7/serviceAccounts/marketplace-app-3b3f7@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-05-15T01:39:16.902Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/marketplace-app-3b3f7/serviceAccounts/marketplace-app-3b3f7@appspot.gserviceaccount.com:testIamPermissions 404
+[debug] [2026-05-15T01:39:16.902Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/marketplace-app-3b3f7/serviceAccounts/marketplace-app-3b3f7@appspot.gserviceaccount.com:testIamPermissions {"error":{"code":404,"message":"Unknown service account","status":"NOT_FOUND"}}
+[debug] [2026-05-15T01:39:16.904Z] [functions] service account IAM check errored, deploy may fail: Request to https://iam.googleapis.com/v1/projects/marketplace-app-3b3f7/serviceAccounts/marketplace-app-3b3f7@appspot.gserviceaccount.com:testIamPermissions had HTTP Error: 404, Unknown service account {"name":"FirebaseError","children":[],"context":{"body":{"error":{"code":404,"message":"Unknown service account","status":"NOT_FOUND"}},"response":{"statusCode":404}},"exit":1,"message":"Request to https://iam.googleapis.com/v1/projects/marketplace-app-3b3f7/serviceAccounts/marketplace-app-3b3f7@appspot.gserviceaccount.com:testIamPermissions had HTTP Error: 404, Unknown service account","status":404}
+[info] 
+[info] === Deploying to 'marketplace-app-3b3f7'...
+[info] 
+[info] i  deploying functions 
+[debug] [2026-05-15T01:39:16.913Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:16.913Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:16.914Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7 [none]
+[debug] [2026-05-15T01:39:17.208Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7 200
+[debug] [2026-05-15T01:39:17.208Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/marketplace-app-3b3f7 {"projectNumber":"532498158079","projectId":"marketplace-app-3b3f7","lifecycleState":"ACTIVE","name":"marketplace-app","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2026-05-08T18:16:45.201Z"}
+[info] i  functions: preparing codebase default for deployment 
+[info] i  functions: ensuring required API cloudfunctions.googleapis.com is enabled... 
+[debug] [2026-05-15T01:39:17.211Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:17.211Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:17.212Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:17.212Z] Checked if tokens are valid: true, expires at: 1778812753964
+[info] i  functions: ensuring required API cloudbuild.googleapis.com is enabled... 
+[debug] [2026-05-15T01:39:17.213Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:17.213Z] Checked if tokens are valid: true, expires at: 1778812753964
+[info] i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled... 
+[debug] [2026-05-15T01:39:17.214Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:17.214Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:17.215Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudfunctions.googleapis.com [none]
+[debug] [2026-05-15T01:39:17.215Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudfunctions.googleapis.com  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:17.219Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/runtimeconfig.googleapis.com [none]
+[debug] [2026-05-15T01:39:17.219Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/runtimeconfig.googleapis.com  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:17.221Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com [none]
+[debug] [2026-05-15T01:39:17.222Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:17.224Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/artifactregistry.googleapis.com [none]
+[debug] [2026-05-15T01:39:17.224Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/artifactregistry.googleapis.com  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:18.645Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/runtimeconfig.googleapis.com 200
+[debug] [2026-05-15T01:39:18.645Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/runtimeconfig.googleapis.com [omitted]
+[debug] [2026-05-15T01:39:18.654Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com 200
+[debug] [2026-05-15T01:39:18.654Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com [omitted]
+[warn] !  functions: missing required API cloudbuild.googleapis.com. Enabling now... 
+[debug] [2026-05-15T01:39:18.655Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:18.655Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:18.655Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com:enable [none]
+[debug] [2026-05-15T01:39:18.655Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com:enable  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:18.659Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudfunctions.googleapis.com 200
+[debug] [2026-05-15T01:39:18.659Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudfunctions.googleapis.com [omitted]
+[warn] !  functions: missing required API cloudfunctions.googleapis.com. Enabling now... 
+[debug] [2026-05-15T01:39:18.659Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:18.659Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:18.660Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudfunctions.googleapis.com:enable [none]
+[debug] [2026-05-15T01:39:18.660Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudfunctions.googleapis.com:enable  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:18.664Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/artifactregistry.googleapis.com 200
+[debug] [2026-05-15T01:39:18.665Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/artifactregistry.googleapis.com [omitted]
+[warn] !  artifactregistry: missing required API artifactregistry.googleapis.com. Enabling now... 
+[debug] [2026-05-15T01:39:18.665Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:18.666Z] Checked if tokens are valid: true, expires at: 1778812753964
+[debug] [2026-05-15T01:39:18.666Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/artifactregistry.googleapis.com:enable [none]
+[debug] [2026-05-15T01:39:18.666Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/artifactregistry.googleapis.com:enable  x-goog-user-project=marketplace-app-3b3f7
+[debug] [2026-05-15T01:39:19.053Z] <<< [apiv2][status] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com:enable 400
+[debug] [2026-05-15T01:39:19.053Z] <<< [apiv2][body] POST https://serviceusage.googleapis.com/v1/projects/marketplace-app-3b3f7/services/cloudbuild.googleapis.com:enable [omitted]
+[error] 
+[error] Error: Your project marketplace-app-3b3f7 must be on the Blaze (pay-as-you-go) plan to complete this command. Required API cloudbuild.googleapis.com can't be enabled until the upgrade is complete. To upgrade, visit the following URL:
+
+https://console.firebase.google.com/project/marketplace-app-3b3f7/usage/details

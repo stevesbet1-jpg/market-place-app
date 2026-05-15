@@ -1,0 +1,27 @@
+# Render.com Blueprint for Marketplace Password Reset API
+# To deploy: https://dashboard.render.com/blueprint?repo=https://github.com/stevesbet1-jpg/market-place-app
+#
+# After deployment, set these environment variables in the Render dashboard:
+#   RESEND_API_KEY   = your Resend API key (re_...)
+#   EMAIL_FROM       = your sender email (e.g., onboarding@resend.dev)
+#   EXPO_PUBLIC_FIREBASE_API_KEY = your Firebase web API key
+
+services:
+  - type: web
+    name: marketplace-reset-api
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EXPO_PUBLIC_FIREBASE_API_KEY
+        sync: false
+    healthCheckPath: /api/health
+    autoDeploy: true

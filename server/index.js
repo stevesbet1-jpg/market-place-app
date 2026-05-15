@@ -31,7 +31,7 @@ const cors = require('cors');
 const { Resend } = require('resend');
 
 const app = express();
-const PORT = process.env.RESET_API_PORT || 3001;
+const PORT = process.env.PORT || process.env.RESET_API_PORT || 3001;
 
 // ─── Middleware ────────────────────────────────────────────────────
 app.use(cors());
@@ -375,9 +375,9 @@ app.listen(PORT, () => {
   console.log(`\n╔════════════════════════════════════════════════════════════╗`);
   console.log(`║  Marketplace Reset API Server                              ║`);
   console.log(`╠════════════════════════════════════════════════════════════╣`);
-  console.log(`║  Listening on http://localhost:${PORT}                       ║`);
-  console.log(`║  Health:   http://localhost:${PORT}/api/health             ║`);
-  console.log(`║  Reset:    POST http://localhost:${PORT}/api/send-reset    ║`);
-  console.log(`║  Confirm:  POST http://localhost:${PORT}/api/send-confirmation ║`);
+  console.log(`║  Listening on port ${PORT}                                    ║`);
+  console.log(`║  Health:   GET  /api/health                                ║`);
+  console.log(`║  Reset:    POST /api/send-reset                            ║`);
+  console.log(`║  Confirm:  POST /api/send-confirmation                     ║`);
   console.log(`╚════════════════════════════════════════════════════════════╝\n`);
 });
