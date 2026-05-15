@@ -31,7 +31,7 @@ const cors = require('cors');
 const { Resend } = require('resend');
 
 const app = express();
-const PORT = process.env.PORT || process.env.RESET_API_PORT || 3001;
+const PORT = process.env.PORT || 3001;
 
 // ─── Middleware ────────────────────────────────────────────────────
 app.use(cors());
