@@ -300,6 +300,7 @@ app.post('/api/send-reset', async (req, res) => {
 app.post('/api/send-confirmation', async (req, res) => {
   const t0 = Date.now();
   const { email } = req.body;
+  console.log(`[Server] /api/send-confirmation hit. Raw body email: ${email || 'MISSING'}`);
 
   if (!email || typeof email !== 'string') {
     return res.status(400).json({ success: false, error: 'Email is required.' });
