@@ -35,3 +35,19 @@
 [Server] ✅ Email sent via Resend. ID: 82a6b227-7280-45cf-9223-f00ed7842c5d | Total: 1200ms
 [Server] /api/send-confirmation hit. Raw body email: stevesbet1@gmail.com
 [Server] ✅ Confirmation email sent via Resend. ID: 436d1677-b201-40e4-9c7a-afdc2b14ab68 | Total: 1066ms
+[Server] Reset requested for: stevesbet1@gmail.com
+[Server] Calling admin.auth().generatePasswordResetLink...
+[Server]   Email: stevesbet1@gmail.com
+[Server]   actionCodeSettings: {"url":"https://marketplace-app-3b3f7.web.app/reset-password.html","handleCodeInApp":false}
+[Server] ✅ Firebase link generated in 1011ms
+[Server] Generated link: https://marketplace-app-3b3f7.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=wXZ0CfwqpgRWHOvtKogNI08d9bkXp6dH...
+[Server] Direct reset link constructed: https://marketplace-app-3b3f7.web.app/reset-password.html?oobCode=wXZ0CfwqpgRWHOvtKogNI08d9bkXp6dHiNzUu00e1MwAAAGeL_QoSA...
+[Server] ✅ Email sent via Resend. ID: 8ddb535c-afc0-4f09-8789-1a4be8d8ad3b | Total: 2042ms
+[Server] Reset requested for: stevesbet1@gmail.com
+[Server] Calling admin.auth().generatePasswordResetLink...
+[Server]   Email: stevesbet1@gmail.com
+[Server]   actionCodeSettings: {"url":"https://marketplace-app-3b3f7.web.app/reset-password.html","handleCodeInApp":false}
+[Server] ✅ Firebase link generated in 654ms
+[Server] Generated link: https://marketplace-app-3b3f7.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=yNqdn_740fo6d-nFJeF_U48iCEfuZsf1...
+[Server] Direct reset link constructed: https://marketplace-app-3b3f7.web.app/reset-password.html?oobCode=yNqdn_740fo6d-nFJeF_U48iCEfuZsf1C5mb_waqxcAAAAGeL_ef8A...
+[Server] ✅ Email sent via Resend. ID: 89387485-faf0-4e91-a565-864c7215488e | Total: 1507ms
