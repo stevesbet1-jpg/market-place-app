@@ -1,0 +1,37 @@
+
+╔════════════════════════════════════════════════════════════╗
+║  Marketplace Reset API Server                              ║
+╠════════════════════════════════════════════════════════════╣
+║  Listening on port 3001                                    ║
+║  Health:   GET  /api/health                                ║
+║  Reset:    POST /api/send-reset                            ║
+║  Confirm:  POST /api/send-confirmation                     ║
+╚════════════════════════════════════════════════════════════╝
+
+[Server] Firebase Admin init starting...
+[Server]   Service account file found: YES
+[Server]   Service account path: c:\projrcts\market-place\scripts\serviceAccount.json
+[Server]   ServiceAccount.project_id: marketplace-app-3b3f7
+[Server]   ServiceAccount.client_email: firebase-adminsdk-fbsvc@marketplace-app-3b3f7.iam.gserviceaccount.com
+[Server]   ServiceAccount has private_key: true
+[Server] ✅ Firebase Admin initialized with service account
+[Server] Reset requested for: stevesbet1@gmail.com
+[Server] Calling admin.auth().generatePasswordResetLink...
+[Server]   Email: stevesbet1@gmail.com
+[Server]   actionCodeSettings: {"url":"https://marketplace-app-3b3f7.web.app/reset-password.html","handleCodeInApp":false}
+[Server] ✅ Firebase link generated in 1778ms
+[Server] Generated link: https://marketplace-app-3b3f7.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=vzmoyLuio5B7wA2tHCSM297hGi9UrwgK...
+[Server] Direct reset link constructed: https://marketplace-app-3b3f7.web.app/reset-password.html?oobCode=vzmoyLuio5B7wA2tHCSM297hGi9UrwgKo3OuK1-LVTIAAAGeL9iDYA...
+[Server] ✅ Email sent via Resend. ID: 02650630-77f1-4734-bc0f-fe71be1c395e | Total: 3023ms
+[Server] /api/send-confirmation hit. Raw body email: stevesbet1@gmail.com
+[Server] ✅ Confirmation email sent via Resend. ID: 894e5bc8-38d5-4ca1-9a8f-ccb016e7ace1 | Total: 360ms
+[Server] Reset requested for: stevesbet1@gmail.com
+[Server] Calling admin.auth().generatePasswordResetLink...
+[Server]   Email: stevesbet1@gmail.com
+[Server]   actionCodeSettings: {"url":"https://marketplace-app-3b3f7.web.app/reset-password.html","handleCodeInApp":false}
+[Server] ✅ Firebase link generated in 791ms
+[Server] Generated link: https://marketplace-app-3b3f7.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=EUb-FpwjJLNJa8Ar1q-d52VjLNQZsE2h...
+[Server] Direct reset link constructed: https://marketplace-app-3b3f7.web.app/reset-password.html?oobCode=EUb-FpwjJLNJa8Ar1q-d52VjLNQZsE2hop7QJDWe7iUAAAGeL9qEmw...
+[Server] ✅ Email sent via Resend. ID: 82a6b227-7280-45cf-9223-f00ed7842c5d | Total: 1200ms
+[Server] /api/send-confirmation hit. Raw body email: stevesbet1@gmail.com
+[Server] ✅ Confirmation email sent via Resend. ID: 436d1677-b201-40e4-9c7a-afdc2b14ab68 | Total: 1066ms

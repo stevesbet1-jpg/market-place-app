@@ -256,7 +256,9 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
 // This calls the local Express server which uses Firebase Admin + Resend
 // for reliable email delivery with tracking, instead of Firebase's default.
 
-const DEFAULT_RESET_API_URL = 'http://localhost:3001';
+const DEFAULT_RESET_API_URL = __DEV__
+  ? 'http://localhost:3001'
+  : 'https://marketplace-reset-api.onrender.com';
 
 export interface BackendResetResult {
   success: boolean;
