@@ -267,6 +267,33 @@ export interface BackendResetResult {
   code?: string;
 }
 
+// ─── Warm up Render backend (free tier sleeps) ────────────────────
+
+export async function warmUpBackend(apiBaseUrl?: string): Promise<boolean> {
+  const baseUrl = apiBaseUrl || process.env.EXPO_PUBLIC_RESET_API_URL || DEFAULT_RESET_API_URL;
+  const healthUrl = `${baseUrl}/api/health`;
+  console.log('[FirebaseAuth] Warming up backend:', healthUrl);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(healthUrl, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (response.ok) {
+      console.log('[FirebaseAuth] Backend warm-up SUCCESS');
+      return true;
+    }
+    console.log('[FirebaseAuth] Backend warm-up returned status:', response.status);
+    return false;
+  } catch (e: any) {
+    console.log('[FirebaseAuth] Backend warm-up FAILED (will retry on main request):', e.message);
+    return false;
+  }
+}
+
 export const sendPasswordResetViaBackend = async (
   email: string,
   apiBaseUrl?: string
@@ -274,12 +301,12 @@ export const sendPasswordResetViaBackend = async (
   const baseUrl = apiBaseUrl || process.env.EXPO_PUBLIC_RESET_API_URL || DEFAULT_RESET_API_URL;
   const url = `${baseUrl}/api/send-reset`;
 
-  console.log('[FirebaseAuth] Calling backend reset API:', url);
+  console.log('[RESET EMAIL API URL]', url);
   console.log('[FirebaseAuth] Email:', email);
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -291,6 +318,7 @@ export const sendPasswordResetViaBackend = async (
     clearTimeout(timeoutId);
 
     const data = await response.json();
+    console.log('[RESET EMAIL RESULT]', data);
 
     if (response.ok && data.success) {
       console.log('[FirebaseAuth] Backend reset SUCCESS. Resend emailId:', data.emailId);
@@ -309,18 +337,19 @@ export const sendPasswordResetViaBackend = async (
     };
   } catch (error: any) {
     const message = error.message || 'Unknown error';
+    console.error('[EMAIL ERROR]', message);
     console.log('[FirebaseAuth] Backend reset NETWORK/EXCEPTION:', message);
 
     if (message.includes('abort') || message.includes('Abort')) {
       return {
         success: false,
-        error: 'Backend request timed out. Falling back to Firebase default.',
+        error: 'Backend request timed out after 60 seconds. The server may be waking up. Please try again.',
       };
     }
 
     return {
       success: false,
-      error: `Cannot reach reset API server at ${baseUrl}. Falling back to Firebase default.`,
+      error: `Cannot reach reset API server at ${baseUrl}. Please check your internet connection and try again.`,
     };
   }
 };
@@ -345,7 +374,7 @@ export const sendPasswordChangedEmailViaBackend = async (
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -357,6 +386,7 @@ export const sendPasswordChangedEmailViaBackend = async (
     clearTimeout(timeoutId);
 
     const data = await response.json();
+    console.log('[PASSWORD CHANGED EMAIL RESULT]', data);
 
     if (response.ok && data.success) {
       console.log('[FirebaseAuth] Backend confirmation SUCCESS. Resend emailId:', data.emailId);
@@ -374,18 +404,19 @@ export const sendPasswordChangedEmailViaBackend = async (
     };
   } catch (error: any) {
     const message = error.message || 'Unknown error';
+    console.error('[PASSWORD CHANGED EMAIL ERROR]', message);
     console.log('[FirebaseAuth] Backend confirmation NETWORK/EXCEPTION:', message);
 
     if (message.includes('abort') || message.includes('Abort')) {
       return {
         success: false,
-        error: 'Backend request timed out.',
+        error: 'Backend request timed out after 60 seconds. Please try again.',
       };
     }
 
     return {
       success: false,
-      error: `Cannot reach confirmation API server at ${baseUrl}.`,
+      error: `Cannot reach confirmation API server at ${baseUrl}. Please check your connection and try again.`,
     };
   }
 };

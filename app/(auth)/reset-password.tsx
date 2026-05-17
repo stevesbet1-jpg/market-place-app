@@ -14,6 +14,7 @@ import {
 import {
   sendPasswordResetViaBackend,
   sendPasswordChangedEmailViaBackend,
+  warmUpBackend,
   confirmFirebasePasswordReset,
   verifyResetCode,
   isFirebaseConfigured,
@@ -131,8 +132,13 @@ export default function ResetPasswordScreen() {
     console.log(`[ResetPassword] T+0ms    Email: ${normalizedEmail}`);
 
     try {
-      // ── Call Resend backend API ──────────────────────────
+      // ── 1. Warm up Render backend (free tier sleeps) ─────
+      console.log(`[ResetPassword] T+${Date.now() - t0}ms  Warming up backend...`);
+      await warmUpBackend();
+
+      // ── 2. Call Resend backend API ──────────────────────────
       const backendResult = await sendPasswordResetViaBackend(normalizedEmail);
+      console.log('[RESET EMAIL RESULT]', backendResult);
 
       if (backendResult.success && backendResult.emailId) {
         const t1 = Date.now();
