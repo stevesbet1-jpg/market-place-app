@@ -200,23 +200,26 @@ export default function ResetPasswordScreen() {
     try {
       await confirmFirebasePasswordReset(code, newPassword);
       console.log('[ResetPassword] confirmPasswordReset SUCCESS');
+      console.log('[RESET SUCCESS EMAIL TARGET]', verifiedEmail);
 
-      // ── Send confirmation email AFTER password was actually changed ──
-      const confirmEmail = verifiedEmail || '';
-      if (confirmEmail) {
-        console.log('[ResetPassword] Triggering password-changed confirmation email for:', confirmEmail);
-        const confirmResult = await sendPasswordChangedEmailViaBackend(confirmEmail);
-        if (confirmResult.success && confirmResult.emailId) {
-          console.log('[PASSWORD CHANGED EMAIL]', true, confirmResult.emailId, confirmEmail);
-        } else {
-          console.log('[PASSWORD CHANGED EMAIL]', false, null, confirmEmail);
-          console.error('[EMAIL ERROR]', confirmResult.error || 'Confirmation email failed');
-        }
-      } else {
-        console.log('[ResetPassword] No verifiedEmail available — skipping confirmation email');
+      if (!verifiedEmail) {
+        console.error('[PASSWORD EMAIL] Missing verifiedEmail');
+        Alert.alert('verifiedEmail missing');
+        setIsLoading(false);
+        return;
       }
 
-      setScreenMode('success');
+      const result = await sendPasswordChangedEmailViaBackend(verifiedEmail);
+      console.log('[PASSWORD EMAIL RESULT]', result);
+
+      if (result.success === true) {
+        console.log('[PASSWORD CHANGED EMAIL]', true, result.emailId, verifiedEmail);
+        setScreenMode('success');
+      } else {
+        console.error('[PASSWORD CHANGED EMAIL]', false, null, verifiedEmail);
+        console.error('[EMAIL ERROR]', result.error || 'Confirmation email failed');
+        Alert.alert('Error', result.error || 'Password was reset but confirmation email failed.');
+      }
     } catch (error: any) {
       console.error('[EMAIL ERROR]', error.message || error);
       console.log('[ResetPassword] CONFIRM_RESET_ERROR:', error.message || error);
