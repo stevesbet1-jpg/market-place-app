@@ -325,6 +325,71 @@ export const sendPasswordResetViaBackend = async (
   }
 };
 
+// ─── Send password-changed confirmation via backend API ─────────
+
+export interface BackendConfirmResult {
+  success: boolean;
+  emailId?: string;
+  error?: string;
+}
+
+export const sendPasswordChangedEmailViaBackend = async (
+  email: string,
+  apiBaseUrl?: string
+): Promise<BackendConfirmResult> => {
+  const baseUrl = apiBaseUrl || process.env.EXPO_PUBLIC_RESET_API_URL || DEFAULT_RESET_API_URL;
+  const url = `${baseUrl}/api/send-confirmation`;
+
+  console.log('[FirebaseAuth] Calling backend confirmation API:', url);
+  console.log('[FirebaseAuth] Email:', email);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      console.log('[FirebaseAuth] Backend confirmation SUCCESS. Resend emailId:', data.emailId);
+      return {
+        success: true,
+        emailId: data.emailId,
+        error: undefined,
+      };
+    }
+
+    console.log('[FirebaseAuth] Backend confirmation FAILED:', data.error);
+    return {
+      success: false,
+      error: data.error || 'Failed to send confirmation email',
+    };
+  } catch (error: any) {
+    const message = error.message || 'Unknown error';
+    console.log('[FirebaseAuth] Backend confirmation NETWORK/EXCEPTION:', message);
+
+    if (message.includes('abort') || message.includes('Abort')) {
+      return {
+        success: false,
+        error: 'Backend request timed out.',
+      };
+    }
+
+    return {
+      success: false,
+      error: `Cannot reach confirmation API server at ${baseUrl}.`,
+    };
+  }
+};
+
 // ─── Confirm password reset ────────────────────────────────────────
 
 export const confirmFirebasePasswordReset = async (

@@ -12,8 +12,8 @@ import {
   LuxuryFontSize, LuxuryGradients,
 } from '../../constants/luxuryTheme';
 import {
-  sendFirebasePasswordReset,
   sendPasswordResetViaBackend,
+  sendPasswordChangedEmailViaBackend,
   confirmFirebasePasswordReset,
   verifyResetCode,
   isFirebaseConfigured,
@@ -131,12 +131,13 @@ export default function ResetPasswordScreen() {
     console.log(`[ResetPassword] T+0ms    Email: ${normalizedEmail}`);
 
     try {
-      // ── Attempt 1: Resend backend API ──────────────────────────
+      // ── Call Resend backend API ──────────────────────────
       const backendResult = await sendPasswordResetViaBackend(normalizedEmail);
 
       if (backendResult.success && backendResult.emailId) {
         const t1 = Date.now();
         console.log(`[ResetPassword] T+${t1 - t0}ms  Resend backend SUCCESS. emailId: ${backendResult.emailId}`);
+        console.log('[RESET EMAIL]', true, backendResult.emailId, normalizedEmail);
         Alert.alert(
           'Reset Link Sent',
           'Reset link sent. Check your email.',
@@ -145,22 +146,17 @@ export default function ResetPasswordScreen() {
         return;
       }
 
-      // Any backend failure (timeout, network, business error) → fallback to Firebase
-      console.log('[ResetPassword] Backend failed:', backendResult.error, 'Falling back to Firebase...');
-
-      // ── Attempt 2: Firebase default fallback ─────────────────────
-      await sendFirebasePasswordReset(normalizedEmail);
-
-      const t1 = Date.now();
-      console.log(`[ResetPassword] T+${t1 - t0}ms  Firebase fallback SUCCESS.`);
+      // Backend returned error — show exact error, do NOT show success
+      console.error('[EMAIL ERROR]', backendResult.error || 'Unknown backend error');
+      console.log('[RESET EMAIL]', false, null, normalizedEmail);
       Alert.alert(
-        'Reset Link Sent',
-        'Reset link sent. Check your email.',
-        [{ text: 'OK', onPress: () => router.back() }]
+        'Error',
+        backendResult.error || 'Failed to send reset email. Please try again.'
       );
 
     } catch (error: any) {
       const tFail = Date.now();
+      console.error('[EMAIL ERROR]', error.message || error);
       console.log(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, error.message || error);
       Alert.alert('Error', 'Failed to send reset email. Please try again.');
     } finally {
@@ -204,8 +200,25 @@ export default function ResetPasswordScreen() {
     try {
       await confirmFirebasePasswordReset(code, newPassword);
       console.log('[ResetPassword] confirmPasswordReset SUCCESS');
+
+      // ── Send confirmation email AFTER password was actually changed ──
+      const confirmEmail = verifiedEmail || '';
+      if (confirmEmail) {
+        console.log('[ResetPassword] Triggering password-changed confirmation email for:', confirmEmail);
+        const confirmResult = await sendPasswordChangedEmailViaBackend(confirmEmail);
+        if (confirmResult.success && confirmResult.emailId) {
+          console.log('[PASSWORD CHANGED EMAIL]', true, confirmResult.emailId, confirmEmail);
+        } else {
+          console.log('[PASSWORD CHANGED EMAIL]', false, null, confirmEmail);
+          console.error('[EMAIL ERROR]', confirmResult.error || 'Confirmation email failed');
+        }
+      } else {
+        console.log('[ResetPassword] No verifiedEmail available — skipping confirmation email');
+      }
+
       setScreenMode('success');
     } catch (error: any) {
+      console.error('[EMAIL ERROR]', error.message || error);
       console.log('[ResetPassword] CONFIRM_RESET_ERROR:', error.message || error);
       const message = error?.message || 'Failed to reset password. The link may have expired.';
       Alert.alert('Error', message);
