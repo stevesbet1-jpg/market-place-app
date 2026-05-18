@@ -45,7 +45,6 @@
 
 import {
   getAuth,
-  sendPasswordResetEmail,
   confirmPasswordReset,
   verifyPasswordResetCode,
   fetchSignInMethodsForEmail,
@@ -118,143 +117,9 @@ export async function verifyResetCode(oobCode: string): Promise<string> {
 //   npx expo start --clear
 //   or: rm -rf node_modules/.cache && npx expo start --clear
 
-const MAX_RETRIES = 3;
-const RETRY_DELAYS_MS = [500, 1500, 3000];
-const NETWORK_TIMEOUT_MS = 15000;
-
-function isRetryableError(code: string, message: string): boolean {
-  return (
-    code === 'auth/network-request-failed' ||
-    code === 'auth/timeout' ||
-    code === 'auth/internal-error' ||
-    message.toLowerCase().includes('timeout') ||
-    message.toLowerCase().includes('network') ||
-    message.toLowerCase().includes('etimedout') ||
-    message.toLowerCase().includes('econnrefused') ||
-    message.toLowerCase().includes('network error')
-  );
-}
-
-function runWithTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`${label} exceeded ${ms}ms timeout`));
-    }, ms);
-    promise
-      .then((val) => { clearTimeout(timer); resolve(val); })
-      .catch((err) => { clearTimeout(timer); reject(err); });
-  });
-}
-
-export const sendFirebasePasswordReset = async (email: string): Promise<void> => {
-  const requestStart = Date.now();
-
-  if (!_isFirebaseConfigured()) {
-    throw new Error('Firebase is not configured. Please check your environment variables.');
-  }
-
-  const auth = getAuth(getFirebaseApp());
-  const config = getFirebaseApp().options;
-
-  console.log('');
-  console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║  [FirebaseAuth] PASSWORD RESET — PRODUCTION TIMING LOG         ║');
-  console.log('╚══════════════════════════════════════════════════════════════╝');
-  console.log(`[FirebaseAuth] T+0ms     Request start`);
-  console.log(`[FirebaseAuth] T+0ms     Email: ${email}`);
-  console.log(`[FirebaseAuth] T+0ms     projectId: ${config.projectId}`);
-  console.log(`[FirebaseAuth] T+0ms     authDomain: ${config.authDomain}`);
-  console.log(`[FirebaseAuth] T+0ms     __DEV__: ${__DEV__}`);
-  console.log(`[FirebaseAuth] T+0ms     Auth instance warmed: ${!!auth}`);
-
-  const actionCodeSettings = {
-    url: 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html',
-    handleCodeInApp: false,
-  };
-
-  const setupDone = Date.now();
-  console.log(`[FirebaseAuth] T+${setupDone - requestStart}ms  Pre-send setup complete (actionCodeSettings ready)`);
-
-  // ── RETRY LOOP with timeout wrapper ────────────────────────────
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const attemptStart = Date.now();
-    console.log(`[FirebaseAuth] T+${attemptStart - requestStart}ms  Attempt ${attempt + 1}/${MAX_RETRIES} → calling sendPasswordResetEmail...`);
-
-    try {
-      const sendPromise = sendPasswordResetEmail(auth, email, actionCodeSettings);
-      await runWithTimeout(sendPromise, NETWORK_TIMEOUT_MS, 'Firebase sendPasswordResetEmail');
-
-      const successTime = Date.now();
-      const firebaseDuration = successTime - attemptStart;
-      const totalDuration = successTime - requestStart;
-
-      console.log(`[FirebaseAuth] T+${successTime - requestStart}ms  ✅ sendPasswordResetEmail returned SUCCESS`);
-      console.log(`[FirebaseAuth]            Firebase API duration: ${firebaseDuration}ms`);
-      console.log(`[FirebaseAuth]            Total request duration:    ${totalDuration}ms`);
-      console.log(`[FirebaseAuth]            Firebase accepted reset email request.`);
-      console.log(`[FirebaseAuth]            ─── Request Details ───`);
-      console.log(`[FirebaseAuth]            projectId:        ${config.projectId}`);
-      console.log(`[FirebaseAuth]            authDomain:       ${config.authDomain}`);
-      console.log(`[FirebaseAuth]            email:            ${email}`);
-      console.log(`[FirebaseAuth]            actionCodeURL:    ${actionCodeSettings.url}`);
-      console.log(`[FirebaseAuth]            timestamp:        ${new Date(successTime).toISOString()}`);
-      console.log(`[FirebaseAuth]            __DEV__:          ${__DEV__}`);
-      console.log(`[FirebaseAuth]            ─── Delivery Note ───`);
-      console.log(`[FirebaseAuth]            Firebase accepted the request. This does NOT prove delivery.`);
-      console.log(`[FirebaseAuth]            If email is registered → queued for delivery (1-60s).`);
-      console.log(`[FirebaseAuth]            If email is NOT registered → silently dropped by Firebase.`);
-      console.log(`[FirebaseAuth]            Run: node scripts/send-reset-email-test.js  (terminal proof)`);
-      console.log('╔══════════════════════════════════════════════════════════════╗');
-      console.log('║  END TIMING LOG                                              ║');
-      console.log('╚══════════════════════════════════════════════════════════════╝');
-      console.log('');
-      return; // SUCCESS — exit immediately, no more attempts
-
-    } catch (error: any) {
-      const failTime = Date.now();
-      const code = error.code || 'unknown';
-      const message = error.message || 'Unknown error';
-      console.log(`[FirebaseAuth] T+${failTime - requestStart}ms  ❌ Attempt ${attempt + 1} FAILED: ${code} — ${message}`);
-      console.log(`[FirebaseAuth]            Attempt duration: ${failTime - attemptStart}ms`);
-
-      if (isRetryableError(code, message) && attempt < MAX_RETRIES - 1) {
-        const delay = RETRY_DELAYS_MS[attempt];
-        const retryAt = Date.now();
-        console.log(`[FirebaseAuth] T+${retryAt - requestStart}ms  ↻ Transient error. Retrying in ${delay}ms...`);
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-
-      // Non-retryable or max retries exhausted
-      const totalFail = Date.now() - requestStart;
-      console.log(`[FirebaseAuth] T+${totalFail}ms  ❌ FINAL FAILURE after ${attempt + 1} attempt(s). Total: ${totalFail}ms`);
-      console.log('╔══════════════════════════════════════════════════════════════╗');
-      console.log('║  END TIMING LOG                                              ║');
-      console.log('╚══════════════════════════════════════════════════════════════╝');
-      console.log('');
-
-      const errorMessages: Record<string, string> = {
-        'auth/invalid-email': 'The email address is not valid.',
-        'auth/missing-android-pkg-name': 'Android package name is missing in actionCodeSettings.',
-        'auth/missing-continue-uri': 'Continue URL is missing in actionCodeSettings.',
-        'auth/missing-ios-bundle-id': 'iOS bundle ID is missing in actionCodeSettings.',
-        'auth/invalid-continue-uri': 'Continue URL is invalid. Must be a valid HTTPS URL.',
-        'auth/unauthorized-continue-uri':
-          'Continue URL domain is NOT authorized in Firebase Console.\n' +
-          'Go to Firebase Console → Authentication → Settings → Authorized domains → Add: ' +
-          (config.authDomain || 'your-auth-domain'),
-        'auth/too-many-requests': 'Too many requests. Please wait a few minutes and try again.',
-      };
-
-      const friendlyMessage = errorMessages[code] || message;
-      throw new Error(friendlyMessage);
-    }
-  }
-};
-
 // ─── Send password reset via backend API (Resend) ────────────────
-// This calls the local Express server which uses Firebase Admin + Resend
-// for reliable email delivery with tracking, instead of Firebase's default.
+// Frontend only calls the deployed Render backend.
+// Firebase Admin + Resend lives exclusively on the server.
 
 const DEFAULT_RESET_API_URL = 'https://market-place-app-1.onrender.com';
 

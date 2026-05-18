@@ -57,8 +57,21 @@ function initFirebaseAdmin() {
     }
   }
 
+  // Support Render env var: paste raw JSON service account into dashboard
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  let serviceAccountFromEnv = null;
+  if (serviceAccountJson) {
+    try {
+      serviceAccountFromEnv = JSON.parse(serviceAccountJson);
+      console.log('[Server]   Service account loaded from FIREBASE_SERVICE_ACCOUNT_JSON env var');
+    } catch (e) {
+      console.error('[Server]   ⚠️  FIREBASE_SERVICE_ACCOUNT_JSON env var is not valid JSON');
+    }
+  }
+
   console.log('[Server] Firebase Admin init starting...');
   console.log('[Server]   Service account file found:', serviceAccountPath ? 'YES' : 'NO');
+  console.log('[Server]   Service account from env var:', serviceAccountFromEnv ? 'YES' : 'NO');
   if (serviceAccountPath) {
     console.log('[Server]   Service account path:', serviceAccountPath);
   }
@@ -66,7 +79,13 @@ function initFirebaseAdmin() {
   try {
     admin = require('firebase-admin');
     if (admin.apps.length === 0) {
-      if (serviceAccountPath) {
+      if (serviceAccountFromEnv) {
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccountFromEnv),
+          projectId: 'marketplace-app-3b3f7',
+        });
+        console.log('[Server] ✅ Firebase Admin initialized from env var');
+      } else if (serviceAccountPath) {
         const serviceAccount = require(serviceAccountPath);
         console.log('[Server]   ServiceAccount.project_id:', serviceAccount.project_id || 'MISSING');
         console.log('[Server]   ServiceAccount.client_email:', serviceAccount.client_email || 'MISSING');
@@ -78,11 +97,10 @@ function initFirebaseAdmin() {
           credential: admin.credential.cert(serviceAccount),
           projectId: 'marketplace-app-3b3f7',
         });
-        console.log('[Server] ✅ Firebase Admin initialized with service account');
+        console.log('[Server] ✅ Firebase Admin initialized with service account file');
       } else {
-        // Attempt default credentials (GCP / Cloud Run / GAE)
-        admin.initializeApp({ projectId: 'marketplace-app-3b3f7' });
-        console.log('[Server] ✅ Firebase Admin initialized with default credentials');
+        console.error('[Server]   ❌ No service account found. Set FIREBASE_SERVICE_ACCOUNT_JSON env var or place serviceAccount.json in scripts/');
+        return false;
       }
     }
     adminInitialized = true;
