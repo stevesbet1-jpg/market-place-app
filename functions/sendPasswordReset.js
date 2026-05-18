@@ -32,7 +32,7 @@ admin.initializeApp();
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const EMAIL_FROM = process.env.EMAIL_FROM;
-const CONTINUE_URL = 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html';
+const CONTINUE_URL = 'https://marketplace-app-3b3f7.web.app/reset-password.html';
 
 // Load email template
 const TEMPLATE_PATH = path.join(__dirname, '../scripts/email-templates', 'reset-password.html');

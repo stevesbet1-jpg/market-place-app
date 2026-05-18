@@ -101,7 +101,6 @@ app.post('/api/send-reset', async (req, res) => {
   try {
     const actionCodeSettings = {
       url: CONTINUE_URL,
-      handleCodeInApp: false,
     };
     console.log('[Function] Calling admin.auth().generatePasswordResetLink...');
 
@@ -179,7 +178,10 @@ app.post('/api/send-reset', async (req, res) => {
 
   } catch (error) {
     const totalMs = Date.now() - t0;
-    console.error(`[Function] Failed after ${totalMs}ms:`, error.message);
+    console.error('[Function] ❌ generatePasswordResetLink catch');
+    console.error('[Function]   error.code   :', error.code);
+    console.error('[Function]   error.message:', error.message);
+    console.error(`[Function]   Failed after ${totalMs}ms`);
 
     if (error.code === 'auth/user-not-found') {
       return res.status(404).json({ success: false, error: 'No account found with this email address.', code: 'auth/user-not-found' });
@@ -187,11 +189,11 @@ app.post('/api/send-reset', async (req, res) => {
     if (error.code === 'auth/invalid-email') {
       return res.status(400).json({ success: false, error: 'Invalid email address.', code: 'auth/invalid-email' });
     }
-    if (error.code === 'auth/internal-error' && error.message.includes('Unable to create the email action link')) {
+    if (error.code === 'auth/unauthorized-continue-uri') {
       return res.status(500).json({
         success: false,
-        error: 'Firebase could not generate the reset link. Check authorized domains in Firebase Console.',
-        code: 'auth/internal-error',
+        error: 'Continue URL domain is not authorized in Firebase Console.',
+        code: 'auth/unauthorized-continue-uri',
       });
     }
 

@@ -49,3 +49,6 @@ marketplace-app-3b3f7-firebase-adminsdk-*.json
 # Firebase CLI
 .firebase/
 .firebaserc
+# Render env helper (contains secrets)
+scripts/service-account-for-render.txt
+

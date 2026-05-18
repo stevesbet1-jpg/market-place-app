@@ -36,7 +36,7 @@ if (!TEST_EMAIL) {
   process.exit(1);
 }
 const PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
-const CONTINUE_URL = 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html';
+const CONTINUE_URL = 'https://marketplace-app-3b3f7.web.app/reset-password.html';
 const SERVICE_ACCOUNT_PATH = path.join(__dirname, 'serviceAccount.json');
 
 function printDivider(label, char = '═') {

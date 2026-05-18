@@ -180,7 +180,6 @@ app.post('/api/send-reset', async (req, res) => {
     // 1. Generate reset link via Firebase Admin
     const actionCodeSettings = {
       url: CONTINUE_URL,
-      handleCodeInApp: false,
     };
     console.log('[Server] Calling admin.auth().generatePasswordResetLink...');
     console.log('[Server]   Email:', normalizedEmail);
@@ -273,7 +272,10 @@ app.post('/api/send-reset', async (req, res) => {
 
   } catch (error) {
     const totalMs = Date.now() - t0;
-    console.error(`[Server] ❌ Failed after ${totalMs}ms:`, error.message);
+    console.error('[Server] ❌ generatePasswordResetLink catch');
+    console.error('[Server]   error.code   :', error.code);
+    console.error('[Server]   error.message:', error.message);
+    console.error(`[Server]   Failed after ${totalMs}ms`);
 
     if (error.code === 'auth/user-not-found') {
       return res.status(404).json({
@@ -291,18 +293,11 @@ app.post('/api/send-reset', async (req, res) => {
       });
     }
 
-    if (error.code === 'auth/internal-error' && error.message.includes('Unable to create the email action link')) {
+    if (error.code === 'auth/unauthorized-continue-uri') {
       return res.status(500).json({
         success: false,
-        error:
-          'Firebase could not generate the reset link. This usually means the continue URL domain is not authorized.\n' +
-          'CHECKLIST:\n' +
-          '1. Firebase Console → Authentication → Settings → Authorized domains\n' +
-          '   → Add: marketplace-app-3b3f7.web.app\n' +
-          '2. Firebase Console → Authentication → Templates → Email action settings\n' +
-          '   → Ensure password reset uses https://marketplace-app-3b3f7.web.app\n' +
-          '3. Verify serviceAccount.json has valid private_key.',
-        code: 'auth/internal-error',
+        error: 'Continue URL domain is not authorized in Firebase Console.',
+        code: 'auth/unauthorized-continue-uri',
       });
     }
 

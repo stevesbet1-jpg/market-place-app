@@ -23,7 +23,7 @@ if (!TEST_EMAIL) {
   process.exit(1);
 }
 
-const CONTINUE_URL = 'https://marketplace-app-3b3f7.firebaseapp.com/reset-password.html';
+const CONTINUE_URL = 'https://marketplace-app-3b3f7.web.app/reset-password.html';
 
 function maskKey(key) {
   if (!key || key.length < 12) return '***INVALID***';

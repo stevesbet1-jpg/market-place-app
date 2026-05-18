@@ -169,11 +169,9 @@ async function generateResetLink(email) {
   console.log('[ResendDelivery] Generating password reset link via Firebase Admin SDK...');
   console.log('[ResendDelivery]   Email:      ', email);
   console.log('[ResendDelivery]   ContinueURL:', CONTINUE_URL);
-  console.log('[ResendDelivery]   handleCodeInApp: false (redirects to continue URL for universal compatibility)');
 
   const actionCodeSettings = {
     url: CONTINUE_URL,
-    handleCodeInApp: false,
   };
 
   let generatedLink;
