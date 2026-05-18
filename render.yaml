@@ -2,13 +2,14 @@
 # To deploy: https://dashboard.render.com/blueprint?repo=https://github.com/stevesbet1-jpg/market-place-app
 #
 # After deployment, set these environment variables in the Render dashboard:
-#   RESEND_API_KEY   = your Resend API key (re_...)
-#   EMAIL_FROM       = your sender email (e.g., onboarding@resend.dev)
-#   EXPO_PUBLIC_FIREBASE_API_KEY = your Firebase web API key
+#   RESEND_API_KEY                  = your Resend API key (re_...)
+#   EMAIL_FROM                      = your sender email (e.g., onboarding@resend.dev)
+#   EXPO_PUBLIC_FIREBASE_API_KEY    = your Firebase web API key
+#   FIREBASE_SERVICE_ACCOUNT_JSON   = entire contents of your firebase-adminsdk-*.json file
 
 services:
   - type: web
-    name: marketplace-reset-api
+    name: market-place-app-1
     runtime: node
     plan: free
     branch: main
@@ -22,6 +23,8 @@ services:
       - key: EMAIL_FROM
         sync: false
       - key: EXPO_PUBLIC_FIREBASE_API_KEY
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
     healthCheckPath: /api/health
     autoDeploy: true
