@@ -96,7 +96,7 @@ export default function ResetPasswordScreen() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  // ─── SEND RESET EMAIL — Resend backend first, Firebase fallback ──
+  // ─── SEND RESET EMAIL — Backend ONLY, no fallback ──
   const handleSendResetLink = async () => {
     // Guard 1: already in flight
     if (sendAttemptRef.current) {
