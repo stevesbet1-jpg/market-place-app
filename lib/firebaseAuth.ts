@@ -256,7 +256,7 @@ export const sendFirebasePasswordReset = async (email: string): Promise<void> =>
 // This calls the local Express server which uses Firebase Admin + Resend
 // for reliable email delivery with tracking, instead of Firebase's default.
 
-const DEFAULT_RESET_API_URL = 'https://marketplace-reset-api.onrender.com';
+const DEFAULT_RESET_API_URL = 'https://market-place-app-1.onrender.com';
 
 export interface BackendResetResult {
   success: boolean;
@@ -267,8 +267,12 @@ export interface BackendResetResult {
 
 // ─── Warm up Render backend (free tier sleeps) ────────────────────
 
+function getBackendUrl(): string {
+  return process.env.EXPO_PUBLIC_RESET_API_URL || DEFAULT_RESET_API_URL;
+}
+
 export async function warmUpBackend(): Promise<boolean> {
-  const baseUrl = DEFAULT_RESET_API_URL;
+  const baseUrl = getBackendUrl();
   const healthUrl = `${baseUrl}/api/health`;
   console.log('[FirebaseAuth] Warming up backend:', healthUrl);
 
@@ -295,7 +299,7 @@ export async function warmUpBackend(): Promise<boolean> {
 export const sendPasswordResetViaBackend = async (
   email: string
 ): Promise<BackendResetResult> => {
-  const baseUrl = DEFAULT_RESET_API_URL;
+  const baseUrl = getBackendUrl();
   const url = `${baseUrl}/api/send-reset`;
 
   console.log('[RESET EMAIL API URL]', url);
@@ -362,7 +366,7 @@ export interface BackendConfirmResult {
 export const sendPasswordChangedEmailViaBackend = async (
   email: string
 ): Promise<BackendConfirmResult> => {
-  const baseUrl = DEFAULT_RESET_API_URL;
+  const baseUrl = getBackendUrl();
   const url = `${baseUrl}/api/send-confirmation`;
 
   console.log('[FirebaseAuth] Calling backend confirmation API:', url);

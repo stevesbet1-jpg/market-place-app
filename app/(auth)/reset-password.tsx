@@ -130,6 +130,7 @@ export default function ResetPasswordScreen() {
     console.log('[ResetPassword] === SEND RESET EMAIL ===');
     console.log(`[ResetPassword] T+0ms    User tapped Send Reset Link`);
     console.log(`[ResetPassword] T+0ms    Email: ${normalizedEmail}`);
+    console.log(`[ResetPassword] T+0ms    EXPO_PUBLIC_RESET_API_URL:`, process.env.EXPO_PUBLIC_RESET_API_URL || '(using default)');
 
     try {
       // ── 1. Warm up Render backend (free tier sleeps) ─────
