@@ -1,46 +1,17 @@
 /**
- * FIREBASE CONSOLE VERIFICATION CHECKLIST
- * ======================================
- * Before password reset emails will actually be delivered, verify:
+ * PASSWORD RESET & AUTH UTILITIES
+ * ================================
+ * Architecture: Backend-only via Render
+ *   - Frontend NEVER calls Firebase client-side password reset APIs.
+ *   - Frontend sends reset requests to Render backend /api/send-reset.
+ *   - Backend uses Firebase Admin SDK to verify user exists, generate reset link,
+ *     then sends the email via Resend.
+ *   - Confirmation email (/api/send-confirmation) is sent ONLY after
+ *     confirmPasswordReset succeeds on the frontend.
  *
- * 1. Authentication → Users
- *    - The target email MUST exist as a user in Firebase Auth.
- *    - Firebase silently drops reset emails for unregistered addresses.
- *
- * 2. Authentication → Sign-in method
- *    - Email/Password provider MUST be enabled.
- *
- * 3. Authentication → Templates → Password reset
- *    - Template MUST be enabled (it is by default).
- *    - Template MUST use a FROM address that matches your verified domain.
- *    - Subject line should be clear: "Reset your Marketplace password".
- *    - Body should NOT contain spam trigger words (FREE, URGENT, ACT NOW).
- *    - Ensure the template includes the %LINK% placeholder.
- *    - Do NOT use ALL CAPS or excessive punctuation in the template.
- *
- * 4. Authentication → Settings → Authorized domains
- *    - Must include:
- *      • localhost
- *      • marketplace-app-3b3f7.firebaseapp.com
- *      • marketplace-app-3b3f7.web.app
- *    - If using a custom domain, add it here.
- *
- * 5. Hosting (for deep-link bridge page)
- *    - Deploy public/reset-password.html via Firebase CLI:
- *      firebase deploy --only hosting
- *
- * 6. Gmail deliverability
- *    - Check spam/promotions folder.
- *    - Whitelist noreply@<project>.firebaseapp.com in Gmail filters.
- *    - Firebase sends from a shared IP pool; delivery can take 1-60 seconds.
- *
- * 7. Project region
- *    - Default is us-central1. Emails send from the closest region.
- *    - Cannot be changed for existing projects.
- *
- * 8. Expo dev mode
- *    - In __DEV__, Metro may add proxy overhead.
- *    - Test on a production build (`eas build`) for real delivery speed.
+ * Production URLs:
+ *   - Reset page: https://marketplace-app-3b3f7.web.app/reset-password.html
+ *   - Backend API: https://market-place-app-1.onrender.com
  */
 
 import {

@@ -243,44 +243,15 @@ export function printFirebaseConsoleChecklist(): void {
   console.log(`  config ready:     ${status.isReady ? '✅' : '❌'}`);
   console.log('');
 
-  // Manual checks (no client-side API for these)
-  console.log('─── MANUAL CHECKS (Firebase Console) ───');
-  console.log('  ☐ 1. Authentication → Sign-in method → Email/Password = ENABLED');
-  console.log('  ☐ 2. Authentication → Users → Your test email EXISTS');
-  console.log('     (If missing, reset emails are SILENTLY dropped by Firebase)');
-  console.log('  ☐ 3. Authentication → Templates → Password reset = ENABLED');
-  console.log('  ☐ 4. Authentication → Settings → Authorized domains includes:');
-  console.log('       • marketplace-app-3b3f7.firebaseapp.com');
-  console.log('       • marketplace-app-3b3f7.web.app');
-  console.log('       • localhost');
+  // Backend-only architecture notes
+  console.log('─── BACKEND RESET ARCHITECTURE ───');
+  console.log('  • Reset emails are sent via Render backend + Resend API');
+  console.log('  • Backend URL: https://market-place-app-1.onrender.com');
+  console.log('  • Reset page:  https://marketplace-app-3b3f7.web.app/reset-password.html');
+  console.log('  • Frontend NEVER calls Firebase client-side password reset');
   console.log('');
-
-  // Gmail troubleshooting
-  console.log('─── GMAIL DELIVERY TROUBLESHOOTING ───');
-  console.log('  1. Search Gmail Inbox, Spam, and Promotions for:');
-  console.log('     • "Firebase"');
-  console.log('     • "reset password"');
-  console.log('     • "noreply@marketplace-app-3b3f7.firebaseapp.com"');
-  console.log('');
-  console.log('  2. Whitelist the sender:');
-  console.log('     • Add noreply@marketplace-app-3b3f7.firebaseapp.com to contacts');
-  console.log('     • Create a Gmail filter: from:noreply@marketplace-app-3b3f7.firebaseapp.com → Never send to Spam');
-  console.log('');
-  console.log('  3. Test with another email provider:');
-  console.log('     • Create a test Gmail account and register it in Firebase Auth');
-  console.log('     • Or try Outlook / Yahoo to rule out Gmail-specific filtering');
-  console.log('');
-  console.log('  4. Simplify the email template (Firebase Console):');
-  console.log('     • Subject: "Reset your Marketplace password" (no ALL CAPS, no !!!)');
-  console.log('     • Body: plain text, no spam trigger words (FREE, URGENT, ACT NOW, WINNER)');
-  console.log('     • Include only: greeting, one sentence, %LINK%, footer');
-  console.log('');
-  console.log('  5. Check corporate / school email restrictions:');
-  console.log('     • Some domains block all emails from @firebaseapp.com');
-  console.log('     • Corporate firewalls may quarantine unknown senders');
-  console.log('');
-  console.log('  6. If all above fail → use Admin SDK fallback:');
-  console.log('     • npm run test:reset-link  (generates a direct reset link)');
-  console.log('     • Send the link via your own email provider (SendGrid, Resend, AWS SES)');
+  console.log('  ☐ 1. Ensure target email is registered in Firebase Auth');
+  console.log('  ☐ 2. Check Resend dashboard for delivery status');
+  console.log('  ☐ 3. Search Gmail Inbox, Spam, and Promotions for "Marketplace"');
   console.log('');
 }

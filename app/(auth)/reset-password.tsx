@@ -207,7 +207,7 @@ export default function ResetPasswordScreen() {
 
     try {
       await confirmFirebasePasswordReset(code, newPassword);
-      console.log('[ResetPassword] confirmPasswordReset SUCCESS');
+      console.log('[PASSWORD_CHANGE] confirmPasswordReset success');
 
       // Defensive: if verifiedEmail was lost, re-extract it from the code
       let targetEmail = verifiedEmail;
@@ -220,29 +220,29 @@ export default function ResetPasswordScreen() {
           console.error('[ResetPassword] Could not re-verify code for email:', e.message);
         }
       }
-      console.log('[RESET SUCCESS EMAIL TARGET]', targetEmail);
+      console.log('[PASSWORD_CHANGE] target email:', targetEmail);
 
       if (!targetEmail) {
-        console.error('[PASSWORD CHANGED EMAIL ERROR]', 'Missing verifiedEmail');
+        console.error('[PASSWORD_CHANGE] error: Missing verifiedEmail');
         Alert.alert('Error', 'Password was reset but we could not determine your email to send a confirmation.');
         setIsLoading(false);
         return;
       }
 
-      console.log('[PASSWORD CHANGED EMAIL START]', targetEmail);
+      console.log('[PASSWORD_CHANGE] sending confirmation email to:', targetEmail);
       const result = await sendPasswordChangedEmailViaBackend(targetEmail);
-      console.log('[PASSWORD CHANGED EMAIL RESULT]', result);
+      console.log('[PASSWORD_CHANGE] confirmation email result:', result);
 
       if (result.success === true) {
-        console.log('[PASSWORD CHANGED EMAIL]', true, result.emailId, targetEmail);
+        console.log('[PASSWORD_CHANGE] confirmation email sent. emailId:', result.emailId, '| recipient:', targetEmail);
         setScreenMode('success');
       } else {
-        console.error('[PASSWORD CHANGED EMAIL]', false, null, targetEmail);
-        console.error('[PASSWORD CHANGED EMAIL ERROR]', result.error || 'Confirmation email failed');
+        console.error('[PASSWORD_CHANGE] confirmation email failed');
+        console.error('[PASSWORD_CHANGE] error:', result.error || 'Confirmation email failed');
         Alert.alert('Error', result.error || 'Password was reset but confirmation email failed.');
       }
     } catch (error: any) {
-      console.error('[PASSWORD CHANGED EMAIL ERROR]', error.message || error);
+      console.error('[PASSWORD_CHANGE] error:', error.message || error);
       console.log('[ResetPassword] CONFIRM_RESET_ERROR:', error.message || error);
       const message = error?.message || 'Failed to reset password. The link may have expired.';
       Alert.alert('Error', message);
