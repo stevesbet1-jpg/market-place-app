@@ -163,9 +163,10 @@ export default function ResetPasswordScreen() {
 
     } catch (error: any) {
       const tFail = Date.now();
-      console.error('[EMAIL ERROR]', error.message || error);
-      console.log(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, error.message || error);
-      Alert.alert('Error', 'Failed to send reset email. Please try again.');
+      const errorMsg = error?.message || 'Failed to send reset email. Please try again.';
+      console.error('[EMAIL ERROR]', errorMsg);
+      console.log(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, errorMsg);
+      Alert.alert('Error', errorMsg);
     } finally {
       setIsLoading(false);
       sendAttemptRef.current = false;

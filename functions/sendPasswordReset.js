@@ -58,7 +58,6 @@ exports.sendPasswordResetEmail = async (event) => {
     // Generate reset link
     const resetLink = await admin.auth().generatePasswordResetLink(email, {
       url: CONTINUE_URL,
-      handleCodeInApp: true,
       iOS: { bundleId: 'com.anonymous.Matketplace' },
       android: {
         packageName: 'com.anonymous.Matketplace',

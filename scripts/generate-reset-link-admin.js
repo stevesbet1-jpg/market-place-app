@@ -111,7 +111,6 @@ admin
   .auth()
   .generatePasswordResetLink(TEST_EMAIL, {
     url: CONTINUE_URL,
-    handleCodeInApp: true,
     iOS: { bundleId: 'com.anonymous.Matketplace' },
     android: {
       packageName: 'com.anonymous.Matketplace',

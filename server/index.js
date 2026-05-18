@@ -153,6 +153,7 @@ app.post('/api/send-reset', async (req, res) => {
   const t0 = Date.now();
   const { email } = req.body;
 
+  // ── Validation ─────────────────────────────────────────────────
   if (!email || typeof email !== 'string') {
     return res.status(400).json({ success: false, error: 'Email is required.' });
   }
@@ -162,151 +163,126 @@ app.post('/api/send-reset', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Invalid email format.' });
   }
 
+  console.log('[RESET] email:', normalizedEmail);
+
+  // ── Firebase Admin init ────────────────────────────────────────
   if (!initFirebaseAdmin()) {
-    return res.status(500).json({ success: false, error: 'Firebase Admin SDK not initialized. Check service account file.' });
+    return res.status(500).json({
+      success: false,
+      error: 'Firebase Admin SDK not initialized. Check service account file.',
+    });
   }
 
+  // ── Verify user exists BEFORE generating link ─────────────────
+  try {
+    const user = await admin.auth().getUserByEmail(normalizedEmail);
+    console.log('[RESET] user exists:', true, '| uid:', user.uid);
+  } catch (userErr) {
+    if (userErr.code === 'auth/user-not-found') {
+      console.log('[RESET] user exists:', false);
+      return res.status(404).json({
+        success: false,
+        code: 'user-not-found',
+        error: 'No account exists for this email.',
+      });
+    }
+    console.error('[RESET] getUserByEmail failed:', userErr.code, userErr.message);
+    return res.status(500).json({
+      success: false,
+      error: userErr.message,
+      code: userErr.code || 'unknown',
+    });
+  }
+
+  // ── Resend config ────────────────────────────────────────────
   if (!resend) {
     return res.status(500).json({ success: false, error: 'Resend API key not configured.' });
   }
-
   if (!EMAIL_FROM) {
-    return res.status(500).json({ success: false, error: 'EMAIL_FROM not configured in .env' });
+    return res.status(500).json({ success: false, error: 'EMAIL_FROM not configured.' });
   }
 
-  console.log(`[Server] Reset requested for: ${normalizedEmail}`);
+  // ── Generate reset link ────────────────────────────────────────
+  const actionCodeSettings = { url: CONTINUE_URL };
+  console.log('[RESET] actionCodeSettings:', JSON.stringify(actionCodeSettings));
 
+  let generatedLink;
   try {
-    // 1. Generate reset link via Firebase Admin
-    const actionCodeSettings = {
-      url: CONTINUE_URL,
-    };
-    console.log('[Server] Calling admin.auth().generatePasswordResetLink...');
-    console.log('[Server]   Email:', normalizedEmail);
-    console.log('[Server]   actionCodeSettings:', JSON.stringify(actionCodeSettings));
+    generatedLink = await admin.auth().generatePasswordResetLink(normalizedEmail, actionCodeSettings);
+  } catch (linkErr) {
+    console.error('[RESET] generatePasswordResetLink FAILED');
+    console.error('[RESET]   error.code   :', linkErr.code);
+    console.error('[RESET]   error.message:', linkErr.message);
+    throw linkErr;
+  }
 
-    let generatedLink;
-    try {
-      generatedLink = await admin.auth().generatePasswordResetLink(normalizedEmail, actionCodeSettings);
-    } catch (linkErr) {
-      console.error('[Server] ❌ generatePasswordResetLink FAILED');
-      console.error('[Server]   error.code   :', linkErr.code);
-      console.error('[Server]   error.message:', linkErr.message);
-      if (linkErr.stack) {
-        console.error('[Server]   error.stack  :', linkErr.stack);
-      }
-      throw linkErr; // re-throw so outer catch handles it
-    }
+  const linkGenMs = Date.now() - t0;
+  console.log(`[RESET] Firebase link generated in ${linkGenMs}ms`);
+  console.log(`[RESET] Generated link: ${generatedLink.substring(0, 120)}...`);
 
-    const linkGenMs = Date.now() - t0;
-    console.log(`[Server] ✅ Firebase link generated in ${linkGenMs}ms`);
-    console.log(`[Server] Generated link: ${generatedLink.substring(0, 120)}...`);
+  // ── Extract oobCode and build direct link ──────────────────────
+  let directResetLink;
+  try {
+    const generatedUrl = new URL(generatedLink);
+    const oobCode = generatedUrl.searchParams.get('oobCode');
+    const apiKey = generatedUrl.searchParams.get('apiKey');
+    const mode = generatedUrl.searchParams.get('mode') || 'resetPassword';
 
-    // 2. Extract oobCode and apiKey from the generated Firebase link
-    //    Firebase returns: https://host/__/auth/action?mode=resetPassword&oobCode=XXX&apiKey=YYY&...
-    //    We construct a direct link to our custom reset page so the user lands on it
-    //    with the oobCode in the URL, instead of Firebase's default handler.
-    let directResetLink;
-    try {
-      const generatedUrl = new URL(generatedLink);
-      const oobCode = generatedUrl.searchParams.get('oobCode');
-      const apiKey = generatedUrl.searchParams.get('apiKey');
-      const mode = generatedUrl.searchParams.get('mode') || 'resetPassword';
-
-      if (!oobCode) {
-        console.warn('[Server] No oobCode found in generated link. Falling back to raw generated link.');
-        directResetLink = generatedLink;
-      } else {
-        const directUrl = new URL(CONTINUE_URL);
-        directUrl.searchParams.set('oobCode', oobCode);
-        directUrl.searchParams.set('mode', mode);
-        if (apiKey) directUrl.searchParams.set('apiKey', apiKey);
-        directResetLink = directUrl.toString();
-        console.log(`[Server] Direct reset link constructed: ${directResetLink.substring(0, 120)}...`);
-      }
-    } catch (parseErr) {
-      console.warn('[Server] Failed to parse generated link:', parseErr.message);
+    if (!oobCode) {
+      console.warn('[RESET] No oobCode found. Falling back to raw generated link.');
       directResetLink = generatedLink;
+    } else {
+      const directUrl = new URL(CONTINUE_URL);
+      directUrl.searchParams.set('oobCode', oobCode);
+      directUrl.searchParams.set('mode', mode);
+      if (apiKey) directUrl.searchParams.set('apiKey', apiKey);
+      directResetLink = directUrl.toString();
+      console.log(`[RESET] Direct reset link: ${directResetLink.substring(0, 120)}...`);
     }
+  } catch (parseErr) {
+    console.warn('[RESET] Failed to parse generated link:', parseErr.message);
+    directResetLink = generatedLink;
+  }
 
-    // 3. Load templates
-    const htmlTemplate = loadTemplate('reset-password.html');
-    const textTemplate = loadTemplate('reset-password.txt');
+  // ── Load templates ─────────────────────────────────────────────
+  const htmlTemplate = loadTemplate('reset-password.html');
+  const textTemplate = loadTemplate('reset-password.txt');
+  if (!htmlTemplate || !textTemplate) {
+    return res.status(500).json({ success: false, error: 'Email templates missing.' });
+  }
 
-    if (!htmlTemplate || !textTemplate) {
-      return res.status(500).json({ success: false, error: 'Email templates missing.' });
-    }
+  const html = buildEmailBody(directResetLink, normalizedEmail, htmlTemplate);
+  const text = buildEmailBody(directResetLink, normalizedEmail, textTemplate);
 
-    const html = buildEmailBody(directResetLink, normalizedEmail, htmlTemplate);
-    const text = buildEmailBody(directResetLink, normalizedEmail, textTemplate);
+  // ── Send via Resend ────────────────────────────────────────────
+  const resendResponse = await resend.emails.send({
+    from: EMAIL_FROM,
+    to: [normalizedEmail],
+    subject: 'Reset Your Marketplace Password',
+    html,
+    text,
+  });
 
-    // 3. Send via Resend
-    const resendResponse = await resend.emails.send({
-      from: EMAIL_FROM,
-      to: [normalizedEmail],
-      subject: 'Reset Your Marketplace Password',
-      html,
-      text,
-    });
+  const totalMs = Date.now() - t0;
 
-    const totalMs = Date.now() - t0;
-
-    if (resendResponse.error) {
-      console.error('[Server] Resend rejected:', resendResponse.error);
-      return res.status(502).json({
-        success: false,
-        error: `Resend rejected: ${JSON.stringify(resendResponse.error)}`,
-      });
-    }
-
-    const emailId = resendResponse.data?.id;
-    console.log(`[Server] ✅ Email sent via Resend. ID: ${emailId} | Total: ${totalMs}ms`);
-
-    return res.json({
-      success: true,
-      emailId,
-      recipient: normalizedEmail,
-      durationMs: totalMs,
-      message: 'Reset email sent. Check your inbox (and spam folder).',
-    });
-
-  } catch (error) {
-    const totalMs = Date.now() - t0;
-    console.error('[Server] ❌ generatePasswordResetLink catch');
-    console.error('[Server]   error.code   :', error.code);
-    console.error('[Server]   error.message:', error.message);
-    console.error(`[Server]   Failed after ${totalMs}ms`);
-
-    if (error.code === 'auth/user-not-found') {
-      return res.status(404).json({
-        success: false,
-        error: 'No account found with this email address.',
-        code: 'auth/user-not-found',
-      });
-    }
-
-    if (error.code === 'auth/invalid-email') {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid email address.',
-        code: 'auth/invalid-email',
-      });
-    }
-
-    if (error.code === 'auth/unauthorized-continue-uri') {
-      return res.status(500).json({
-        success: false,
-        error: 'Continue URL domain is not authorized in Firebase Console.',
-        code: 'auth/unauthorized-continue-uri',
-      });
-    }
-
-    return res.status(500).json({
+  if (resendResponse.error) {
+    console.error('[RESET] Resend rejected:', resendResponse.error);
+    return res.status(502).json({
       success: false,
-      error: error.message,
-      code: error.code || 'unknown',
+      error: `Resend rejected: ${JSON.stringify(resendResponse.error)}`,
     });
   }
+
+  const emailId = resendResponse.data?.id;
+  console.log(`[RESET] Email sent. ID: ${emailId} | Total: ${totalMs}ms`);
+
+  return res.json({
+    success: true,
+    emailId,
+    recipient: normalizedEmail,
+    durationMs: totalMs,
+    message: 'Reset email sent. Check your inbox (and spam folder).',
+  });
 });
 
 // ─── Send confirmation endpoint ──────────────────────────────────
