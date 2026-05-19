@@ -19,6 +19,10 @@ import {
   verifyResetCode,
   isFirebaseConfigured,
 } from '../../lib/firebaseAuth';
+import {
+  SecurePasswordInput,
+  type SecurePasswordInputRef,
+} from '../../components/SecurePasswordInput';
 
 /**
  * STRICT MODE SECURITY MODEL
@@ -51,6 +55,8 @@ export default function ResetPasswordScreen() {
   // ─── Bulletproof duplicate-send guard ──────────────────────────────
   // Prevents race conditions when user double-taps the button.
   const sendAttemptRef = useRef(false);
+  const passwordInputRef = useRef<SecurePasswordInputRef>(null);
+  const confirmInputRef = useRef<SecurePasswordInputRef>(null);
 
   // ─── On mount: determine mode from deep link params ────────────────
   useEffect(() => {
@@ -116,13 +122,17 @@ export default function ResetPasswordScreen() {
   };
 
   const handleSuggestPassword = () => {
-    const newPassword = generateStrongPassword();
-    setNewPassword(newPassword);
-    setConfirmPassword(newPassword);
-    requestAnimationFrame(() => {
-      setNewPassword((p) => p);
-      setConfirmPassword((p) => p);
-    });
+    const generated = generateStrongPassword();
+    setNewPassword(generated);
+    setConfirmPassword(generated);
+
+    // iOS: force native UITextField to refresh its secure text dots
+    if (Platform.OS === 'ios') {
+      requestAnimationFrame(() => {
+        passwordInputRef.current?.refresh();
+        confirmInputRef.current?.refresh();
+      });
+    }
   };
 
   // ─── SEND RESET EMAIL — Backend ONLY, no fallback ──
@@ -424,68 +434,36 @@ export default function ResetPasswordScreen() {
             {/* NEW PASSWORD FORM — ONLY shown after verified oobCode */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>New Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color={LuxuryColors.textSecondary}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  key={`password-${showPassword}-${newPassword.length}`}
-                  style={styles.input}
-                  placeholder="Enter new password (min 8 chars)"
-                  placeholderTextColor={LuxuryColors.textSecondary}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword((prev) => !prev)}
-                  activeOpacity={0.7}
-                  style={styles.toggleIcon}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={LuxuryColors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+              <SecurePasswordInput
+                ref={passwordInputRef}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                visible={showPassword}
+                onToggleVisibility={() => setShowPassword((prev) => !prev)}
+                placeholder="Enter new password (min 8 chars)"
+                placeholderTextColor={LuxuryColors.textSecondary}
+                wrapperStyle={styles.inputWrapper}
+                inputStyle={styles.input}
+                toggleStyle={styles.toggleIcon}
+                iconColor={LuxuryColors.textSecondary}
+              />
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Confirm Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color={LuxuryColors.textSecondary}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  key={`confirm-${showConfirmPassword}-${confirmPassword.length}`}
-                  style={styles.input}
-                  placeholder="Confirm new password"
-                  placeholderTextColor={LuxuryColors.textSecondary}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry={!showConfirmPassword}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  onPress={() => setShowConfirmPassword((prev) => !prev)}
-                  activeOpacity={0.7}
-                  style={styles.toggleIcon}
-                >
-                  <Ionicons
-                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={LuxuryColors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+              <SecurePasswordInput
+                ref={confirmInputRef}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                visible={showConfirmPassword}
+                onToggleVisibility={() => setShowConfirmPassword((prev) => !prev)}
+                placeholder="Confirm new password"
+                placeholderTextColor={LuxuryColors.textSecondary}
+                wrapperStyle={styles.inputWrapper}
+                inputStyle={styles.input}
+                toggleStyle={styles.toggleIcon}
+                iconColor={LuxuryColors.textSecondary}
+              />
             </View>
 
             <TouchableOpacity

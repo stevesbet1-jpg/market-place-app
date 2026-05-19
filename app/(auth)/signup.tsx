@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,10 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import { validatePassword } from './authStorage';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { registerWithFirebaseEmail, isFirebaseConfigured } from '../../lib/firebaseAuth';
+import {
+  SecurePasswordInput,
+  type SecurePasswordInputRef,
+} from '../../components/SecurePasswordInput';
 
 export default function SignupScreen() {
   const insets = useSafeAreaInsets();
@@ -16,6 +20,10 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const passwordInputRef = useRef<SecurePasswordInputRef>(null);
+  const confirmInputRef = useRef<SecurePasswordInputRef>(null);
 
   const generateStrongPassword = () => {
     const length = Math.floor(Math.random() * 5) + 14; // 14-18 chars
@@ -46,7 +54,13 @@ export default function SignupScreen() {
     const suggestedPassword = generateStrongPassword();
     setPassword(suggestedPassword);
     setConfirmPassword(suggestedPassword);
-    Alert.alert('Password Generated', 'A strong password has been generated and filled in both password fields.');
+
+    if (Platform.OS === 'ios') {
+      requestAnimationFrame(() => {
+        passwordInputRef.current?.refresh();
+        confirmInputRef.current?.refresh();
+      });
+    }
   };
 
   const validateEmail = (email: string) => {
@@ -236,53 +250,37 @@ export default function SignupScreen() {
             {/* Password Input */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color={LuxuryColors.textTertiary} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="••••••••"
-                  placeholderTextColor={LuxuryColors.textTertiary}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeIcon}
-                >
-                  <Ionicons 
-                    name={showPassword ? 'eye-outline' : 'eye-off-outline'} 
-                    size={20} 
-                    color={LuxuryColors.textTertiary} 
-                  />
-                </TouchableOpacity>
-              </View>
+              <SecurePasswordInput
+                ref={passwordInputRef}
+                value={password}
+                onChangeText={setPassword}
+                visible={showPassword}
+                onToggleVisibility={() => setShowPassword((prev) => !prev)}
+                placeholder="••••••••"
+                placeholderTextColor={LuxuryColors.textTertiary}
+                wrapperStyle={styles.inputWrapper}
+                inputStyle={styles.input}
+                toggleStyle={styles.eyeIcon}
+                iconColor={LuxuryColors.textTertiary}
+              />
             </View>
 
             {/* Confirm Password Input */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Confirm Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color={LuxuryColors.textTertiary} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="••••••••"
-                  placeholderTextColor={LuxuryColors.textTertiary}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry={!showPassword}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeIcon}
-                >
-                  <Ionicons 
-                    name={showPassword ? 'eye-outline' : 'eye-off-outline'} 
-                    size={20} 
-                    color={LuxuryColors.textTertiary} 
-                  />
-                </TouchableOpacity>
-              </View>
+              <SecurePasswordInput
+                ref={confirmInputRef}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                visible={showConfirmPassword}
+                onToggleVisibility={() => setShowConfirmPassword((prev) => !prev)}
+                placeholder="••••••••"
+                placeholderTextColor={LuxuryColors.textTertiary}
+                wrapperStyle={styles.inputWrapper}
+                inputStyle={styles.input}
+                toggleStyle={styles.eyeIcon}
+                iconColor={LuxuryColors.textTertiary}
+              />
             </View>
 
             {/* Suggest Password Button */}
