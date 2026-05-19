@@ -46,6 +46,7 @@ export default function ResetPasswordScreen() {
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // ─── Bulletproof duplicate-send guard ──────────────────────────────
   // Prevents race conditions when user double-taps the button.
@@ -94,6 +95,34 @@ export default function ResetPasswordScreen() {
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const generateStrongPassword = () => {
+    const length = Math.floor(Math.random() * 5) + 14;
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const symbols = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    const allChars = uppercase + lowercase + numbers + symbols;
+    let password = '';
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += symbols[Math.floor(Math.random() * symbols.length)];
+    for (let i = 4; i < length; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  };
+
+  const handleSuggestPassword = () => {
+    const newPassword = generateStrongPassword();
+    setNewPassword(newPassword);
+    setConfirmPassword(newPassword);
+    requestAnimationFrame(() => {
+      setNewPassword((p) => p);
+      setConfirmPassword((p) => p);
+    });
   };
 
   // ─── SEND RESET EMAIL — Backend ONLY, no fallback ──
@@ -403,6 +432,7 @@ export default function ResetPasswordScreen() {
                   style={styles.inputIcon}
                 />
                 <TextInput
+                  key={`password-${showPassword}-${newPassword.length}`}
                   style={styles.input}
                   placeholder="Enter new password (min 8 chars)"
                   placeholderTextColor={LuxuryColors.textSecondary}
@@ -435,27 +465,36 @@ export default function ResetPasswordScreen() {
                   style={styles.inputIcon}
                 />
                 <TextInput
+                  key={`confirm-${showConfirmPassword}-${confirmPassword.length}`}
                   style={styles.input}
                   placeholder="Confirm new password"
                   placeholderTextColor={LuxuryColors.textSecondary}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
-                  secureTextEntry={!showPassword}
+                  secureTextEntry={!showConfirmPassword}
                   autoCapitalize="none"
                 />
                 <TouchableOpacity
-                  onPress={() => setShowPassword((prev) => !prev)}
+                  onPress={() => setShowConfirmPassword((prev) => !prev)}
                   activeOpacity={0.7}
                   style={styles.toggleIcon}
                 >
                   <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
                     size={20}
                     color={LuxuryColors.textSecondary}
                   />
                 </TouchableOpacity>
               </View>
             </View>
+
+            <TouchableOpacity
+              style={[styles.suggestButton]}
+              onPress={handleSuggestPassword}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.suggestButtonText}>Suggest strong password</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.resetButton, isLoading && styles.resetButtonDisabled]}
@@ -602,6 +641,17 @@ const styles = StyleSheet.create({
   },
   resetButtonDisabled: {
     opacity: 0.6,
+  },
+  suggestButton: {
+    alignItems: 'center',
+    marginTop: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.sm,
+  },
+  suggestButtonText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
   },
   gradientButton: {
     paddingVertical: LuxurySpacing.lg,
