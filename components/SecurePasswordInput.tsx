@@ -17,34 +17,25 @@ export interface SecurePasswordInputRef {
 }
 
 interface SecurePasswordInputProps extends Omit<TextInputProps, 'secureTextEntry'> {
-  /** Current value */
   value: string;
-  /** Callback when text changes */
   onChangeText: (text: string) => void;
-  /** Whether the password is currently visible in plain text */
   visible: boolean;
-  /** Toggle visibility callback */
   onToggleVisibility: () => void;
-  /** Color for the lock and eye icons */
   iconColor?: string;
-  /** Style for the outer flex-row wrapper */
   wrapperStyle?: ViewStyle;
-  /** Style for the TextInput itself */
   inputStyle?: TextStyle;
-  /** Style for the eye toggle hit area */
   toggleStyle?: ViewStyle;
 }
 
 /**
- * Production-safe iOS secureTextEntry refresh fix.
+ * iOS secureTextEntry refresh fix.
  *
  * Problem: on real iPhones, programmatically changing `value` while
- * `secureTextEntry={true}` does not visually refresh the masked dots
- * because the native UITextField text storage gets out of sync.
+ * secureTextEntry=true does not visually refresh the masked dots.
  *
- * Fix: `refresh()` uses InteractionManager + blur, temporarily toggles
- * secureTextEntry off→on, and performs a micro clear/restore of the
- * value to force the native layer to rebuild its text storage.
+ * Fix: refresh() blurs, toggles secureTextEntry off→on across multiple
+ * frames, clears/restores the value, force-remounts the TextInput via
+ * inputKey, then focuses at the end so the dots rebuild correctly.
  */
 export const SecurePasswordInput = forwardRef<SecurePasswordInputRef, SecurePasswordInputProps>(
   function SecurePasswordInput(
@@ -65,35 +56,69 @@ export const SecurePasswordInput = forwardRef<SecurePasswordInputRef, SecurePass
     ref
   ) {
     const inputRef = useRef<TextInput>(null);
+    const valueRef = useRef(value);
+    valueRef.current = value;
 
-    // Temporary override that briefly forces secureTextEntry=false on iOS during refresh()
     const [forceReveal, setForceReveal] = useState(false);
+    const [inputKey, setInputKey] = useState(0);
 
     const refresh = useCallback(() => {
       if (Platform.OS !== 'ios') return;
 
-      // Blur first so the field is not actively editing during the swap
+      const current = valueRef.current;
+      const isHidden = !visible;
+
+      // 1. Blur so the field stops editing during the swap
       inputRef.current?.blur();
 
       InteractionManager.runAfterInteractions(() => {
-        // Step 1: briefly disable secure text entry → forces native rebuild
-        setForceReveal(true);
+        if (isHidden) {
+          // ── Hidden mode: full rebuild sequence ───────────────────────
 
-        setTimeout(() => {
-          // Step 2: re-enable secure text entry
-          setForceReveal(false);
+          // Step A: reveal plain text (forces native UITextField rebuild)
+          setForceReveal(true);
 
-          // Step 3: micro clear/restore to guarantee the native buffer syncs
-          const current = value;
-          if (current.length > 0) {
+          requestAnimationFrame(() => {
+            // Step B: clear value while plain
             onChangeText('');
+
             requestAnimationFrame(() => {
+              // Step C: restore value while still plain
               onChangeText(current);
+
+              requestAnimationFrame(() => {
+                // Step D: hide again
+                setForceReveal(false);
+
+                requestAnimationFrame(() => {
+                  // Step E: force-remount the native TextInput
+                  setInputKey((k) => k + 1);
+
+                  requestAnimationFrame(() => {
+                    // Step F: focus at end so selection is correct
+                    inputRef.current?.focus();
+                    // iOS selection API isn't always reliable, so blur+focus cycle helps
+                    setTimeout(() => {
+                      inputRef.current?.blur();
+                      requestAnimationFrame(() => {
+                        inputRef.current?.focus();
+                      });
+                    }, 50);
+                  });
+                });
+              });
             });
-          }
-        }, 60);
+          });
+        } else {
+          // ── Visible mode: just clear/restore ──────────────────────
+          onChangeText('');
+          requestAnimationFrame(() => {
+            onChangeText(current);
+            inputRef.current?.focus();
+          });
+        }
       });
-    }, [value, onChangeText]);
+    }, [visible, onChangeText]);
 
     useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
@@ -108,6 +133,7 @@ export const SecurePasswordInput = forwardRef<SecurePasswordInputRef, SecurePass
           style={{ marginRight: 8 }}
         />
         <TextInput
+          key={inputKey}
           ref={inputRef}
           style={[{ flex: 1, paddingVertical: 14, fontSize: 16 }, inputStyle]}
           placeholder={placeholder}
