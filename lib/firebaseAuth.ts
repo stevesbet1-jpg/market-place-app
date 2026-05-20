@@ -22,6 +22,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { getFirebaseApp, isFirebaseConfigured as _isFirebaseConfigured } from './firebase';
 
@@ -129,6 +130,40 @@ export async function warmUpBackend(): Promise<boolean> {
   } catch (e: any) {
     console.log('[FirebaseAuth] Backend warm-up FAILED (will retry on main request):', e.message);
     return false;
+  }
+}
+
+export interface DirectResetResult {
+  success: boolean;
+  error?: string;
+  code?: string;
+}
+
+export async function sendPasswordResetEmailDirect(
+  email: string
+): Promise<DirectResetResult> {
+  const rawEmail = email;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  console.log('[FirebaseAuth] === SEND RESET EMAIL (DIRECT) ===');
+  console.log('[FirebaseAuth] Raw email:', rawEmail);
+  console.log('[FirebaseAuth] Normalized email:', normalizedEmail);
+
+  if (!_isFirebaseConfigured()) {
+    console.warn('[FirebaseAuth] Firebase not configured');
+    return { success: false, error: 'Firebase not configured', code: 'auth/not-configured' };
+  }
+
+  try {
+    const auth = getAuth(getFirebaseApp());
+    await sendPasswordResetEmail(auth, normalizedEmail);
+    console.log('[FirebaseAuth] sendPasswordResetEmail SUCCESS for:', normalizedEmail);
+    return { success: true };
+  } catch (error: any) {
+    const code = error.code || 'unknown';
+    const message = error.message || 'Unknown error';
+    console.error('[FirebaseAuth] sendPasswordResetEmail FAILED:', code, message);
+    return { success: false, error: message, code };
   }
 }
 

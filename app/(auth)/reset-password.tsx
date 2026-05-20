@@ -12,9 +12,8 @@ import {
   LuxuryFontSize, LuxuryGradients,
 } from '../../constants/luxuryTheme';
 import {
-  sendPasswordResetViaBackend,
+  sendPasswordResetEmailDirect,
   sendPasswordChangedEmailViaBackend,
-  warmUpBackend,
   confirmFirebasePasswordReset,
   verifyResetCode,
   isFirebaseConfigured,
@@ -140,7 +139,7 @@ export default function ResetPasswordScreen() {
     });
   };
 
-  // ─── SEND RESET EMAIL — Backend ONLY, no fallback ──
+  // ─── SEND RESET EMAIL — Direct Firebase client SDK ──
   const handleSendResetLink = async () => {
     // Guard 1: already in flight
     if (sendAttemptRef.current) {
@@ -169,47 +168,45 @@ export default function ResetPasswordScreen() {
     sendAttemptRef.current = true;
     setIsLoading(true);
 
-    const t0 = Date.now();
+    const rawEmail = email;
     const normalizedEmail = email.trim().toLowerCase();
+
     console.log('[ResetPassword] === SEND RESET EMAIL ===');
-    console.log(`[ResetPassword] T+0ms    User tapped Send Reset Link`);
-    console.log(`[ResetPassword] T+0ms    Email: ${normalizedEmail}`);
-    console.log(`[ResetPassword] T+0ms    EXPO_PUBLIC_RESET_API_URL:`, process.env.EXPO_PUBLIC_RESET_API_URL || '(using default)');
+    console.log('[ResetPassword] Raw email:', rawEmail);
+    console.log('[ResetPassword] Normalized email:', normalizedEmail);
 
     try {
-      // ── 1. Warm up Render backend (free tier sleeps) ─────
-      console.log(`[ResetPassword] T+${Date.now() - t0}ms  Warming up backend...`);
-      await warmUpBackend();
+      const result = await sendPasswordResetEmailDirect(normalizedEmail);
+      console.log('[RESET EMAIL RESULT]', result);
 
-      // ── 2. Call Resend backend API ──────────────────────────
-      const backendResult = await sendPasswordResetViaBackend(normalizedEmail);
-      console.log('[RESET EMAIL RESULT]', backendResult);
-
-      if (backendResult.success && backendResult.emailId) {
-        const t1 = Date.now();
-        console.log(`[ResetPassword] T+${t1 - t0}ms  Resend backend SUCCESS. emailId: ${backendResult.emailId}`);
-        console.log('[RESET EMAIL]', true, backendResult.emailId, normalizedEmail);
+      if (result.success) {
         Alert.alert(
           'Reset Link Sent',
-          'Reset link sent. Check your email.',
+          'Password reset email sent',
           [{ text: 'OK', onPress: () => router.back() }]
         );
         return;
       }
 
-      // Backend returned error — show exact error, do NOT show success
-      console.error('[EMAIL ERROR]', backendResult.error || 'Unknown backend error');
-      console.log('[RESET EMAIL]', false, null, normalizedEmail);
-      Alert.alert(
-        'Error',
-        backendResult.error || 'Failed to send reset email. Please try again.'
-      );
+      // Map Firebase error codes to user messages
+      const errorCode = result.code || '';
+      const errorMessage = result.error || 'Unable to send reset email';
+      console.error('[EMAIL ERROR]', errorCode, errorMessage);
+
+      switch (errorCode) {
+        case 'auth/invalid-email':
+          Alert.alert('Error', 'Invalid email address');
+          break;
+        case 'auth/user-not-found':
+          Alert.alert('Error', 'No account exists for this email');
+          break;
+        default:
+          Alert.alert('Error', 'Unable to send reset email');
+      }
 
     } catch (error: any) {
-      const tFail = Date.now();
-      const errorMsg = error?.message || 'Failed to send reset email. Please try again.';
+      const errorMsg = error?.message || 'Unable to send reset email';
       console.error('[EMAIL ERROR]', errorMsg);
-      console.log(`[ResetPassword] T+${tFail - t0}ms  Flow FAILED:`, errorMsg);
       Alert.alert('Error', errorMsg);
     } finally {
       setIsLoading(false);

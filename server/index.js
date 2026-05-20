@@ -173,27 +173,6 @@ app.post('/api/send-reset', async (req, res) => {
     });
   }
 
-  // ── Verify user exists BEFORE generating link ─────────────────
-  try {
-    const user = await admin.auth().getUserByEmail(normalizedEmail);
-    console.log('[RESET] user exists:', true, '| uid:', user.uid);
-  } catch (userErr) {
-    if (userErr.code === 'auth/user-not-found') {
-      console.log('[RESET] user exists:', false);
-      return res.status(404).json({
-        success: false,
-        code: 'user-not-found',
-        error: 'No account exists for this email.',
-      });
-    }
-    console.error('[RESET] getUserByEmail failed:', userErr.code, userErr.message);
-    return res.status(500).json({
-      success: false,
-      error: userErr.message,
-      code: userErr.code || 'unknown',
-    });
-  }
-
   // ── Resend config ────────────────────────────────────────────
   if (!resend) {
     return res.status(500).json({ success: false, error: 'Resend API key not configured.' });
@@ -202,7 +181,7 @@ app.post('/api/send-reset', async (req, res) => {
     return res.status(500).json({ success: false, error: 'EMAIL_FROM not configured.' });
   }
 
-  // ── Generate reset link ────────────────────────────────────────
+  // ── Generate reset link (Firebase Auth is the source of truth) ──
   const actionCodeSettings = { url: CONTINUE_URL };
   console.log('[RESET] actionCodeSettings:', JSON.stringify(actionCodeSettings));
 
@@ -213,7 +192,27 @@ app.post('/api/send-reset', async (req, res) => {
     console.error('[RESET] generatePasswordResetLink FAILED');
     console.error('[RESET]   error.code   :', linkErr.code);
     console.error('[RESET]   error.message:', linkErr.message);
-    throw linkErr;
+
+    if (linkErr.code === 'auth/user-not-found') {
+      return res.status(404).json({
+        success: false,
+        code: 'auth/user-not-found',
+        error: 'No account exists for this email.',
+      });
+    }
+    if (linkErr.code === 'auth/invalid-email') {
+      return res.status(400).json({
+        success: false,
+        code: 'auth/invalid-email',
+        error: 'Invalid email address.',
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to send reset email.',
+      code: linkErr.code || 'unknown',
+    });
   }
 
   const linkGenMs = Date.now() - t0;
