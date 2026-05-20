@@ -155,14 +155,24 @@ export async function sendPasswordResetEmailDirect(
   }
 
   try {
-    const auth = getAuth(getFirebaseApp());
+    const app = getFirebaseApp();
+    const auth = getAuth(app);
+    console.log('[FirebaseAuth] Auth instance projectId:', app.options.projectId);
+    console.log('[FirebaseAuth] About to call sendPasswordResetEmail for:', normalizedEmail);
+
     await sendPasswordResetEmail(auth, normalizedEmail);
-    console.log('[FirebaseAuth] sendPasswordResetEmail SUCCESS for:', normalizedEmail);
+
+    console.log('[FirebaseAuth] sendPasswordResetEmail RESOLVED successfully for:', normalizedEmail);
     return { success: true };
   } catch (error: any) {
     const code = error.code || 'unknown';
     const message = error.message || 'Unknown error';
-    console.error('[FirebaseAuth] sendPasswordResetEmail FAILED:', code, message);
+    console.error('[FirebaseAuth] sendPasswordResetEmail REJECTED');
+    console.error('[FirebaseAuth]   error.code   :', code);
+    console.error('[FirebaseAuth]   error.message:', message);
+    if (error.stack) {
+      console.error('[FirebaseAuth]   error.stack  :', error.stack);
+    }
     return { success: false, error: message, code };
   }
 }

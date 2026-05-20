@@ -176,13 +176,15 @@ export default function ResetPasswordScreen() {
     console.log('[ResetPassword] Normalized email:', normalizedEmail);
 
     try {
+      console.log('[ResetPassword] Calling sendPasswordResetEmailDirect...');
       const result = await sendPasswordResetEmailDirect(normalizedEmail);
-      console.log('[RESET EMAIL RESULT]', result);
+      console.log('[ResetPassword] sendPasswordResetEmailDirect returned:', JSON.stringify(result));
 
       if (result.success) {
+        console.log('[ResetPassword] SUCCESS — sendPasswordResetEmail resolved. Check spam/promotions if email not visible.');
         Alert.alert(
           'Reset Link Sent',
-          'Password reset email sent',
+          'Password reset email sent. Check your inbox (and spam/promotions).',
           [{ text: 'OK', onPress: () => router.back() }]
         );
         return;
@@ -191,7 +193,9 @@ export default function ResetPasswordScreen() {
       // Map Firebase error codes to user messages
       const errorCode = result.code || '';
       const errorMessage = result.error || 'Unable to send reset email';
-      console.error('[EMAIL ERROR]', errorCode, errorMessage);
+      console.error('[ResetPassword] FAILURE — sendPasswordResetEmailDirect returned error:');
+      console.error('[ResetPassword]   code   :', errorCode);
+      console.error('[ResetPassword]   message:', errorMessage);
 
       switch (errorCode) {
         case 'auth/invalid-email':
@@ -201,12 +205,14 @@ export default function ResetPasswordScreen() {
           Alert.alert('Error', 'No account exists for this email');
           break;
         default:
-          Alert.alert('Error', 'Unable to send reset email');
+          Alert.alert('Error', `Unable to send reset email (${errorCode})`);
       }
 
     } catch (error: any) {
       const errorMsg = error?.message || 'Unable to send reset email';
-      console.error('[EMAIL ERROR]', errorMsg);
+      console.error('[ResetPassword] UNCAUGHT EXCEPTION in sendPasswordResetEmailDirect:', errorMsg);
+      if (error?.code) console.error('[ResetPassword]   exception code:', error.code);
+      if (error?.stack) console.error('[ResetPassword]   exception stack:', error.stack);
       Alert.alert('Error', errorMsg);
     } finally {
       setIsLoading(false);
