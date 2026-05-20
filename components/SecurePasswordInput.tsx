@@ -1,10 +1,9 @@
-import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   TextInput,
   TouchableOpacity,
   Platform,
-  InteractionManager,
   type TextInputProps,
   type ViewStyle,
   type TextStyle,
@@ -12,8 +11,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 export interface SecurePasswordInputRef {
-  /** iOS-only: forces the native UITextField to re-render its secure text dots */
-  refresh: () => void;
+  /**
+   * iOS-only: forces the native UITextField to re-render its secure text dots.
+   * Pass the new value directly so the component never reads stale state.
+   */
+  refresh: (forcedValue?: string) => void;
 }
 
 interface SecurePasswordInputProps extends Omit<TextInputProps, 'secureTextEntry'> {
@@ -33,9 +35,11 @@ interface SecurePasswordInputProps extends Omit<TextInputProps, 'secureTextEntry
  * Problem: on real iPhones, programmatically changing `value` while
  * secureTextEntry=true does not visually refresh the masked dots.
  *
- * Fix: refresh() blurs, toggles secureTextEntry off→on across multiple
- * frames, clears/restores the value, force-remounts the TextInput via
- * inputKey, then focuses at the end so the dots rebuild correctly.
+ * Fix: refresh(forcedValue) focuses the field and temporarily reveals
+ * plain text. A useEffect watches the value prop; once it matches the
+ * target, it toggles secureTextEntry back on. Because each transition
+ * is committed to native before the next, the UITextField reliably
+ * re-masks the new text with dots.
  */
 export const SecurePasswordInput = forwardRef<SecurePasswordInputRef, SecurePasswordInputProps>(
   function SecurePasswordInput(
@@ -56,69 +60,46 @@ export const SecurePasswordInput = forwardRef<SecurePasswordInputRef, SecurePass
     ref
   ) {
     const inputRef = useRef<TextInput>(null);
-    const valueRef = useRef(value);
-    valueRef.current = value;
-
     const [forceReveal, setForceReveal] = useState(false);
-    const [inputKey, setInputKey] = useState(0);
+    const [pendingRefresh, setPendingRefresh] = useState<{ target: string } | null>(null);
 
-    const refresh = useCallback(() => {
-      if (Platform.OS !== 'ios') return;
+    useEffect(() => {
+      if (!pendingRefresh || Platform.OS !== 'ios') return;
 
-      const current = valueRef.current;
-      const isHidden = !visible;
+      if (value === pendingRefresh.target) {
+        // Parent value has caught up — hide again so iOS re-masks
+        setForceReveal(false);
+        setPendingRefresh(null);
+        return;
+      }
 
-      // 1. Blur so the field stops editing during the swap
-      inputRef.current?.blur();
+      // Fallback: auto-reset if value never catches up within 500 ms
+      const timeout = setTimeout(() => {
+        setForceReveal(false);
+        setPendingRefresh(null);
+      }, 500);
+      return () => clearTimeout(timeout);
+    }, [value, pendingRefresh]);
 
-      InteractionManager.runAfterInteractions(() => {
-        if (isHidden) {
-          // ── Hidden mode: full rebuild sequence ───────────────────────
+    const refresh = useCallback(
+      (forcedValue?: string) => {
+        if (Platform.OS !== 'ios') return;
 
-          // Step A: reveal plain text (forces native UITextField rebuild)
-          setForceReveal(true);
+        const target = forcedValue !== undefined ? forcedValue : value;
 
-          requestAnimationFrame(() => {
-            // Step B: clear value while plain
-            onChangeText('');
-
-            requestAnimationFrame(() => {
-              // Step C: restore value while still plain
-              onChangeText(current);
-
-              requestAnimationFrame(() => {
-                // Step D: hide again
-                setForceReveal(false);
-
-                requestAnimationFrame(() => {
-                  // Step E: force-remount the native TextInput
-                  setInputKey((k) => k + 1);
-
-                  requestAnimationFrame(() => {
-                    // Step F: focus at end so selection is correct
-                    inputRef.current?.focus();
-                    // iOS selection API isn't always reliable, so blur+focus cycle helps
-                    setTimeout(() => {
-                      inputRef.current?.blur();
-                      requestAnimationFrame(() => {
-                        inputRef.current?.focus();
-                      });
-                    }, 50);
-                  });
-                });
-              });
-            });
-          });
-        } else {
-          // ── Visible mode: just clear/restore ──────────────────────
-          onChangeText('');
-          requestAnimationFrame(() => {
-            onChangeText(current);
-            inputRef.current?.focus();
-          });
+        if (visible) {
+          // Already visible — just focus so the new value is shown
+          inputRef.current?.focus();
+          return;
         }
-      });
-    }, [visible, onChangeText]);
+
+        // Hidden mode: reveal, then wait for the value prop to catch up
+        inputRef.current?.focus();
+        setForceReveal(true);
+        setPendingRefresh({ target });
+      },
+      [visible, value]
+    );
 
     useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
@@ -133,7 +114,6 @@ export const SecurePasswordInput = forwardRef<SecurePasswordInputRef, SecurePass
           style={{ marginRight: 8 }}
         />
         <TextInput
-          key={inputKey}
           ref={inputRef}
           style={[{ flex: 1, paddingVertical: 14, fontSize: 16 }, inputStyle]}
           placeholder={placeholder}

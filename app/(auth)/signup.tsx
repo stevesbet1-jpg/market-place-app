@@ -55,10 +55,11 @@ export default function SignupScreen() {
     setPassword(suggestedPassword);
     setConfirmPassword(suggestedPassword);
 
+    // iOS: pass the new value directly so refresh() never depends on stale state
     if (Platform.OS === 'ios') {
       requestAnimationFrame(() => {
-        passwordInputRef.current?.refresh();
-        confirmInputRef.current?.refresh();
+        passwordInputRef.current?.refresh(suggestedPassword);
+        confirmInputRef.current?.refresh(suggestedPassword);
       });
     }
   };

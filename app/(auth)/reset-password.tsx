@@ -126,11 +126,11 @@ export default function ResetPasswordScreen() {
     setNewPassword(generated);
     setConfirmPassword(generated);
 
-    // iOS: force native UITextField to refresh its secure text dots
+    // iOS: pass the new value directly so refresh() never depends on stale state
     if (Platform.OS === 'ios') {
       requestAnimationFrame(() => {
-        passwordInputRef.current?.refresh();
-        confirmInputRef.current?.refresh();
+        passwordInputRef.current?.refresh(generated);
+        confirmInputRef.current?.refresh(generated);
       });
     }
   };
