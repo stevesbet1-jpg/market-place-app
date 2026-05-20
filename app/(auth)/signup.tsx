@@ -52,16 +52,21 @@ export default function SignupScreen() {
 
   const handleSuggestPassword = () => {
     const suggestedPassword = generateStrongPassword();
-    setPassword(suggestedPassword);
-    setConfirmPassword(suggestedPassword);
 
-    // iOS: pass the new value directly so refresh() never depends on stale state
-    if (Platform.OS === 'ios') {
+    // Clear first so hidden dots visually disappear, then set new value
+    setPassword('');
+    setConfirmPassword('');
+
+    requestAnimationFrame(() => {
+      setPassword(suggestedPassword);
+      setConfirmPassword(suggestedPassword);
+
       requestAnimationFrame(() => {
+        // iOS: force native UITextField to refresh its secure text dots
         passwordInputRef.current?.refresh(suggestedPassword);
         confirmInputRef.current?.refresh(suggestedPassword);
       });
-    }
+    });
   };
 
   const validateEmail = (email: string) => {

@@ -123,16 +123,21 @@ export default function ResetPasswordScreen() {
 
   const handleSuggestPassword = () => {
     const generated = generateStrongPassword();
-    setNewPassword(generated);
-    setConfirmPassword(generated);
 
-    // iOS: pass the new value directly so refresh() never depends on stale state
-    if (Platform.OS === 'ios') {
+    // Clear first so hidden dots visually disappear, then set new value
+    setNewPassword('');
+    setConfirmPassword('');
+
+    requestAnimationFrame(() => {
+      setNewPassword(generated);
+      setConfirmPassword(generated);
+
       requestAnimationFrame(() => {
+        // iOS: force native UITextField to refresh its secure text dots
         passwordInputRef.current?.refresh(generated);
         confirmInputRef.current?.refresh(generated);
       });
-    }
+    });
   };
 
   // ─── SEND RESET EMAIL — Backend ONLY, no fallback ──
