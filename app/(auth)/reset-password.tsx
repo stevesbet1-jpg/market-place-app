@@ -12,7 +12,8 @@ import {
   LuxuryFontSize, LuxuryGradients,
 } from '../../constants/luxuryTheme';
 import {
-  sendPasswordResetEmailDirect,
+  sendPasswordResetViaBackend,
+  warmUpBackend,
   sendPasswordChangedEmailViaBackend,
   confirmFirebasePasswordReset,
   verifyResetCode,
@@ -171,53 +172,70 @@ export default function ResetPasswordScreen() {
     const rawEmail = email;
     const normalizedEmail = email.trim().toLowerCase();
 
-    console.log('[ResetPassword] === SEND RESET EMAIL ===');
-    console.log('[ResetPassword] Raw email:', rawEmail);
+    console.log('[ResetPassword] ============================================');
+    console.log('[ResetPassword] === SEND RESET EMAIL (Render → Resend) ===');
+    console.log('[ResetPassword] ============================================');
+    console.log('[ResetPassword] Raw email      :', rawEmail);
     console.log('[ResetPassword] Normalized email:', normalizedEmail);
+    console.log('[ResetPassword] Backend URL:', process.env.EXPO_PUBLIC_RESET_API_URL || '(not set — using default Render URL)');
+    console.log('[ResetPassword] Firebase configured:', isFirebaseConfigured());
+    console.log('[ResetPassword] Timestamp:', new Date().toISOString());
 
     try {
-      console.log('[ResetPassword] Calling sendPasswordResetEmailDirect...');
-      const result = await sendPasswordResetEmailDirect(normalizedEmail);
-      console.log('[ResetPassword] sendPasswordResetEmailDirect returned:', JSON.stringify(result));
+      // Warm up Render backend (free tier may be sleeping)
+      console.log('[ResetPassword] Warming up Render backend...');
+      const warmUpOk = await warmUpBackend();
+      console.log('[ResetPassword] Backend warm-up result:', warmUpOk ? 'OK' : 'FAILED (will still attempt send)');
+
+      console.log('[ResetPassword] Calling sendPasswordResetViaBackend...');
+      const t0 = Date.now();
+      const result = await sendPasswordResetViaBackend(normalizedEmail);
+      const elapsed = Date.now() - t0;
+
+      console.log('[ResetPassword] sendPasswordResetViaBackend RETURNED in', elapsed, 'ms');
+      console.log('[ResetPassword] Result (full):', JSON.stringify(result));
 
       if (result.success) {
-        console.log('[ResetPassword] SUCCESS — sendPasswordResetEmail resolved. Check spam/promotions if email not visible.');
+        console.log('[ResetPassword] STATUS: RESOLVED ✅');
+        console.log('[ResetPassword] Resend emailId:', result.emailId || '(no id returned)');
+        console.log('[ResetPassword] Delivered to:', normalizedEmail, '— check inbox AND spam/promotions');
         Alert.alert(
           'Reset Link Sent',
-          'Password reset email sent. Check your inbox (and spam/promotions).',
+          'Check your inbox (and spam/promotions folder). The link expires in 1 hour.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
         return;
       }
 
-      // Map Firebase error codes to user messages
-      const errorCode = result.code || '';
+      const errorCode = result.code || 'unknown';
       const errorMessage = result.error || 'Unable to send reset email';
-      console.error('[ResetPassword] FAILURE — sendPasswordResetEmailDirect returned error:');
-      console.error('[ResetPassword]   code   :', errorCode);
-      console.error('[ResetPassword]   message:', errorMessage);
+      console.error('[ResetPassword] STATUS: REJECTED ❌');
+      console.error('[ResetPassword] error.code   :', errorCode);
+      console.error('[ResetPassword] error.message:', errorMessage);
 
       switch (errorCode) {
-        case 'auth/invalid-email':
-          Alert.alert('Error', 'Invalid email address');
-          break;
         case 'auth/user-not-found':
-          Alert.alert('Error', 'No account exists for this email');
+          Alert.alert('Email Not Found', 'No account exists for this email address.');
+          break;
+        case 'auth/invalid-email':
+          Alert.alert('Invalid Email', 'Please enter a valid email address.');
           break;
         default:
-          Alert.alert('Error', `Unable to send reset email (${errorCode})`);
+          Alert.alert('Reset Failed', `${errorMessage}\n\n(code: ${errorCode})`);
       }
 
     } catch (error: any) {
       const errorMsg = error?.message || 'Unable to send reset email';
-      console.error('[ResetPassword] UNCAUGHT EXCEPTION in sendPasswordResetEmailDirect:', errorMsg);
-      if (error?.code) console.error('[ResetPassword]   exception code:', error.code);
-      if (error?.stack) console.error('[ResetPassword]   exception stack:', error.stack);
+      console.error('[ResetPassword] STATUS: UNCAUGHT EXCEPTION ❌');
+      console.error('[ResetPassword]   exception.message:', errorMsg);
+      if (error?.code)  console.error('[ResetPassword]   exception.code  :', error.code);
+      if (error?.stack) console.error('[ResetPassword]   exception.stack :', error.stack);
       Alert.alert('Error', errorMsg);
     } finally {
       setIsLoading(false);
       sendAttemptRef.current = false;
       console.log('[ResetPassword] Send gate reset. Button is active again.');
+      console.log('[ResetPassword] ============================================');
     }
   };
 
