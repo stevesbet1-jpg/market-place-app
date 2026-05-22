@@ -1,5 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert, LogBox } from 'react-native';
+
+// Suppress expected secondary-request network errors that don't affect Firebase auth.
+// Supabase may be paused or unreachable; those failures are logged as warnings only.
+LogBox.ignoreLogs([
+  'Network request failed',
+  'TypeError: Network request failed',
+]);
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -151,46 +158,40 @@ export default function SignupScreen() {
 
       console.log('[SignUp] Firebase registration SUCCESS ✅ UID:', firebaseResult.userId);
 
-      // ── SECONDARY: Supabase profile (non-blocking) ───────────────
-      // If Supabase is unavailable (network error, paused project, etc.)
-      // the Firebase account is already created and login will still work.
+      // ── SECONDARY: Supabase profile (fire-and-forget, truly non-blocking) ─
+      // Show "Account Created" immediately — do NOT await these calls.
+      // If Supabase is paused/unreachable the Firebase account still works.
       if (isSupabaseConfigured()) {
-        try {
-          console.log('[SignUp] Attempting Supabase signup (secondary, non-blocking)...');
-          const { data: supaData, error: supaError } = await supabase.auth.signUp({
+        supabase.auth
+          .signUp({
             email: normalizedEmail,
             password,
             options: { data: { full_name: fullName.trim() } },
-          });
-          if (supaError) {
-            console.warn('[SignUp] Supabase signup non-critical error:', supaError.message);
-          } else {
-            console.log('[SignUp] Supabase signup success. User id:', supaData?.user?.id || 'N/A');
-          }
-        } catch (supaErr: any) {
-          console.warn('[SignUp] Supabase signup exception (non-critical):', supaErr.message);
-          // Do NOT block — Firebase is the source of truth for auth
-        }
-      } else {
-        console.log('[SignUp] Supabase not configured — skipping secondary signup.');
-      }
+          })
+          .then(({ error }) => {
+            if (error) console.warn('[SignUp] Supabase secondary (non-critical):', error.message);
+            else console.log('[SignUp] Supabase secondary success.');
+          })
+          .catch((err: any) =>
+            console.warn('[SignUp] Supabase secondary exception (non-critical):', err.message)
+          );
 
-      // ── Welcome email (non-blocking) ─────────────────────────────
-      if (isSupabaseConfigured()) {
-        try {
-          const { data: emailData, error: emailError } = await supabase.functions.invoke('send-signup-email', {
+        supabase.functions
+          .invoke('send-signup-email', {
             body: { email: normalizedEmail, fullName: fullName.trim() },
-          });
-          if (emailError) {
-            console.warn('[SignUp] Welcome email non-critical error:', emailError);
-          } else {
-            console.log('[SignUp] Welcome email sent:', emailData);
-          }
-        } catch (emailErr: any) {
-          console.warn('[SignUp] Welcome email exception (non-critical):', emailErr.message);
-        }
+          })
+          .then(({ error }) => {
+            if (error) console.warn('[SignUp] Welcome email non-critical:', error);
+            else console.log('[SignUp] Welcome email sent.');
+          })
+          .catch((err: any) =>
+            console.warn('[SignUp] Welcome email exception (non-critical):', err.message)
+          );
+      } else {
+        console.log('[SignUp] Supabase not configured — skipping secondary calls.');
       }
 
+      // ── Show success immediately (Firebase is the source of truth) ─
       Alert.alert(
         'Account Created',
         'Your account has been created successfully.',
