@@ -6,7 +6,12 @@ import { LuxuryColors } from '../../constants/luxuryTheme';
 export default function AuthLayout() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: LuxuryColors.background },
+        }}
+      >
         <Stack.Screen name="login" />
         <Stack.Screen name="signup" />
         <Stack.Screen name="reset-password" />

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { View, StyleSheet, StatusBar, LogBox } from 'react-native';
+import { View, StyleSheet, LogBox } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import { LuxuryColors } from '../constants/luxuryTheme';
@@ -135,10 +136,15 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <StatusBar style="light" backgroundColor={LuxuryColors.background} translucent={false} />
       <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={LuxuryColors.background} />
         <DeepLinkHandler>
-          <Stack screenOptions={{ headerShown: false }}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: LuxuryColors.background },
+            }}
+          >
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           </Stack>
