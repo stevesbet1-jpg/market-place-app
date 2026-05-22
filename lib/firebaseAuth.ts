@@ -376,26 +376,48 @@ export const registerWithFirebaseEmail = async (
   password: string
 ): Promise<FirebaseAuthResult> => {
   if (!_isFirebaseConfigured()) {
+    console.error('[FirebaseAuth] registerWithFirebaseEmail: Firebase not configured');
     return { success: false, error: 'Firebase not configured' };
   }
 
-  console.log('[FirebaseAuth] Registering user:', email);
+  console.log('[FirebaseAuth] === REGISTER USER ===');
+  console.log('[FirebaseAuth] email:', email);
+  console.log('[FirebaseAuth] timestamp:', new Date().toISOString());
 
   try {
-    const auth = getAuth(getFirebaseApp());
+    const app = getFirebaseApp();
+    const auth = getAuth(app);
+
+    console.log('[FirebaseAuth] Firebase app projectId:', app.options.projectId);
+    console.log('[FirebaseAuth] Firebase authDomain  :', app.options.authDomain);
+    console.log('[FirebaseAuth] Firebase apiKey      :', app.options.apiKey ? app.options.apiKey.substring(0, 8) + '...' : 'MISSING');
+    console.log('[FirebaseAuth] Firebase appId       :', app.options.appId ? app.options.appId.substring(0, 20) + '...' : 'MISSING');
+    console.log('[FirebaseAuth] Calling createUserWithEmailAndPassword...');
+
+    const t0 = Date.now();
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    console.log('[FirebaseAuth] Registration SUCCESS for:', email);
+    const elapsed = Date.now() - t0;
+
+    console.log('[FirebaseAuth] createUserWithEmailAndPassword RESOLVED in', elapsed, 'ms');
+    console.log('[FirebaseAuth] New UID:', userCredential.user.uid);
+    console.log('[FirebaseAuth] Verified email:', userCredential.user.email);
+    console.log('[FirebaseAuth] Registration SUCCESS ✅');
+
     return {
       success: true,
       userId: userCredential.user.uid,
       email: userCredential.user.email || email,
     };
   } catch (error: any) {
-    console.error('[FirebaseAuth] Registration FAILED:', error.code, error.message);
+    console.error('[FirebaseAuth] createUserWithEmailAndPassword REJECTED ❌');
+    console.error('[FirebaseAuth]   error.code   :', error.code);
+    console.error('[FirebaseAuth]   error.message:', error.message);
     const errorMessages: Record<string, string> = {
       'auth/email-already-in-use': 'An account with this email already exists.',
       'auth/invalid-email': 'Invalid email address.',
       'auth/weak-password': 'Password is too weak. Use at least 8 characters.',
+      'auth/network-request-failed': 'Network error. Check your internet connection and try again.',
+      'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
     };
     return {
       success: false,

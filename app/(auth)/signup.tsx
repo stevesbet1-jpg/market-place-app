@@ -8,6 +8,7 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import { validatePassword } from './authStorage';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { registerWithFirebaseEmail, isFirebaseConfigured } from '../../lib/firebaseAuth';
+import { getFirebaseConfigStatus } from '../../lib/firebase';
 import {
   SecurePasswordInput,
   type SecurePasswordInputRef,
@@ -108,78 +109,97 @@ export default function SignupScreen() {
       return;
     }
 
-    if (!isSupabaseConfigured()) {
-      console.error('SIGNUP: Supabase not configured');
-      Alert.alert('Error', 'Account creation is not available at this time.');
+    // ── Firebase config gate (primary auth) ───────────────────────
+    if (!isFirebaseConfigured()) {
+      const cfgStatus = getFirebaseConfigStatus();
+      console.error('[SignUp] Firebase NOT configured. Missing:', cfgStatus.missing);
+      console.error('[SignUp] Placeholders:', cfgStatus.placeholders);
+      Alert.alert('Error', 'Account creation is unavailable. Firebase is not configured.');
       return;
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
-      console.log('SIGNUP: Attempting Supabase signup for', email.trim().toLowerCase());
+      // ── Diagnostics ──────────────────────────────────────────────
+      const cfgStatus = getFirebaseConfigStatus();
+      console.log('[SignUp] ============================================');
+      console.log('[SignUp] === SIGNUP ATTEMPT ===');
+      console.log('[SignUp] email (raw)        :', email);
+      console.log('[SignUp] email (normalized) :', normalizedEmail);
+      console.log('[SignUp] Firebase isReady   :', cfgStatus.isReady);
+      console.log('[SignUp] Firebase projectId :', cfgStatus.projectId);
+      console.log('[SignUp] Firebase authDomain:', cfgStatus.authDomain);
+      console.log('[SignUp] Firebase apiKey    :', cfgStatus.apiKey);
+      console.log('[SignUp] Timestamp          :', new Date().toISOString());
 
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password: password,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-          },
-        },
-      });
+      // ── PRIMARY: Firebase Auth ────────────────────────────────────
+      console.log('[SignUp] Calling registerWithFirebaseEmail (primary)...');
+      const t0 = Date.now();
+      const firebaseResult = await registerWithFirebaseEmail(normalizedEmail, password);
+      const elapsed = Date.now() - t0;
 
-      if (error) {
-        console.error('SIGNUP_ERROR:', error);
-        Alert.alert('Error', error.message || 'Failed to create account');
+      console.log('[SignUp] registerWithFirebaseEmail returned in', elapsed, 'ms');
+      console.log('[SignUp] Firebase result:', JSON.stringify(firebaseResult));
+
+      if (!firebaseResult.success) {
+        console.error('[SignUp] Firebase registration FAILED:', firebaseResult.error);
+        // Map Firebase error codes to user-friendly messages
+        Alert.alert('Signup Failed', firebaseResult.error || 'Unable to create account. Please try again.');
         return;
       }
 
-      console.log('SIGNUP: Supabase success', data);
+      console.log('[SignUp] Firebase registration SUCCESS ✅ UID:', firebaseResult.userId);
 
-      // Also create user in Firebase Auth for password reset support
-      if (isFirebaseConfigured()) {
+      // ── SECONDARY: Supabase profile (non-blocking) ───────────────
+      // If Supabase is unavailable (network error, paused project, etc.)
+      // the Firebase account is already created and login will still work.
+      if (isSupabaseConfigured()) {
         try {
-          const firebaseResult = await registerWithFirebaseEmail(
-            email.trim().toLowerCase(),
-            password
-          );
-          console.log('SIGNUP: Firebase registration result', firebaseResult);
-        } catch (firebaseError: any) {
-          console.log('SIGNUP: Firebase registration error (non-critical)', firebaseError.message);
+          console.log('[SignUp] Attempting Supabase signup (secondary, non-blocking)...');
+          const { data: supaData, error: supaError } = await supabase.auth.signUp({
+            email: normalizedEmail,
+            password,
+            options: { data: { full_name: fullName.trim() } },
+          });
+          if (supaError) {
+            console.warn('[SignUp] Supabase signup non-critical error:', supaError.message);
+          } else {
+            console.log('[SignUp] Supabase signup success. User id:', supaData?.user?.id || 'N/A');
+          }
+        } catch (supaErr: any) {
+          console.warn('[SignUp] Supabase signup exception (non-critical):', supaErr.message);
+          // Do NOT block — Firebase is the source of truth for auth
         }
+      } else {
+        console.log('[SignUp] Supabase not configured — skipping secondary signup.');
       }
 
-      // Send welcome email via Edge Function
-      try {
-        const { data: emailData, error: emailError } = await supabase.functions.invoke('send-signup-email', {
-          body: {
-            email: email.trim().toLowerCase(),
-            fullName: fullName.trim(),
-          },
-        });
-
-        console.log('SIGNUP: Email response', emailData, emailError);
-
-        if (emailError) {
-          console.error('SIGNUP: Email failed', emailError);
-          // Continue anyway - account was created successfully
+      // ── Welcome email (non-blocking) ─────────────────────────────
+      if (isSupabaseConfigured()) {
+        try {
+          const { data: emailData, error: emailError } = await supabase.functions.invoke('send-signup-email', {
+            body: { email: normalizedEmail, fullName: fullName.trim() },
+          });
+          if (emailError) {
+            console.warn('[SignUp] Welcome email non-critical error:', emailError);
+          } else {
+            console.log('[SignUp] Welcome email sent:', emailData);
+          }
+        } catch (emailErr: any) {
+          console.warn('[SignUp] Welcome email exception (non-critical):', emailErr.message);
         }
-      } catch (emailError: any) {
-        console.error('SIGNUP: Email error', emailError);
-        // Continue anyway - account was created successfully
       }
 
       Alert.alert(
         'Account Created',
         'Your account has been created successfully.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/(auth)/login'),
-          },
-        ]
+        [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
       );
     } catch (error: any) {
-      console.error('SIGNUP_ERROR:', error);
+      console.error('[SignUp] UNCAUGHT EXCEPTION:', error.message);
+      if (error?.code) console.error('[SignUp]   code:', error.code);
+      if (error?.stack) console.error('[SignUp]   stack:', error.stack);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     }
   };
