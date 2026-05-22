@@ -1,12 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert, LogBox } from 'react-native';
-
-// Suppress expected secondary-request network errors that don't affect Firebase auth.
-// Supabase may be paused or unreachable; those failures are logged as warnings only.
-LogBox.ignoreLogs([
-  'Network request failed',
-  'TypeError: Network request failed',
-]);
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';

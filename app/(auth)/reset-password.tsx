@@ -196,12 +196,10 @@ export default function ResetPasswordScreen() {
       console.log('[ResetPassword] Result (full):', JSON.stringify(result));
 
       if (result.success) {
-        console.log('[ResetPassword] STATUS: RESOLVED ✅');
-        console.log('[ResetPassword] Resend emailId:', result.emailId || '(no id returned)');
-        console.log('[ResetPassword] Delivered to:', normalizedEmail, '— check inbox AND spam/promotions');
+        console.log('[ResetPassword] Reset email sent to:', normalizedEmail);
         Alert.alert(
-          'Reset Link Sent',
-          'Check your inbox (and spam/promotions folder). The link expires in 1 hour.',
+          'Reset email sent',
+          'We sent a password reset link to your email.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
         return;
@@ -209,28 +207,44 @@ export default function ResetPasswordScreen() {
 
       const errorCode = result.code || 'unknown';
       const errorMessage = result.error || 'Unable to send reset email';
-      console.error('[ResetPassword] STATUS: REJECTED ❌');
-      console.error('[ResetPassword] error.code   :', errorCode);
-      console.error('[ResetPassword] error.message:', errorMessage);
+      console.log('[ResetPassword] Reset failed. code:', errorCode, '| message:', errorMessage);
 
-      switch (errorCode) {
-        case 'auth/user-not-found':
-          Alert.alert('Email Not Found', 'No account exists for this email address.');
-          break;
-        case 'auth/invalid-email':
-          Alert.alert('Invalid Email', 'Please enter a valid email address.');
-          break;
-        default:
-          Alert.alert('Reset Failed', `${errorMessage}\n\n(code: ${errorCode})`);
+      const isNotFound =
+        errorCode === 'auth/user-not-found' ||
+        (typeof errorMessage === 'string' && errorMessage.toUpperCase().includes('EMAIL_NOT_FOUND'));
+
+      if (isNotFound) {
+        Alert.alert(
+          'Account not found',
+          'Please create an account first, then use Forgot Password if you forget it.'
+        );
+        return;
       }
+
+      if (errorCode === 'auth/invalid-email') {
+        Alert.alert('Invalid Email', 'Please enter a valid email address.');
+        return;
+      }
+
+      Alert.alert('Reset failed', 'Something went wrong. Try again.');
 
     } catch (error: any) {
       const errorMsg = error?.message || 'Unable to send reset email';
-      console.error('[ResetPassword] STATUS: UNCAUGHT EXCEPTION ❌');
-      console.error('[ResetPassword]   exception.message:', errorMsg);
-      if (error?.code)  console.error('[ResetPassword]   exception.code  :', error.code);
-      if (error?.stack) console.error('[ResetPassword]   exception.stack :', error.stack);
-      Alert.alert('Error', errorMsg);
+      console.log('[ResetPassword] Reset exception:', errorMsg);
+
+      const isNotFound =
+        error?.code === 'auth/user-not-found' ||
+        errorMsg.toUpperCase().includes('EMAIL_NOT_FOUND');
+
+      if (isNotFound) {
+        Alert.alert(
+          'Account not found',
+          'Please create an account first, then use Forgot Password if you forget it.'
+        );
+        return;
+      }
+
+      Alert.alert('Reset failed', 'Something went wrong. Try again.');
     } finally {
       setIsLoading(false);
       sendAttemptRef.current = false;

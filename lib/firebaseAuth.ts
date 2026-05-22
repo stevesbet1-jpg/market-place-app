@@ -55,7 +55,7 @@ export async function checkEmailExistsInFirebase(email: string): Promise<boolean
     console.log('[FirebaseAuth] ⚠️  This result is UNRELIABLE when Email Enumeration Protection is enabled.');
     return exists;
   } catch (error: any) {
-    console.error('[FirebaseAuth] fetchSignInMethodsForEmail failed:', error.code, error.message);
+    console.log('[FirebaseAuth] fetchSignInMethodsForEmail error:', error.code, error.message);
     return false;
   }
 }
@@ -75,7 +75,7 @@ export async function verifyResetCode(oobCode: string): Promise<string> {
     console.log('[FirebaseAuth] Reset code is valid. Associated email:', email);
     return email;
   } catch (error: any) {
-    console.error('[FirebaseAuth] verifyPasswordResetCode FAILED:', error.code, error.message);
+    console.log('[FirebaseAuth] verifyPasswordResetCode failed:', error.code, error.message);
     throw error;
   }
 }
@@ -167,12 +167,7 @@ export async function sendPasswordResetEmailDirect(
   } catch (error: any) {
     const code = error.code || 'unknown';
     const message = error.message || 'Unknown error';
-    console.error('[FirebaseAuth] sendPasswordResetEmail REJECTED');
-    console.error('[FirebaseAuth]   error.code   :', code);
-    console.error('[FirebaseAuth]   error.message:', message);
-    if (error.stack) {
-      console.error('[FirebaseAuth]   error.stack  :', error.stack);
-    }
+    console.log('[FirebaseAuth] sendPasswordResetEmail failed. code:', code, '| message:', message);
     return { success: false, error: message, code };
   }
 }
@@ -219,7 +214,6 @@ export const sendPasswordResetViaBackend = async (
     };
   } catch (error: any) {
     const message = error.message || 'Unknown error';
-    console.error('[EMAIL ERROR]', message);
     console.log('[FirebaseAuth] Backend reset NETWORK/EXCEPTION:', message);
 
     if (message.includes('abort') || message.includes('Abort')) {
@@ -285,7 +279,6 @@ export const sendPasswordChangedEmailViaBackend = async (
     };
   } catch (error: any) {
     const message = error.message || 'Unknown error';
-    console.error('[PASSWORD CHANGED EMAIL ERROR]', message);
     console.log('[FirebaseAuth] Backend confirmation NETWORK/EXCEPTION:', message);
 
     if (message.includes('abort') || message.includes('Abort')) {
@@ -376,7 +369,7 @@ export const registerWithFirebaseEmail = async (
   password: string
 ): Promise<FirebaseAuthResult> => {
   if (!_isFirebaseConfigured()) {
-    console.error('[FirebaseAuth] registerWithFirebaseEmail: Firebase not configured');
+    console.warn('[FirebaseAuth] registerWithFirebaseEmail: Firebase not configured');
     return { success: false, error: 'Firebase not configured' };
   }
 
