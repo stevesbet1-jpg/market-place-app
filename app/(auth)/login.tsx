@@ -1,18 +1,109 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert, Platform as OS } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+import * as WebBrowser from 'expo-web-browser';
+import * as GoogleProvider from 'expo-auth-session/providers/google';
 import { checkEmailExists, loginUser } from './authStorage';
 import { loginWithApple, loginWithEmail } from '../../lib/authService';
+import { signInWithFirebaseGoogle } from '../../lib/firebaseAuth';
+import { upsertUserProfile } from '../../lib/userProfile';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+// Both IDs are required on iOS. Fallback strings prevent the hook from throwing
+// when env vars are missing — the GOOGLE_CONFIGURED guard blocks promptAsync.
+const GOOGLE_CONFIGURED = !!(GOOGLE_WEB_CLIENT_ID && GOOGLE_IOS_CLIENT_ID);
+const _hookWebClientId = GOOGLE_WEB_CLIENT_ID || 'not-configured';
+const _hookIosClientId = GOOGLE_IOS_CLIENT_ID || GOOGLE_WEB_CLIENT_ID || 'not-configured';
+// Derive the reverse-DNS scheme redirect URI from the iOS OAuth client ID.
+// Google automatically authorises this URI for iOS clients, and on iOS,
+// ASWebAuthenticationSession intercepts the callback scheme without requiring
+// it to be registered in Expo Go's Info.plist — fixing Error 400 in Expo Go.
+const _iosClientPrefix = GOOGLE_IOS_CLIENT_ID?.replace('.apps.googleusercontent.com', '') ?? '';
+const _iosRedirectUri = (Platform.OS === 'ios' && _iosClientPrefix)
+  ? `com.googleusercontent.apps.${_iosClientPrefix}:/oauthredirect`
+  : undefined;
+console.log('[GoogleSignIn] iOS redirect URI:', _iosRedirectUri ?? 'not applicable');
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  const [, googleResponse, googlePromptAsync] = GoogleProvider.useAuthRequest({
+    webClientId: _hookWebClientId,
+    iosClientId: _hookIosClientId,
+    ...(_iosRedirectUri ? { redirectUri: _iosRedirectUri } : {}),
+  });
+
+  useEffect(() => {
+    if (googleResponse?.type === 'success') {
+      const idToken = googleResponse.authentication?.idToken ?? null;
+      const accessToken = googleResponse.authentication?.accessToken ?? null;
+      if (!idToken && !accessToken) {
+        console.warn('[GoogleSignIn] No token in authentication response');
+        Alert.alert('Sign In Failed', 'Could not get Google token. Please try again.');
+        setIsGoogleLoading(false);
+        return;
+      }
+      signInWithFirebaseGoogle(idToken, accessToken)
+        .then((result) => {
+          if (result.success) {
+            if (result.userId) {
+              upsertUserProfile(result.userId, {
+                email: result.email ?? null,
+                fullName: result.displayName ?? null,
+                photoURL: result.photoURL ?? null,
+                provider: 'google',
+              }).catch((err: any) => console.warn('[GoogleSignIn] Profile save failed (non-critical):', err?.message));
+            }
+            router.replace('/(tabs)');
+          }
+        })
+        .catch((err: any) => {
+          console.warn('[GoogleSignIn] Firebase credential failed:', err?.message);
+          let msg = 'Could not sign in with Google. Please try again.';
+          if (err?.message === 'GOOGLE_ACCOUNT_EXISTS_DIFFERENT_CREDENTIAL') {
+            msg = 'An account already exists with a different sign-in method. Please use email/password.';
+          } else if (err?.message === 'NETWORK_ERROR') {
+            msg = 'Network error. Please check your connection and try again.';
+          }
+          Alert.alert('Sign In Failed', msg);
+        })
+        .finally(() => setIsGoogleLoading(false));
+    } else if (googleResponse?.type === 'error') {
+      console.warn('[GoogleSignIn] Auth flow error:', googleResponse.error);
+      setIsGoogleLoading(false);
+    } else if (googleResponse?.type === 'dismiss' || googleResponse?.type === 'cancel') {
+      setIsGoogleLoading(false);
+    }
+  }, [googleResponse]);
+
+  const handleGoogleSignIn = async () => {
+    if (!GOOGLE_CONFIGURED) {
+      Alert.alert(
+        'Google Sign-In Not Configured',
+        'Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID and EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID in your .env file, then restart Expo with --clear.'
+      );
+      return;
+    }
+    try {
+      setIsGoogleLoading(true);
+      await googlePromptAsync();
+    } catch (err: any) {
+      console.warn('[GoogleSignIn] promptAsync failed:', err?.message);
+      Alert.alert('Sign In Failed', 'Could not open Google sign-in. Please try again.');
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleForgotPassword = () => {
     router.push('/(auth)/reset-password');
@@ -51,7 +142,15 @@ export default function LoginScreen() {
     }
 
     try {
-      await loginWithEmail({ email, password, loginUser });
+      const user = await loginWithEmail({ email, password, loginUser });
+      if (user?.id) {
+        upsertUserProfile(user.id, {
+          email: user.email ?? email,
+          fullName: null,
+          photoURL: null,
+          provider: 'email',
+        }).catch((err: any) => console.warn('[SignIn] Profile save failed (non-critical):', err?.message));
+      }
       router.replace('/(tabs)');
     } catch (error: any) {
       const message = error?.message || 'Please try again.';
@@ -162,6 +261,18 @@ export default function LoginScreen() {
           >
             <Ionicons name="logo-apple" size={24} color={LuxuryColors.textPrimary} />
             <Text style={styles.socialButtonText}>Continue with Apple</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.socialButton, (isGoogleLoading || !GOOGLE_CONFIGURED) && { opacity: 0.45 }]}
+            onPress={handleGoogleSignIn}
+            activeOpacity={0.8}
+            disabled={isGoogleLoading}
+          >
+            <Ionicons name="logo-google" size={22} color={LuxuryColors.textPrimary} />
+            <Text style={styles.socialButtonText}>
+              {isGoogleLoading ? 'Connecting…' : 'Continue with Google'}
+            </Text>
           </TouchableOpacity>
 
 

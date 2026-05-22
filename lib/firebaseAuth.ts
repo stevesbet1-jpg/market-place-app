@@ -23,6 +23,9 @@ import {
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithCredential,
+  getAdditionalUserInfo,
 } from 'firebase/auth';
 import { getFirebaseApp, isFirebaseConfigured as _isFirebaseConfigured } from './firebase';
 
@@ -433,5 +436,59 @@ export const logoutFromFirebase = async (): Promise<void> => {
     await signOut(auth);
   } catch (error) {
     console.log('Firebase logout error (safe to ignore):', error);
+  }
+};
+
+// ─── Google Sign-In ────────────────────────────────────────────────
+
+export interface GoogleSignInResult {
+  success: boolean;
+  userId?: string;
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+  isNewUser?: boolean;
+}
+
+export const signInWithFirebaseGoogle = async (
+  idToken: string | null,
+  accessToken?: string | null
+): Promise<GoogleSignInResult> => {
+  if (!_isFirebaseConfigured()) {
+    throw new Error('FIREBASE_NOT_CONFIGURED');
+  }
+
+  if (!idToken && !accessToken) {
+    throw new Error('GOOGLE_NO_TOKEN');
+  }
+
+  try {
+    const auth = getAuth(getFirebaseApp());
+    const credential = GoogleAuthProvider.credential(idToken, accessToken ?? null);
+    const result = await signInWithCredential(auth, credential);
+    const additionalInfo = getAdditionalUserInfo(result);
+    console.log('[FirebaseAuth] Google sign-in SUCCESS. UID:', result.user.uid, '| new user:', additionalInfo?.isNewUser);
+    return {
+      success: true,
+      userId: result.user.uid,
+      email: result.user.email ?? undefined,
+      displayName: result.user.displayName ?? undefined,
+      photoURL: result.user.photoURL ?? undefined,
+      isNewUser: additionalInfo?.isNewUser ?? false,
+    };
+  } catch (error: any) {
+    console.log('[FirebaseAuth] Google sign-in failed:', error.code, error.message);
+    switch (error.code) {
+      case 'auth/account-exists-with-different-credential':
+        throw new Error('GOOGLE_ACCOUNT_EXISTS_DIFFERENT_CREDENTIAL');
+      case 'auth/invalid-credential':
+        throw new Error('GOOGLE_INVALID_CREDENTIAL');
+      case 'auth/network-request-failed':
+        throw new Error('NETWORK_ERROR');
+      case 'auth/too-many-requests':
+        throw new Error('TOO_MANY_REQUESTS');
+      default:
+        throw new Error('GOOGLE_SIGNIN_ERROR');
+    }
   }
 };

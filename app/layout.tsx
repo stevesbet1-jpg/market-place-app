@@ -22,6 +22,11 @@ LogBox.ignoreLogs([
   'CONFIRM_RESET_ERROR',
   'fetchSignInMethodsForEmail',
   '[FirebaseAuth] BLOCKED', // legacy log pattern
+  // Secondary/non-blocking network failures — Firebase is primary auth
+  'Network request failed',
+  'Post-signup sync failed',
+  'Supabase secondary',
+  'Welcome email',
 ]);
 
 function DeepLinkHandler({ children }: { children: React.ReactNode }) {

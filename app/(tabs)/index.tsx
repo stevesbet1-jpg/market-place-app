@@ -1,13 +1,25 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+import { getLatestProducts, type Product } from '../../lib/products';
 
 const { width } = Dimensions.get('window');
 
 export default function ExploreScreen() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState(false);
+
+  useEffect(() => {
+    getLatestProducts(20)
+      .then((data) => setProducts(data))
+      .catch(() => setProductsError(true))
+      .finally(() => setProductsLoading(false));
+  }, []);
+
   const handleNotificationPress = () => {
     Alert.alert('Notifications', 'No new notifications at this time.');
   };
@@ -166,6 +178,65 @@ export default function ExploreScreen() {
             <Text style={styles.privilegeTitle}>Travel Insurance</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Marketplace Product Feed */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Marketplace</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/add-product')} activeOpacity={0.7}>
+            <Text style={styles.sectionLink}>+ Sell</Text>
+          </TouchableOpacity>
+        </View>
+
+        {productsLoading && (
+          <View style={styles.feedCenter}>
+            <ActivityIndicator color={LuxuryColors.gold} size="small" />
+          </View>
+        )}
+
+        {!productsLoading && productsError && (
+          <View style={styles.feedCenter}>
+            <Text style={styles.feedMessage}>Could not load listings. Check your connection.</Text>
+          </View>
+        )}
+
+        {!productsLoading && !productsError && products.length === 0 && (
+          <View style={styles.feedCenter}>
+            <Ionicons name="storefront-outline" size={40} color={LuxuryColors.textTertiary} />
+            <Text style={styles.feedMessage}>No listings yet.</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/add-product')} activeOpacity={0.8} style={styles.feedCta}>
+              <Text style={styles.feedCtaText}>Be the first to sell</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!productsLoading && products.map((product) => (
+          <TouchableOpacity
+            key={product.id}
+            style={styles.productCard}
+            activeOpacity={0.85}
+            onPress={() => Alert.alert(product.title, `$${product.price.toFixed(2)}\n\n${product.description}`)}
+          >
+            {product.imageUrl ? (
+              <Image source={{ uri: product.imageUrl }} style={styles.productImage} />
+            ) : (
+              <View style={styles.productImagePlaceholder}>
+                <Ionicons name="image-outline" size={28} color={LuxuryColors.textTertiary} />
+              </View>
+            )}
+            <View style={styles.productInfo}>
+              <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+              <Text style={styles.productCategory}>{product.category}</Text>
+              <View style={styles.productFooter}>
+                <Text style={styles.productPrice}>${product.price.toFixed(2)}</Text>
+                {product.ownerName ? (
+                  <Text style={styles.productOwner} numberOfLines={1}>by {product.ownerName}</Text>
+                ) : null}
+              </View>
+            </View>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <View style={{ height: 120 }} />
@@ -392,5 +463,78 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: LuxuryColors.textPrimary,
     textAlign: 'center',
+  },
+  feedCenter: {
+    alignItems: 'center',
+    paddingVertical: LuxurySpacing.xxl,
+    gap: LuxurySpacing.md,
+  },
+  feedMessage: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textTertiary,
+    textAlign: 'center',
+  },
+  feedCta: {
+    paddingHorizontal: LuxurySpacing.xl,
+    paddingVertical: LuxurySpacing.md,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: LuxuryColors.gold,
+  },
+  feedCtaText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+  },
+  productCard: {
+    flexDirection: 'row',
+    backgroundColor: LuxuryColors.glass,
+    borderWidth: 1,
+    borderColor: LuxuryColors.glassBorder,
+    borderRadius: LuxuryBorderRadius.xl,
+    marginBottom: LuxurySpacing.md,
+    overflow: 'hidden',
+  },
+  productImage: {
+    width: 90,
+    height: 90,
+  },
+  productImagePlaceholder: {
+    width: 90,
+    height: 90,
+    backgroundColor: LuxuryColors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productInfo: {
+    flex: 1,
+    padding: LuxurySpacing.md,
+    justifyContent: 'space-between',
+  },
+  productTitle: {
+    fontSize: LuxuryFontSize.md,
+    fontWeight: '600',
+    color: LuxuryColors.textPrimary,
+    marginBottom: LuxurySpacing.xs,
+  },
+  productCategory: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+    marginBottom: LuxurySpacing.xs,
+  },
+  productFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  productPrice: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+  },
+  productOwner: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+    maxWidth: 100,
   },
 });

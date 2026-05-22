@@ -72,9 +72,12 @@ function getSupabaseClient(): SupabaseClient {
   if (!_supabaseClient) {
     _supabaseClient = createClient(cleanUrl, supabaseAnonKey, {
       auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
+        // Firebase is the primary auth source. Disable background token
+        // operations so GoTrue's internal initialize() never makes
+        // network calls that become unhandled promise rejections.
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
       },
     });
     console.log('[SupabaseConfig] Client initialized successfully');

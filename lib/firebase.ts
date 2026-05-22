@@ -129,7 +129,7 @@ export function printFirebaseDiagnostics(): void {
     console.log('  Fix: copy values from Firebase Console → Project Settings → General → Your apps → Web');
     console.log('');
   } catch (e: any) {
-    console.error('[FirebaseDiagnostics] Failed to get Firebase app:', e.message);
+    console.warn('[FirebaseDiagnostics] Failed to get Firebase app:', e.message);
   }
 }
 
@@ -175,7 +175,7 @@ export async function runFirebaseAuthDiagnostics(testEmail: string): Promise<voi
       console.log('[FirebaseAuthDiagnostics] ✅ Sign-in methods found:', methods);
     }
   } catch (error: any) {
-    console.error('[FirebaseAuthDiagnostics] fetchSignInMethodsForEmail ERROR:', error.code, error.message);
+    console.warn('[FirebaseAuthDiagnostics] fetchSignInMethodsForEmail failed (non-critical):', error.code, error.message);
   }
 
   console.log('');
