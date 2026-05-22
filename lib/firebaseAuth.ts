@@ -409,20 +409,24 @@ export const registerWithFirebaseEmail = async (
       email: userCredential.user.email || email,
     };
   } catch (error: any) {
-    console.error('[FirebaseAuth] createUserWithEmailAndPassword REJECTED ❌');
-    console.error('[FirebaseAuth]   error.code   :', error.code);
-    console.error('[FirebaseAuth]   error.message:', error.message);
-    const errorMessages: Record<string, string> = {
-      'auth/email-already-in-use': 'An account with this email already exists.',
-      'auth/invalid-email': 'Invalid email address.',
-      'auth/weak-password': 'Password is too weak. Use at least 8 characters.',
-      'auth/network-request-failed': 'Network error. Check your internet connection and try again.',
-      'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
-    };
-    return {
-      success: false,
-      error: errorMessages[error.code] || error.message || 'Registration failed',
-    };
+    // Known auth errors — use console.log only (never console.error, avoids red RN overlay)
+    console.log('[FirebaseAuth] Registration failed. code:', error.code);
+    switch (error.code) {
+      case 'auth/email-already-in-use':
+        throw new Error('EMAIL_EXISTS');
+      case 'auth/invalid-email':
+        throw new Error('INVALID_EMAIL');
+      case 'auth/weak-password':
+        throw new Error('WEAK_PASSWORD');
+      case 'auth/network-request-failed':
+        throw new Error('NETWORK_ERROR');
+      case 'auth/too-many-requests':
+        throw new Error('TOO_MANY_REQUESTS');
+      default:
+        // Truly unexpected — log for debugging
+        console.error('[FirebaseAuth] Unexpected registration error:', error.code, error.message);
+        throw new Error('SIGNUP_ERROR');
+    }
   }
 };
 

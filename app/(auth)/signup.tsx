@@ -119,8 +119,8 @@ export default function SignupScreen() {
     // ── Firebase config gate (primary auth) ───────────────────────
     if (!isFirebaseConfigured()) {
       const cfgStatus = getFirebaseConfigStatus();
-      console.error('[SignUp] Firebase NOT configured. Missing:', cfgStatus.missing);
-      console.error('[SignUp] Placeholders:', cfgStatus.placeholders);
+      console.warn('[SignUp] Firebase NOT configured. Missing:', cfgStatus.missing);
+      console.warn('[SignUp] Placeholders:', cfgStatus.placeholders);
       Alert.alert('Error', 'Account creation is unavailable. Firebase is not configured.');
       return;
     }
@@ -149,13 +149,7 @@ export default function SignupScreen() {
       console.log('[SignUp] registerWithFirebaseEmail returned in', elapsed, 'ms');
       console.log('[SignUp] Firebase result:', JSON.stringify(firebaseResult));
 
-      if (!firebaseResult.success) {
-        console.error('[SignUp] Firebase registration FAILED:', firebaseResult.error);
-        // Map Firebase error codes to user-friendly messages
-        Alert.alert('Signup Failed', firebaseResult.error || 'Unable to create account. Please try again.');
-        return;
-      }
-
+      // registerWithFirebaseEmail throws on any failure — reaching here means success.
       console.log('[SignUp] Firebase registration SUCCESS ✅ UID:', firebaseResult.userId);
 
       // ── SECONDARY: Supabase profile (fire-and-forget, truly non-blocking) ─
@@ -198,10 +192,31 @@ export default function SignupScreen() {
         [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
       );
     } catch (error: any) {
-      console.error('[SignUp] UNCAUGHT EXCEPTION:', error.message);
-      if (error?.code) console.error('[SignUp]   code:', error.code);
-      if (error?.stack) console.error('[SignUp]   stack:', error.stack);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      // Expected auth errors — no console.error, no red RN overlay
+      switch (error.message) {
+        case 'EMAIL_EXISTS':
+          Alert.alert(
+            'Account already exists',
+            'This email is already registered. Please sign in or reset your password.'
+          );
+          return;
+        case 'WEAK_PASSWORD':
+          Alert.alert('Weak password', 'Password must be stronger.');
+          return;
+        case 'INVALID_EMAIL':
+          Alert.alert('Invalid email', 'Please enter a valid email.');
+          return;
+        case 'NETWORK_ERROR':
+          Alert.alert('Network error', 'Check your internet connection and try again.');
+          return;
+        case 'TOO_MANY_REQUESTS':
+          Alert.alert('Too many attempts', 'Please wait a moment and try again.');
+          return;
+        default:
+          // Truly unexpected — only case where console.error is appropriate
+          console.error('[SignUp] Unexpected error:', error.message);
+          Alert.alert('Signup failed', 'Something went wrong. Please try again.');
+      }
     }
   };
 
