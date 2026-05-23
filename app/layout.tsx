@@ -3,8 +3,23 @@ import { Stack, useRouter } from 'expo-router';
 import { View, StyleSheet, LogBox } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ThemeProvider, DarkTheme } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import { LuxuryColors } from '../constants/luxuryTheme';
+
+// Force-dark theme for React Navigation — overrides system light mode.
+// This ensures the NavigationContainer, scene backgrounds, and header cards
+// all use our exact dark navy rather than defaulting to the white system theme.
+const APP_THEME = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: LuxuryColors.background,   // '#071120'
+    card:       LuxuryColors.surface,      // '#0D1525'
+    border:     'transparent',
+    primary:    '#D4AF37',
+  },
+};
 import { getFirebaseApp, printFirebaseDiagnostics, runFirebaseAuthDiagnostics, printFirebaseConsoleChecklist } from '../lib/firebase';
 import { getAuth } from 'firebase/auth';
 
@@ -135,21 +150,29 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
+    // style on SafeAreaProvider paints the native window background dark,
+    // eliminating the white strips iOS shows in the status-bar and home-
+    // indicator areas before React Native's own views render.
+    <SafeAreaProvider style={{ flex: 1, backgroundColor: LuxuryColors.background }}>
+      {/* StatusBar must live inside SafeAreaProvider so insets are available */}
       <StatusBar style="light" backgroundColor={LuxuryColors.background} translucent={false} />
-      <View style={styles.container}>
-        <DeepLinkHandler>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: LuxuryColors.background },
-            }}
-          >
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
-        </DeepLinkHandler>
-      </View>
+      {/* ThemeProvider forces every React Navigation container/scene/card
+          to use our dark palette regardless of the device's system colour scheme. */}
+      <ThemeProvider value={APP_THEME}>
+        <View style={styles.container}>
+          <DeepLinkHandler>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: LuxuryColors.background },
+              }}
+            >
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            </Stack>
+          </DeepLinkHandler>
+        </View>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
