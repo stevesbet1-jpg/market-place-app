@@ -1,35 +1,36 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
-    // edges={['bottom']} consumes the home-indicator inset so the pill
-    // never renders behind the physical home indicator on iPhone.
-    // The dark backgroundColor fills the entire safe-area padding zone.
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <View style={styles.container}>
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: LuxuryColors.gold,
           tabBarInactiveTintColor: LuxuryColors.textTertiary,
-          // Fill the entire tab-bar container area with our dark background.
-          // This covers the space around / below the floating pill so no
-          // white or grey from the navigation theme leaks through.
+          // Fills the pill background so the area within the tab bar is dark.
           tabBarBackground: () => (
             <View style={{ flex: 1, backgroundColor: LuxuryColors.background }} />
           ),
           tabBarStyle: {
-            backgroundColor: 'rgba(7, 17, 32, 0.95)',
+            position: 'absolute',
+            // Sit just above the home indicator: insets.bottom (~34pt on iPhone X+)
+            // minus 8pt so the pill overlaps slightly into the safe zone but stays
+            // visually clear of the home bar. Floor at 6pt for devices without insets.
+            bottom: Math.max(insets.bottom - 8, 6),
+            left: 16,
+            right: 16,
+            height: 72,
+            paddingTop: 10,
+            paddingBottom: 8,
             borderTopWidth: 0,
-            height: 70,
-            paddingTop: LuxurySpacing.sm,
-            paddingBottom: LuxurySpacing.sm,
-            marginHorizontal: LuxurySpacing.lg,
-            // Reduced from lg (24) → xs (4): pill sits closer to the safe-area bottom
-            marginBottom: LuxurySpacing.xs,
+            backgroundColor: 'rgba(7, 17, 32, 0.95)',
             borderRadius: LuxuryBorderRadius.xxxl,
             borderWidth: 1,
             borderColor: LuxuryColors.glassBorder,
@@ -101,7 +102,7 @@ export default function TabLayout() {
         }}
       />
       </Tabs>
-    </SafeAreaView>
+    </View>
   );
 }
 
