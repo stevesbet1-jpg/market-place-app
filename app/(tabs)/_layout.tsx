@@ -21,9 +21,10 @@ export default function TabLayout() {
           tabBarStyle: {
             position: 'absolute',
             // Sit just above the home indicator: insets.bottom (~34pt on iPhone X+)
-            // minus 8pt so the pill overlaps slightly into the safe zone but stays
-            // visually clear of the home bar. Floor at 6pt for devices without insets.
-            bottom: Math.max(insets.bottom - 8, 6),
+            // minus 18pt moves the pill lower into the safe zone while still
+            // keeping it visually clear of the home bar. Floor at 4pt for
+            // devices without a home indicator.
+            bottom: Math.max(insets.bottom - 18, 4),
             left: 16,
             right: 16,
             height: 72,
