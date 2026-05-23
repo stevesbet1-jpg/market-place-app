@@ -6,22 +6,22 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, DarkTheme } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import { LuxuryColors } from '../constants/luxuryTheme';
+import { getFirebaseApp, printFirebaseDiagnostics, runFirebaseAuthDiagnostics, printFirebaseConsoleChecklist } from '../lib/firebase';
+import { getAuth } from 'firebase/auth';
 
-// Force-dark theme for React Navigation — overrides system light mode.
-// This ensures the NavigationContainer, scene backgrounds, and header cards
-// all use our exact dark navy rather than defaulting to the white system theme.
+// Force-dark navigation theme — overrides the system colour-scheme so the
+// NavigationContainer, every scene background, and the tab-bar card area
+// all use our exact dark navy regardless of device setting.
 const APP_THEME = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: LuxuryColors.background,   // '#071120'
-    card:       LuxuryColors.surface,      // '#0D1525'
+    background: LuxuryColors.background,  // '#071120' – navigator/scene bg
+    card:       LuxuryColors.background,  // '#071120' – tab-bar & header card bg (was surface #0D1525)
     border:     'transparent',
     primary:    '#D4AF37',
   },
 };
-import { getFirebaseApp, printFirebaseDiagnostics, runFirebaseAuthDiagnostics, printFirebaseConsoleChecklist } from '../lib/firebase';
-import { getAuth } from 'firebase/auth';
 
 // ─── Suppress LogBox red screens for handled auth errors ───────────
 // These errors are caught and handled gracefully in the UI.

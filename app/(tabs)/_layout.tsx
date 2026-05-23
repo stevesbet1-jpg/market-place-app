@@ -7,32 +7,41 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryGradients, Luxur
 
 export default function TabLayout() {
   return (
+    // edges={['bottom']} consumes the home-indicator inset so the pill
+    // never renders behind the physical home indicator on iPhone.
+    // The dark backgroundColor fills the entire safe-area padding zone.
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <View style={styles.innerContainer}>
-        <Tabs
-          screenOptions={{
-            tabBarActiveTintColor: LuxuryColors.gold,
-            tabBarInactiveTintColor: LuxuryColors.textTertiary,
-            tabBarStyle: {
-              backgroundColor: 'rgba(7, 17, 32, 0.9)',
-              borderTopWidth: 0,
-              height: 80,
-              paddingTop: LuxurySpacing.sm,
-              paddingBottom: LuxurySpacing.xl,
-              marginHorizontal: LuxurySpacing.xl,
-              marginBottom: LuxurySpacing.lg,
-              borderRadius: LuxuryBorderRadius.xxxl,
-              borderWidth: 1,
-              borderColor: LuxuryColors.glassBorder,
-              ...LuxuryShadow.strong,
-            },
-            headerShown: false,
-            tabBarLabelStyle: {
-              fontSize: 10,
-              fontWeight: '600',
-            },
-          }}
-        >
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: LuxuryColors.gold,
+          tabBarInactiveTintColor: LuxuryColors.textTertiary,
+          // Fill the entire tab-bar container area with our dark background.
+          // This covers the space around / below the floating pill so no
+          // white or grey from the navigation theme leaks through.
+          tabBarBackground: () => (
+            <View style={{ flex: 1, backgroundColor: LuxuryColors.background }} />
+          ),
+          tabBarStyle: {
+            backgroundColor: 'rgba(7, 17, 32, 0.95)',
+            borderTopWidth: 0,
+            height: 70,
+            paddingTop: LuxurySpacing.sm,
+            paddingBottom: LuxurySpacing.sm,
+            marginHorizontal: LuxurySpacing.lg,
+            // Reduced from lg (24) → xs (4): pill sits closer to the safe-area bottom
+            marginBottom: LuxurySpacing.xs,
+            borderRadius: LuxuryBorderRadius.xxxl,
+            borderWidth: 1,
+            borderColor: LuxuryColors.glassBorder,
+            ...LuxuryShadow.strong,
+          },
+          headerShown: false,
+          tabBarLabelStyle: {
+            fontSize: 10,
+            fontWeight: '600',
+          },
+        }}
+      >
       <Tabs.Screen
         name="index"
         options={{
@@ -92,17 +101,12 @@ export default function TabLayout() {
         }}
       />
       </Tabs>
-      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: LuxuryColors.background,
-  },
-  innerContainer: {
     flex: 1,
     backgroundColor: LuxuryColors.background,
   },
