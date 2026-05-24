@@ -13,15 +13,14 @@ export default function TabLayout() {
         screenOptions={{
           tabBarActiveTintColor: LuxuryColors.gold,
           tabBarInactiveTintColor: LuxuryColors.textTertiary,
-          // Single solid dark background fills the bar + home-indicator zone.
           tabBarBackground: () => (
             <View style={{ flex: 1, backgroundColor: LuxuryColors.background }} />
           ),
           tabBarStyle: {
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
+            // NO position:'absolute' — the tab bar is in the normal flex flow,
+            // anchored to the physical screen bottom by the navigator container.
+            // position:'absolute' made bottom:0 relative to React Navigation's
+            // inset-adjusted container (~34pt above the screen), causing the gap.
             height: 64 + insets.bottom,
             paddingTop: 6,
             paddingBottom: insets.bottom,
