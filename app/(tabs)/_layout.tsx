@@ -19,10 +19,10 @@ export default function TabLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            bottom: -10,
+            bottom: 0,
             left: 0,
             right: 0,
-            height: 82 + insets.bottom,
+            height: 64 + insets.bottom,
             paddingTop: 6,
             paddingBottom: insets.bottom,
             borderTopWidth: 0,
