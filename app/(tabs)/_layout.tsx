@@ -19,12 +19,10 @@ export default function TabLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            bottom: -insets.bottom + 8,
+            bottom: 0,
             left: 0,
             right: 0,
-            // Extend into the home-indicator zone so there is one unified
-            // dark fill from the icons down to the physical screen bottom.
-            height: 86 + insets.bottom,
+            height: 82 + insets.bottom,
             paddingTop: 8,
             paddingBottom: insets.bottom + 6,
             borderTopWidth: 0,
