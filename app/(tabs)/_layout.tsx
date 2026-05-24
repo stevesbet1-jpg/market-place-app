@@ -19,7 +19,7 @@ export default function TabLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            bottom: 0,
+            bottom: -insets.bottom + 8,
             left: 0,
             right: 0,
             // Extend into the home-indicator zone so there is one unified
