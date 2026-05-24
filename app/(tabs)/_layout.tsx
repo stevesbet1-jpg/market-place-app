@@ -19,12 +19,10 @@ export default function TabLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            bottom: 0,
+            bottom: -10,
             left: 0,
             right: 0,
-            // Standard iOS tab bar: 49pt content + home-indicator inset.
-            // This puts icons/labels snug above the home bar with no empty gap.
-            height: 49 + insets.bottom,
+            height: 82 + insets.bottom,
             paddingTop: 6,
             paddingBottom: insets.bottom,
             borderTopWidth: 0,
