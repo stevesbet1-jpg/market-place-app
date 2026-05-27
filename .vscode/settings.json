@@ -1,0 +1,20 @@
+{
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/.expo": true,
+    "**/dist": true,
+    "**/build": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.expo/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.expo": true,
+    "**/travel-marketplace-app/node_modules": true
+  },
+  "typescript.tsserver.watchOptions": {
+    "excludeDirectories": ["node_modules", ".expo"]
+  }
+}

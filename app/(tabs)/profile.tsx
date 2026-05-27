@@ -85,7 +85,16 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      bounces={false}
+      alwaysBounceHorizontal={false}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      automaticallyAdjustKeyboardInsets={false}
+    >
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
@@ -193,7 +202,6 @@ export default function ProfileScreen() {
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
 
-      <View style={{ height: 100 }} />
     </ScrollView>
   );
 }
@@ -207,7 +215,10 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
     backgroundColor: LuxuryColors.surface,
+    overflow: 'hidden',
   },
   header: {
     paddingTop: LuxurySpacing.xl,

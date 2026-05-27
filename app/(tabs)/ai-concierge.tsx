@@ -17,7 +17,16 @@ export default function AIConciergeScreen() {
     Alert.alert('AI Assistant', `Processing: ${suggestion}`);
   };
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      bounces={false}
+      alwaysBounceHorizontal={false}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      automaticallyAdjustKeyboardInsets={false}
+    >
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -146,7 +155,6 @@ export default function AIConciergeScreen() {
         </View>
       </View>
 
-      <View style={{ height: 120 }} />
     </ScrollView>
   );
 }
@@ -154,7 +162,10 @@ export default function AIConciergeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
     backgroundColor: LuxuryColors.surface,
+    overflow: 'hidden',
   },
   header: {
     paddingTop: LuxurySpacing.xl,
@@ -198,7 +209,7 @@ const styles = StyleSheet.create({
     marginBottom: LuxurySpacing.lg,
   },
   actionCard: {
-    height: 120,
+    height: 104,
     borderRadius: LuxuryBorderRadius.xxxl,
     overflow: 'hidden',
     marginBottom: LuxurySpacing.lg,

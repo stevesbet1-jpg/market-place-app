@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert, Platform as OS } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,11 @@ import { checkEmailExists, loginUser } from './authStorage';
 import { loginWithApple, loginWithEmail } from '../../lib/authService';
 import { signInWithFirebaseGoogle } from '../../lib/firebaseAuth';
 import { upsertUserProfile } from '../../lib/userProfile';
+import {
+  SecurePasswordInput,
+  type SecurePasswordInputRef,
+} from '../../components/SecurePasswordInput';
+import { ScreenEntrance } from '../../components/ui/ScreenEntrance';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -37,6 +42,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const passwordInputRef = useRef<SecurePasswordInputRef>(null);
 
   const [, googleResponse, googlePromptAsync] = GoogleProvider.useAuthRequest({
     webClientId: _hookWebClientId,
@@ -175,10 +181,11 @@ export default function LoginScreen() {
         </View>
 
         {/* Title */}
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to your membership</Text>
-        </View>
+        <ScreenEntrance delay={100}>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.subtitle}>Sign in to your membership</Text>
+          </View>
 
         {/* Compact Form */}
         <View style={styles.form}>
@@ -200,27 +207,21 @@ export default function LoginScreen() {
 
           {/* Password Input */}
           <View style={styles.inputContainer}>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed-outline" size={20} color={LuxuryColors.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor={LuxuryColors.textTertiary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-              >
-                <Ionicons 
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'} 
-                  size={20} 
-                  color={LuxuryColors.textSecondary} 
-                />
-              </TouchableOpacity>
-            </View>
+            <SecurePasswordInput
+              ref={passwordInputRef}
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                passwordInputRef.current?.refresh(text);
+              }}
+              visible={showPassword}
+              onToggleVisibility={() => setShowPassword(!showPassword)}
+              placeholder="Password"
+              placeholderTextColor={LuxuryColors.textTertiary}
+              iconColor={LuxuryColors.textSecondary}
+              wrapperStyle={styles.inputWrapper}
+              inputStyle={styles.input}
+            />
           </View>
 
           {/* Forgot Password */}
@@ -297,6 +298,7 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        </ScreenEntrance>
       </ScrollView>
     </KeyboardAvoidingView>
   );

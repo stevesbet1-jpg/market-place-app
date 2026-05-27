@@ -107,7 +107,13 @@ export default function AddProductScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        alwaysBounceHorizontal={false}
         keyboardShouldPersistTaps="handled"
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        automaticallyAdjustKeyboardInsets={false}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -230,7 +236,6 @@ export default function AddProductScreen() {
           )}
         </TouchableOpacity>
 
-        <View style={{ height: 80 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -239,7 +244,10 @@ export default function AddProductScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
     backgroundColor: LuxuryColors.surface,
+    overflow: 'hidden',
   },
   scrollContent: {
     paddingHorizontal: LuxurySpacing.xl,

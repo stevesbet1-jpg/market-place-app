@@ -13,7 +13,16 @@ export default function TripsScreen() {
     Alert.alert('Book Again', `Booking ${tripName} again coming soon.`);
   };
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      bounces={false}
+      alwaysBounceHorizontal={false}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      automaticallyAdjustKeyboardInsets={false}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Your Trips</Text>
         <Text style={styles.subtitle}>Upcoming and past extraordinary journeys</Text>
@@ -62,7 +71,7 @@ export default function TripsScreen() {
               </LinearGradient>
             </View>
             <View style={styles.pastTripInfo}>
-              <Text style={styles.pastTripName}>{trip.name}</Text>
+              <Text style={styles.pastTripName} numberOfLines={2} ellipsizeMode="tail">{trip.name}</Text>
               <Text style={styles.pastTripDate}>{trip.date}</Text>
             </View>
             <TouchableOpacity 
@@ -76,7 +85,6 @@ export default function TripsScreen() {
         ))}
       </View>
 
-      <View style={{ height: 120 }} />
     </ScrollView>
   );
 }
@@ -84,7 +92,10 @@ export default function TripsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
     backgroundColor: LuxuryColors.surface,
+    overflow: 'hidden',
   },
   header: {
     paddingTop: LuxurySpacing.xl,

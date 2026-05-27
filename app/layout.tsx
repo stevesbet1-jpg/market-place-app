@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { View, StyleSheet, LogBox } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { ThemeProvider, DarkTheme } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import { LuxuryColors } from '../constants/luxuryTheme';
@@ -153,7 +153,7 @@ export default function RootLayout() {
     // style on SafeAreaProvider paints the native window background dark,
     // eliminating the white strips iOS shows in the status-bar and home-
     // indicator areas before React Native's own views render.
-    <SafeAreaProvider style={{ flex: 1, backgroundColor: LuxuryColors.background }}>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics} style={{ flex: 1, backgroundColor: LuxuryColors.background }}>
       {/* StatusBar must live inside SafeAreaProvider so insets are available */}
       <StatusBar style="light" backgroundColor={LuxuryColors.background} translucent={false} />
       {/* ThemeProvider forces every React Navigation container/scene/card
@@ -180,6 +180,8 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
     backgroundColor: LuxuryColors.background,
+    overflow: 'hidden',
   },
 });

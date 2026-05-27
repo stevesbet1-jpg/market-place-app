@@ -1,10 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { getAuth } from 'firebase/auth';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+import { getFirebaseApp } from '../../lib/firebase';
+import { getUserProfile } from '../../lib/userProfile';
 
 export default function MembershipScreen() {
+  const [memberName, setMemberName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    const user = auth.currentUser;
+    if (!user) return;
+    getUserProfile(user.uid)
+      .then((p) => {
+        const name = p?.fullName ?? user.displayName ?? null;
+        setMemberName(name ? name.split(' ')[0].toUpperCase() : null);
+      })
+      .catch(() => {
+        const name = user.displayName;
+        setMemberName(name ? name.split(' ')[0].toUpperCase() : null);
+      });
+  }, []);
+
   const handleTierPress = () => {
     Alert.alert('Membership Details', 'Full membership tier details coming soon.');
   };
@@ -13,7 +33,16 @@ export default function MembershipScreen() {
     Alert.alert('Privilege', `${privilegeName} benefit details coming soon.`);
   };
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      bounces={false}
+      alwaysBounceHorizontal={false}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      automaticallyAdjustKeyboardInsets={false}
+    >
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.vaultIcon}>
@@ -37,7 +66,7 @@ export default function MembershipScreen() {
               <Text style={styles.cardSubtitle}>Invitation Only</Text>
               <View style={styles.cardFooter}>
                 <Text style={styles.cardNumber}>•••• •••• •••• 8888</Text>
-                <Text style={styles.cardMember}>MEMBER</Text>
+                <Text style={styles.cardMember}>{memberName ?? 'MEMBER'}</Text>
               </View>
             </View>
           </LinearGradient>
@@ -102,7 +131,6 @@ export default function MembershipScreen() {
         </View>
       </View>
 
-      <View style={{ height: 120 }} />
     </ScrollView>
   );
 }
@@ -110,7 +138,10 @@ export default function MembershipScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
     backgroundColor: LuxuryColors.background,
+    overflow: 'hidden',
   },
   header: {
     paddingTop: LuxurySpacing.xl,

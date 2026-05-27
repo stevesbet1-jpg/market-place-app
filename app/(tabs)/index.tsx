@@ -1,17 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Pressable, useWindowDimensions, Alert, ActivityIndicator, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { getAuth } from 'firebase/auth';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+import { AnimationTiming } from '../../constants/animations';
+import { getFirebaseApp } from '../../lib/firebase';
 import { getLatestProducts, type Product } from '../../lib/products';
 
-const { width } = Dimensions.get('window');
+const COLLECTIONS = [
+  { name: 'Private Islands', tag: 'Exclusive Retreats' },
+  { name: 'Super Villas', tag: 'Private Villas' },
+  { name: 'Yacht Escapes', tag: 'Coastal Luxury' },
+  { name: 'Desert Retreats', tag: 'Expedition' },
+] as const;
+
+const COLLECTION_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  'Private Islands': 'umbrella-outline',
+  'Super Villas': 'business-outline',
+  'Yacht Escapes': 'boat-outline',
+  'Desert Retreats': 'compass-outline',
+};
+
+
 
 export default function ExploreScreen() {
+  const { width } = useWindowDimensions();
+  // Two equal cards with one gap inside section padding (xl each side)
+  const privilegeCardWidth = Math.floor((width - LuxurySpacing.xl * 2 - LuxurySpacing.md) / 2);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState(false);
+  const productsAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     getLatestProducts(20)
@@ -20,12 +41,27 @@ export default function ExploreScreen() {
       .finally(() => setProductsLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!productsLoading) {
+      Animated.timing(productsAnim, {
+        toValue: 1,
+        duration: AnimationTiming.normal,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [productsLoading, productsAnim]);
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const currentUser = getAuth(getFirebaseApp()).currentUser;
+  const greetingName = currentUser?.displayName?.split(' ')[0] ?? 'Member';
+
   const handleNotificationPress = () => {
     Alert.alert('Notifications', 'No new notifications at this time.');
   };
 
   const handleViewAllPress = () => {
-    Alert.alert('Collections', 'View all collections coming soon.');
+    Alert.alert('Collections', 'Full luxury collection catalogue coming soon.');
   };
 
   const handleConciergePress = () => {
@@ -39,8 +75,22 @@ export default function ExploreScreen() {
   const handlePrivilegePress = (privilegeName: string) => {
     Alert.alert('Privilege', `${privilegeName} benefit details coming soon.`);
   };
+
+  const handleSellPress = () => {
+    router.push('/(tabs)/add-product');
+  };
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      bounces={false}
+      alwaysBounceHorizontal={false}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      automaticallyAdjustKeyboardInsets={false}
+    >
       {/* Elegant Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -55,7 +105,7 @@ export default function ExploreScreen() {
             <Ionicons name="notifications-outline" size={24} color={LuxuryColors.textPrimary} />
           </TouchableOpacity>
         </View>
-        <Text style={styles.greeting}>Good Evening, Member</Text>
+        <Text style={styles.greeting}>{greeting}, {greetingName}</Text>
         <Text style={styles.subtitle}>Your next extraordinary journey awaits</Text>
       </View>
 
@@ -66,6 +116,7 @@ export default function ExploreScreen() {
         activeOpacity={0.8}
       >
         <LinearGradient colors={LuxuryGradients.violetGold} style={styles.heroGradient}>
+          <View style={styles.heroOverlay} />
           <View style={styles.heroContent}>
             <View style={styles.heroBadge}>
               <Text style={styles.heroBadgeText}>Private Access</Text>
@@ -75,6 +126,9 @@ export default function ExploreScreen() {
             <View style={styles.heroMeta}>
               <Ionicons name="diamond" size={16} color={LuxuryColors.gold} />
               <Text style={styles.heroMetaText}>Founder Circle</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={styles.heroExplore}>Explore</Text>
+              <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
             </View>
           </View>
         </LinearGradient>
@@ -88,27 +142,30 @@ export default function ExploreScreen() {
             <Text style={styles.sectionLink}>View All</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.collectionScroll}>
-          {[
-            { name: 'Santorini', tag: 'Private Villas' },
-            { name: 'Kyoto', tag: 'Cultural' },
-            { name: 'Amalfi', tag: 'Coastal' },
-            { name: 'Patagonia', tag: 'Expedition' },
-          ].map((dest, index) => (
-            <TouchableOpacity 
-              key={index} 
-              style={styles.collectionCard}
-              onPress={() => handleDestinationPress(dest.name)}
-              activeOpacity={0.8}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: LuxurySpacing.md }}>
+          {COLLECTIONS.map((card) => (
+            <Pressable
+              key={card.name}
+              style={({ pressed }) => [
+                styles.collectionCard,
+                { width: privilegeCardWidth },
+                pressed && { transform: [{ scale: 0.96 }], opacity: 0.9 },
+              ]}
+              onPress={() => handleDestinationPress(card.name)}
             >
-              <View style={styles.collectionImage}>
-                <Ionicons name="image-outline" size={32} color={LuxuryColors.textTertiary} />
+              <View style={[styles.collectionImage, { width: '100%' }]}>
+                <Ionicons
+                  name={COLLECTION_ICONS[card.name] ?? 'image-outline'}
+                  size={40}
+                  color={LuxuryColors.gold}
+                  style={{ opacity: 0.75 }}
+                />
               </View>
-              <Text style={styles.collectionName}>{dest.name}</Text>
-              <Text style={styles.collectionTag}>{dest.tag}</Text>
-            </TouchableOpacity>
+              <Text style={styles.collectionName}>{card.name}</Text>
+              <Text style={styles.collectionTag}>{card.tag}</Text>
+            </Pressable>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       {/* AI Concierge Recommendation */}
@@ -117,7 +174,12 @@ export default function ExploreScreen() {
         onPress={handleConciergePress}
         activeOpacity={0.8}
       >
-        <LinearGradient colors={LuxuryGradients.goldDeep} style={styles.conciergeGradient}>
+        <LinearGradient
+          colors={LuxuryGradients.goldDeep}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.conciergeGradient}
+        >
           <View style={styles.conciergeContent}>
             <View style={styles.conciergeIconContainer}>
               <Ionicons name="sparkles" size={28} color="#FFFFFF" />
@@ -137,55 +199,36 @@ export default function ExploreScreen() {
           <Text style={styles.sectionTitle}>Member Privileges</Text>
         </View>
         <View style={styles.privilegesGrid}>
-          <TouchableOpacity 
-            style={styles.privilegeCard}
-            onPress={() => handlePrivilegePress('Private Aviation')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.privilegeIcon}>
-              <Ionicons name="airplane" size={24} color={LuxuryColors.gold} />
-            </View>
-            <Text style={styles.privilegeTitle}>Private Aviation</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.privilegeCard}
-            onPress={() => handlePrivilegePress('VIP Dining')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.privilegeIcon}>
-              <Ionicons name="restaurant" size={24} color={LuxuryColors.gold} />
-            </View>
-            <Text style={styles.privilegeTitle}>VIP Dining</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.privilegeCard}
-            onPress={() => handlePrivilegePress('Villa Upgrades')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.privilegeIcon}>
-              <Ionicons name="diamond" size={24} color={LuxuryColors.gold} />
-            </View>
-            <Text style={styles.privilegeTitle}>Villa Upgrades</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.privilegeCard}
-            onPress={() => handlePrivilegePress('Travel Insurance')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.privilegeIcon}>
-              <Ionicons name="shield-checkmark" size={24} color={LuxuryColors.gold} />
-            </View>
-            <Text style={styles.privilegeTitle}>Travel Insurance</Text>
-          </TouchableOpacity>
+          {([
+            { label: 'Private Aviation', icon: 'airplane' as const },
+            { label: 'VIP Dining', icon: 'restaurant' as const },
+            { label: 'Villa Upgrades', icon: 'diamond' as const },
+            { label: 'Travel Insurance', icon: 'shield-checkmark' as const },
+          ] as const).map(({ label, icon }) => (
+            <Pressable
+              key={label}
+              style={({ pressed }) => [
+                styles.privilegeCard,
+                { width: privilegeCardWidth },
+                pressed && { transform: [{ scale: 0.97 }] },
+              ]}
+              onPress={() => handlePrivilegePress(label)}
+            >
+              <View style={styles.privilegeIcon}>
+                <Ionicons name={icon} size={24} color={LuxuryColors.gold} />
+              </View>
+              <Text style={styles.privilegeTitle} numberOfLines={2}>{label}</Text>
+            </Pressable>
+          ))}
         </View>
       </View>
 
       {/* Marketplace Product Feed */}
-      <View style={styles.section}>
+      <View style={[styles.section, { paddingBottom: LuxurySpacing.xxxl }]}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Marketplace</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/add-product')} activeOpacity={0.7}>
-            <Text style={styles.sectionLink}>+ Sell</Text>
+          <TouchableOpacity onPress={handleSellPress} activeOpacity={0.7}>
+            <Text style={styles.sellLink}>+ Sell</Text>
           </TouchableOpacity>
         </View>
 
@@ -195,27 +238,31 @@ export default function ExploreScreen() {
           </View>
         )}
 
-        {!productsLoading && productsError && (
-          <View style={styles.feedCenter}>
-            <Text style={styles.feedMessage}>Could not load listings. Check your connection.</Text>
-          </View>
-        )}
+        <Animated.View style={{ opacity: productsAnim }}>
+          {!productsLoading && productsError && (
+            <View style={styles.feedCenter}>
+              <Text style={styles.feedMessage}>Could not load listings. Check your connection.</Text>
+            </View>
+          )}
 
-        {!productsLoading && !productsError && products.length === 0 && (
-          <View style={styles.feedCenter}>
-            <Ionicons name="storefront-outline" size={40} color={LuxuryColors.textTertiary} />
-            <Text style={styles.feedMessage}>No listings yet.</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/add-product')} activeOpacity={0.8} style={styles.feedCta}>
-              <Text style={styles.feedCtaText}>Be the first to sell</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          {!productsLoading && !productsError && products.length === 0 && (
+            <View style={styles.feedCenter}>
+              <Ionicons name="storefront-outline" size={40} color={LuxuryColors.textTertiary} />
+              <Text style={styles.feedMessage}>Your private marketplace is opening soon.</Text>
+              <Text style={styles.feedSubtitle}>Exclusive member listings will appear here.</Text>
+              <TouchableOpacity onPress={handleSellPress} activeOpacity={0.8} style={styles.feedCta}>
+                <Text style={styles.feedCtaText}>Be the first to sell</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-        {!productsLoading && products.map((product) => (
-          <TouchableOpacity
+          {!productsLoading && products.map((product) => (
+          <Pressable
             key={product.id}
-            style={styles.productCard}
-            activeOpacity={0.85}
+            style={({ pressed }) => [
+              styles.productCard,
+              pressed && { transform: [{ scale: 0.98 }], opacity: 0.85 },
+            ]}
             onPress={() => Alert.alert(product.title, `$${product.price.toFixed(2)}\n\n${product.description}`)}
           >
             {product.imageUrl ? (
@@ -235,11 +282,11 @@ export default function ExploreScreen() {
                 ) : null}
               </View>
             </View>
-          </TouchableOpacity>
+          </Pressable>
         ))}
+        </Animated.View>
       </View>
 
-      <View style={{ height: 120 }} />
     </ScrollView>
   );
 }
@@ -247,7 +294,10 @@ export default function ExploreScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
     backgroundColor: LuxuryColors.background,
+    overflow: 'hidden',
   },
   header: {
     paddingTop: LuxurySpacing.xl,
@@ -303,6 +353,8 @@ const styles = StyleSheet.create({
     borderRadius: LuxuryBorderRadius.xxxl,
     overflow: 'hidden',
     marginBottom: LuxurySpacing.xxl,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.25)',
     ...LuxuryShadow.ambient,
   },
   heroGradient: {
@@ -310,13 +362,21 @@ const styles = StyleSheet.create({
     padding: LuxurySpacing.xl,
     justifyContent: 'flex-end',
   },
+  heroOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+  },
   heroContent: {
     gap: LuxurySpacing.sm,
   },
   heroBadge: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingHorizontal: LuxurySpacing.md,
+    paddingHorizontal: LuxurySpacing.sm,
     paddingVertical: LuxurySpacing.xs,
     borderRadius: LuxuryBorderRadius.lg,
     marginBottom: LuxurySpacing.xs,
@@ -326,7 +386,7 @@ const styles = StyleSheet.create({
     color: LuxuryColors.gold,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    letterSpacing: 0.8,
   },
   heroTitle: {
     fontSize: LuxuryFontSize.xxl,
@@ -368,21 +428,16 @@ const styles = StyleSheet.create({
     color: LuxuryColors.violetLight,
     fontWeight: '600',
   },
-  collectionScroll: {
-    flexDirection: 'row',
-  },
   collectionCard: {
-    marginRight: LuxurySpacing.md,
     alignItems: 'center',
-    width: 120,
+    overflow: 'hidden',
   },
   collectionImage: {
-    width: 120,
-    height: 160,
+    height: 140,
     borderRadius: LuxuryBorderRadius.lg,
-    backgroundColor: LuxuryColors.surfaceLight,
+    backgroundColor: 'rgba(212, 175, 55, 0.05)',
     borderWidth: 1,
-    borderColor: LuxuryColors.divider,
+    borderColor: 'rgba(212, 175, 55, 0.18)',
     marginBottom: LuxurySpacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -396,6 +451,7 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.xs,
     color: LuxuryColors.gold,
     fontWeight: '600',
+    marginTop: 2,
   },
   conciergeCard: {
     marginHorizontal: LuxurySpacing.xl,
@@ -439,22 +495,29 @@ const styles = StyleSheet.create({
     gap: LuxurySpacing.md,
   },
   privilegeCard: {
-    width: (width - LuxurySpacing.xxxl - LuxurySpacing.md) / 2,
     backgroundColor: LuxuryColors.surfaceLight,
     borderWidth: 1,
     borderColor: LuxuryColors.divider,
     borderRadius: LuxuryBorderRadius.xl,
     padding: LuxurySpacing.lg,
+    minHeight: 120,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: LuxurySpacing.sm,
+  },
+  heroExplore: {
+    fontSize: LuxuryFontSize.xs,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   privilegeIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: LuxuryColors.glass,
-    borderWidth: 1,
-    borderColor: LuxuryColors.glassBorder,
+    backgroundColor: LuxuryColors.surfaceLight,
+    borderWidth: 1.5,
+    borderColor: LuxuryColors.gold,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -485,6 +548,17 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.gold,
     fontWeight: '600',
+  },
+  feedSubtitle: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+    textAlign: 'center',
+    opacity: 0.7,
+  },
+  sellLink: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '700',
   },
   productCard: {
     flexDirection: 'row',

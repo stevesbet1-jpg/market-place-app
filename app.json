@@ -17,8 +17,10 @@
       "bundleIdentifier": "com.anonymous.Matketplace",
       "supportsTablet": true,
       "usesAppleSignIn": true,
+      "userInterfaceStyle": "dark",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIStatusBarStyle": "UIStatusBarStyleLightContent"
       }
     },
     "android": {

@@ -12,6 +12,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { registerWithFirebaseEmail, signInWithFirebaseGoogle, isFirebaseConfigured } from '../../lib/firebaseAuth';
 import { getFirebaseConfigStatus } from '../../lib/firebase';
 import { upsertUserProfile } from '../../lib/userProfile';
+import { ScreenEntrance } from '../../components/ui/ScreenEntrance';
 import {
   SecurePasswordInput,
   type SecurePasswordInputRef,
@@ -341,10 +342,11 @@ export default function SignupScreen() {
         </View>
 
         {/* Membership Application Title */}
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>Request Membership</Text>
-          <Text style={styles.subtitle}>Join the exclusive travel community</Text>
-        </View>
+        <ScreenEntrance delay={100}>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Request Membership</Text>
+            <Text style={styles.subtitle}>Join the exclusive travel community</Text>
+          </View>
 
         {/* Glassmorphism Form Card */}
         <View style={styles.card}>
@@ -477,6 +479,7 @@ export default function SignupScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        </ScreenEntrance>
       </ScrollView>
     </KeyboardAvoidingView>
   );
