@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Pressable, useWindowDimensions, Alert, ActivityIndicator, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -8,6 +9,14 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import { AnimationTiming } from '../../constants/animations';
 import { getFirebaseApp } from '../../lib/firebase';
 import { getLatestProducts, type Product } from '../../lib/products';
+
+const HERO_CARDS = [
+  { badge: 'Private Access',     title: 'Private Island Escape',    subtitle: 'Exclusive members-only retreat in the Maldives',     tier: 'Founder Circle',  colors: LuxuryGradients.violetGold },
+  { badge: 'Overwater Suite',    title: 'Bora Bora Sanctuary',      subtitle: 'Crystal lagoon villa with private butler service',    tier: 'Diamond Member',  colors: LuxuryGradients.violetDeep },
+  { badge: 'Charter Experience', title: 'Superyacht Mediterranean', subtitle: 'Seven-day exclusive charter along the Amalfi Coast',  tier: 'Founding Member', colors: LuxuryGradients.goldDeep   },
+  { badge: 'Alpine Retreat',     title: 'Swiss Chalet Collection',  subtitle: 'Private mountain chalet with panoramic alpine views', tier: 'Platinum Access', colors: LuxuryGradients.violetDeep },
+  { badge: 'Desert Expedition',  title: 'Sahara Luxury Camp',       subtitle: 'Glamping under a billion stars in the golden dunes',  tier: 'Explorer Circle', colors: LuxuryGradients.violetGold },
+];
 
 const COLLECTIONS = [
   { name: 'Private Islands', tag: 'Exclusive Retreats' },
@@ -23,16 +32,43 @@ const COLLECTION_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['na
   'Desert Retreats': 'compass-outline',
 };
 
+const COLLECTION_GRADIENTS = {
+  'Private Islands': ['#0B3D52', '#1A7A9A'],
+  'Super Villas':    ['#3B1F08', '#7A4A15'],
+  'Yacht Escapes':   ['#0A1F4A', '#154FA0'],
+  'Desert Retreats': ['#3D2508', '#8A5A1A'],
+} as const;
+
+// Static image assets — replace files in assets/collections/ with real photos.
+// Gradient above is always rendered first as a fallback if the image fails to load.
+const COLLECTION_IMAGES = {
+  'Private Islands': require('../../assets/collections/private-islands.jpg'),
+  'Super Villas':    require('../../assets/collections/super-villas.jpg'),
+  'Yacht Escapes':   require('../../assets/collections/yacht-escapes.jpg'),
+  'Desert Retreats': require('../../assets/collections/desert-retreats.jpg'),
+};
+
+const PRIVILEGES = [
+  { label: 'Private Aviation', icon: 'airplane'         as const, subtitle: 'Worldwide access',   badge: 'Included' },
+  { label: 'VIP Dining',       icon: 'restaurant'       as const, subtitle: '50+ restaurants',    badge: 'Active'   },
+  { label: 'Villa Upgrades',   icon: 'diamond'          as const, subtitle: 'Guaranteed upgrade', badge: 'Included' },
+  { label: 'Travel Insurance', icon: 'shield-checkmark' as const, subtitle: 'Global coverage',    badge: 'Active'   },
+] as const;
+
 
 
 export default function ExploreScreen() {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   // Two equal cards with one gap inside section padding (xl each side)
   const privilegeCardWidth = Math.floor((width - LuxurySpacing.xl * 2 - LuxurySpacing.md) / 2);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState(false);
   const productsAnim = useRef(new Animated.Value(0)).current;
+  const heroScrollRef = useRef<ScrollView>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const heroIndexRef = useRef(0);
 
   useEffect(() => {
     getLatestProducts(20)
@@ -57,23 +93,46 @@ export default function ExploreScreen() {
   const greetingName = currentUser?.displayName?.split(' ')[0] ?? 'Member';
 
   const handleNotificationPress = () => {
+    // Notifications screen is planned for a future release.
     Alert.alert('Notifications', 'No new notifications at this time.');
   };
 
+  // View All — full collection catalogue screen is planned for a future release.
   const handleViewAllPress = () => {
-    Alert.alert('Collections', 'Full luxury collection catalogue coming soon.');
+    Alert.alert(
+      'Curated Collections',
+      'The full catalogue is coming soon.\n\nYour AI Concierge can search any destination for you right now.',
+      [
+        { text: 'Maybe Later', style: 'cancel' },
+        { text: 'Open Concierge', onPress: () => router.push('/(tabs)/ai-concierge') },
+      ],
+    );
   };
 
   const handleConciergePress = () => {
     router.push('/(tabs)/ai-concierge');
   };
 
-  const handleDestinationPress = (destName: string) => {
-    Alert.alert('Destination', `${destName} details coming soon.`);
+  // Hero card — routes to AI Concierge to start planning this featured experience.
+  const handleHeroPress = () => {
+    router.push('/(tabs)/ai-concierge');
   };
 
-  const handlePrivilegePress = (privilegeName: string) => {
-    Alert.alert('Privilege', `${privilegeName} benefit details coming soon.`);
+  // Collection cards — individual collection pages are planned for a future release.
+  const handleCollectionPress = (collectionName: string) => {
+    Alert.alert(
+      collectionName,
+      'Collection pages are coming in a future update.\n\nUse your AI Concierge to plan a custom journey now.',
+      [
+        { text: 'Maybe Later', style: 'cancel' },
+        { text: 'Ask Concierge', onPress: () => router.push('/(tabs)/ai-concierge') },
+      ],
+    );
+  };
+
+  // Privilege cards — routes to the Membership tab where all privileges are detailed.
+  const handlePrivilegePress = (_label: string) => {
+    router.push('/(tabs)/membership');
   };
 
   const handleSellPress = () => {
@@ -91,8 +150,8 @@ export default function ExploreScreen() {
       automaticallyAdjustContentInsets={false}
       automaticallyAdjustKeyboardInsets={false}
     >
-      {/* Elegant Header */}
-      <View style={styles.header}>
+      {/* Elegant Header — paddingTop adds insets.top so status bar never overlaps */}
+      <View style={[styles.header, { paddingTop: insets.top + LuxurySpacing.xl }]}>
         <View style={styles.headerTop}>
           <View style={styles.logoContainer}>
             <Text style={styles.logoText}>M</Text>
@@ -109,30 +168,59 @@ export default function ExploreScreen() {
         <Text style={styles.subtitle}>Your next extraordinary journey awaits</Text>
       </View>
 
-      {/* Cinematic Hero - Single Premium Card */}
-      <TouchableOpacity 
-        style={styles.heroCard}
-        onPress={() => handleDestinationPress('Private Island Escape')}
-        activeOpacity={0.8}
-      >
-        <LinearGradient colors={LuxuryGradients.violetGold} style={styles.heroGradient}>
-          <View style={styles.heroOverlay} />
-          <View style={styles.heroContent}>
-            <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeText}>Private Access</Text>
-            </View>
-            <Text style={styles.heroTitle}>Private Island Escape</Text>
-            <Text style={styles.heroSubtitle}>Exclusive members-only retreat in the Maldives</Text>
-            <View style={styles.heroMeta}>
-              <Ionicons name="diamond" size={16} color={LuxuryColors.gold} />
-              <Text style={styles.heroMetaText}>Founder Circle</Text>
-              <View style={{ flex: 1 }} />
-              <Text style={styles.heroExplore}>Explore</Text>
-              <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
-            </View>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
+      {/* Cinematic Hero Carousel */}
+      <View style={styles.heroCarouselWrapper}>
+        <ScrollView
+          ref={heroScrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+            if (idx !== heroIndexRef.current) {
+              heroIndexRef.current = idx;
+              setHeroIndex(idx);
+            }
+          }}
+        >
+          {HERO_CARDS.map((card) => (
+            <TouchableOpacity
+              key={card.title}
+              style={{ width }}
+              onPress={handleHeroPress}
+              activeOpacity={0.8}
+            >
+              <View style={styles.heroCard}>
+                <LinearGradient colors={card.colors} style={styles.heroGradient}>
+                  <View style={styles.heroOverlay} />
+                  <View style={styles.heroContent}>
+                    <View style={styles.heroBadge}>
+                      <Text style={styles.heroBadgeText}>{card.badge}</Text>
+                    </View>
+                    <View style={styles.heroTitleBlock}>
+                      <Text style={styles.heroTitle}>{card.title}</Text>
+                      <Text style={styles.heroSubtitle}>{card.subtitle}</Text>
+                    </View>
+                    <View style={styles.heroMeta}>
+                      <Ionicons name="diamond" size={14} color={LuxuryColors.gold} />
+                      <Text style={styles.heroMetaText}>{card.tier}</Text>
+                      <View style={{ flex: 1 }} />
+                      <Text style={styles.heroExplore}>Explore</Text>
+                      <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.7)" />
+                    </View>
+                  </View>
+                </LinearGradient>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={styles.heroDots}>
+          {HERO_CARDS.map((_, i) => (
+            <View key={i} style={[styles.heroDot, i === heroIndex && styles.heroDotActive]} />
+          ))}
+        </View>
+      </View>
 
       {/* Curated Collections */}
       <View style={styles.section}>
@@ -142,27 +230,47 @@ export default function ExploreScreen() {
             <Text style={styles.sectionLink}>View All</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: LuxurySpacing.md }}>
+        <View style={styles.collectionGrid}>
           {COLLECTIONS.map((card) => (
             <Pressable
               key={card.name}
               style={({ pressed }) => [
                 styles.collectionCard,
                 { width: privilegeCardWidth },
-                pressed && { transform: [{ scale: 0.96 }], opacity: 0.9 },
+                pressed && { transform: [{ scale: 0.97 }], opacity: 0.88 },
               ]}
-              onPress={() => handleDestinationPress(card.name)}
+              onPress={() => handleCollectionPress(card.name)}
             >
-              <View style={[styles.collectionImage, { width: '100%' }]}>
+              <View style={styles.collectionImageCard}>
+                {/* Gradient always renders first — visible during image load or on error */}
+                <LinearGradient
+                  colors={COLLECTION_GRADIENTS[card.name] ?? (['#141E33', '#0D1525'] as const)}
+                  style={StyleSheet.absoluteFill}
+                />
+                {/* Real photo on top of gradient — replaces it once loaded */}
+                <Image
+                  source={COLLECTION_IMAGES[card.name]}
+                  style={[StyleSheet.absoluteFill, styles.collectionImageStyle]}
+                  resizeMode="cover"
+                />
+                {/* Subtle full-card tint — keeps image visible, lifts contrast */}
+                <View style={styles.collectionCardTint} />
+                {/* Smooth bottom scrim — protects gold tag and white title only */}
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.32)', 'rgba(0,0,0,0.80)'] as const}
+                  style={styles.collectionTextProtect}
+                />
                 <Ionicons
                   name={COLLECTION_ICONS[card.name] ?? 'image-outline'}
-                  size={40}
-                  color={LuxuryColors.gold}
-                  style={{ opacity: 0.75 }}
+                  size={30}
+                  color="rgba(255,255,255,0.80)"
+                  style={styles.collectionCardIcon}
                 />
+                <View style={styles.collectionCardLabel}>
+                  <Text style={styles.collectionCardTag} numberOfLines={1}>{card.tag}</Text>
+                  <Text style={styles.collectionCardName} numberOfLines={1}>{card.name}</Text>
+                </View>
               </View>
-              <Text style={styles.collectionName}>{card.name}</Text>
-              <Text style={styles.collectionTag}>{card.tag}</Text>
             </Pressable>
           ))}
         </View>
@@ -176,19 +284,31 @@ export default function ExploreScreen() {
       >
         <LinearGradient
           colors={LuxuryGradients.goldDeep}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={styles.conciergeGradient}
         >
           <View style={styles.conciergeContent}>
             <View style={styles.conciergeIconContainer}>
-              <Ionicons name="sparkles" size={28} color="#FFFFFF" />
+              <Ionicons name="sparkles" size={30} color="#FFFFFF" />
             </View>
             <View style={styles.conciergeText}>
               <Text style={styles.conciergeTitle}>Your AI Concierge</Text>
               <Text style={styles.conciergeSubtitle}>Personalized journey recommendations await</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+          </View>
+          <View style={styles.conciergePrompts}>
+            {(['Private Jet', 'Romantic Escape', 'Yacht Weekend', 'Desert Adventure'] as const).map((prompt) => (
+              <TouchableOpacity
+                key={prompt}
+                style={styles.conciergeChip}
+                onPress={handleConciergePress}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.conciergeChipText}>{prompt}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </LinearGradient>
       </TouchableOpacity>
@@ -199,12 +319,7 @@ export default function ExploreScreen() {
           <Text style={styles.sectionTitle}>Member Privileges</Text>
         </View>
         <View style={styles.privilegesGrid}>
-          {([
-            { label: 'Private Aviation', icon: 'airplane' as const },
-            { label: 'VIP Dining', icon: 'restaurant' as const },
-            { label: 'Villa Upgrades', icon: 'diamond' as const },
-            { label: 'Travel Insurance', icon: 'shield-checkmark' as const },
-          ] as const).map(({ label, icon }) => (
+          {PRIVILEGES.map(({ label, icon, subtitle, badge }) => (
             <Pressable
               key={label}
               style={({ pressed }) => [
@@ -217,7 +332,11 @@ export default function ExploreScreen() {
               <View style={styles.privilegeIcon}>
                 <Ionicons name={icon} size={24} color={LuxuryColors.gold} />
               </View>
-              <Text style={styles.privilegeTitle} numberOfLines={2}>{label}</Text>
+              <Text style={styles.privilegeTitle} numberOfLines={1}>{label}</Text>
+              <Text style={styles.privilegeSubtitle}>{subtitle}</Text>
+              <View style={styles.privilegeBadge}>
+                <Text style={styles.privilegeBadgeText}>{badge}</Text>
+              </View>
             </Pressable>
           ))}
         </View>
@@ -246,13 +365,34 @@ export default function ExploreScreen() {
           )}
 
           {!productsLoading && !productsError && products.length === 0 && (
-            <View style={styles.feedCenter}>
-              <Ionicons name="storefront-outline" size={40} color={LuxuryColors.textTertiary} />
-              <Text style={styles.feedMessage}>Your private marketplace is opening soon.</Text>
-              <Text style={styles.feedSubtitle}>Exclusive member listings will appear here.</Text>
-              <TouchableOpacity onPress={handleSellPress} activeOpacity={0.8} style={styles.feedCta}>
-                <Text style={styles.feedCtaText}>Be the first to sell</Text>
-              </TouchableOpacity>
+            <View>
+              <View style={styles.feedBadge}>
+                <Ionicons name="lock-closed" size={11} color={LuxuryColors.gold} />
+                <Text style={styles.feedBadgeText}>Invite Only · Members Can Sell</Text>
+              </View>
+              <View style={[styles.productCard, { opacity: 0.55 }]}>
+                <View style={styles.ghostImage} />
+                <View style={styles.ghostInfo}>
+                  <View style={[styles.ghostLine, { width: '75%' }]} />
+                  <View style={[styles.ghostLine, { width: '45%' }]} />
+                  <View style={[styles.ghostLine, { width: '30%' }]} />
+                </View>
+              </View>
+              <View style={[styles.productCard, { opacity: 0.3 }]}>
+                <View style={styles.ghostImage} />
+                <View style={styles.ghostInfo}>
+                  <View style={[styles.ghostLine, { width: '80%' }]} />
+                  <View style={[styles.ghostLine, { width: '55%' }]} />
+                  <View style={[styles.ghostLine, { width: '35%' }]} />
+                </View>
+              </View>
+              <View style={styles.feedCenter}>
+                <Text style={styles.feedMessage}>Your private marketplace is opening soon.</Text>
+                <Text style={styles.feedSubtitle}>Exclusive member listings will appear here.</Text>
+                <TouchableOpacity onPress={handleSellPress} activeOpacity={0.8} style={styles.feedCta}>
+                  <Text style={styles.feedCtaText}>Be the first to sell</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
@@ -263,7 +403,11 @@ export default function ExploreScreen() {
               styles.productCard,
               pressed && { transform: [{ scale: 0.98 }], opacity: 0.85 },
             ]}
-            onPress={() => Alert.alert(product.title, `$${product.price.toFixed(2)}\n\n${product.description}`)}
+            onPress={() => Alert.alert(
+              product.title,
+              `${product.category}  ·  $${product.price.toFixed(2)}${product.ownerName ? `\nby ${product.ownerName}` : ''}\n\n${product.description}`,
+              [{ text: 'Close', style: 'cancel' }],
+            )}
           >
             {product.imageUrl ? (
               <Image source={{ uri: product.imageUrl }} style={styles.productImage} />
@@ -347,15 +491,34 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textSecondary,
     fontWeight: '400',
   },
+  heroCarouselWrapper: {
+    marginBottom: LuxurySpacing.xxl,
+  },
   heroCard: {
     marginHorizontal: LuxurySpacing.xl,
     height: 280,
     borderRadius: LuxuryBorderRadius.xxxl,
     overflow: 'hidden',
-    marginBottom: LuxurySpacing.xxl,
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 55, 0.25)',
     ...LuxuryShadow.ambient,
+  },
+  heroDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+    marginTop: LuxurySpacing.md,
+  },
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  heroDotActive: {
+    width: 20,
+    backgroundColor: LuxuryColors.gold,
   },
   heroGradient: {
     flex: 1,
@@ -368,18 +531,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
   },
   heroContent: {
-    gap: LuxurySpacing.sm,
+    gap: LuxurySpacing.md,
   },
   heroBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingHorizontal: LuxurySpacing.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: LuxurySpacing.md,
     paddingVertical: LuxurySpacing.xs,
-    borderRadius: LuxuryBorderRadius.lg,
-    marginBottom: LuxurySpacing.xs,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.45)',
   },
   heroBadgeText: {
     fontSize: LuxuryFontSize.xs,
@@ -388,25 +552,35 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
+  heroTitleBlock: {
+    gap: LuxurySpacing.xs,
+  },
   heroTitle: {
     fontSize: LuxuryFontSize.xxl,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
+    lineHeight: 30,
   },
   heroSubtitle: {
-    fontSize: LuxuryFontSize.md,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: LuxuryFontSize.sm,
+    color: 'rgba(255, 255, 255, 0.7)',
+    lineHeight: 20,
+    letterSpacing: 0.1,
   },
   heroMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: LuxurySpacing.xs,
+    gap: LuxurySpacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+    paddingTop: LuxurySpacing.sm,
   },
   heroMetaText: {
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.gold,
     fontWeight: '600',
+    letterSpacing: 0.2,
   },
   section: {
     paddingHorizontal: LuxurySpacing.xl,
@@ -429,8 +603,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   collectionCard: {
-    alignItems: 'center',
     overflow: 'hidden',
+    borderRadius: LuxuryBorderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.18)',
+    ...LuxuryShadow.soft,
+  },
+  collectionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.md,
   },
   collectionImage: {
     height: 140,
@@ -453,6 +635,54 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  collectionImageCard: {
+    height: 140,
+    width: '100%',
+    borderRadius: LuxuryBorderRadius.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collectionCardTint: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
+  collectionTextProtect: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 100,
+  },
+  collectionImageStyle: {
+    borderRadius: LuxuryBorderRadius.lg,
+  },
+  collectionCardIcon: {
+    opacity: 0.85,
+  },
+  collectionCardLabel: {
+    position: 'absolute',
+    bottom: LuxurySpacing.md,
+    left: LuxurySpacing.md,
+    right: LuxurySpacing.md,
+  },
+  collectionCardTag: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.gold,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  collectionCardName: {
+    fontSize: LuxuryFontSize.md,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   conciergeCard: {
     marginHorizontal: LuxurySpacing.xl,
     borderRadius: LuxuryBorderRadius.xxl,
@@ -466,13 +696,15 @@ const styles = StyleSheet.create({
   conciergeContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: LuxurySpacing.lg,
+    gap: LuxurySpacing.md,
   },
   conciergeIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.30)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -480,14 +712,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   conciergeTitle: {
-    fontSize: LuxuryFontSize.lg,
+    fontSize: LuxuryFontSize.xl,
     fontWeight: '700',
     color: '#FFFFFF',
+    letterSpacing: -0.4,
     marginBottom: LuxurySpacing.xs,
   },
   conciergeSubtitle: {
     fontSize: LuxuryFontSize.sm,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.82)',
+    lineHeight: 20,
+    letterSpacing: 0.1,
+  },
+  conciergePrompts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.sm,
+    marginTop: LuxurySpacing.md,
+    paddingTop: LuxurySpacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+  },
+  conciergeChip: {
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: 6,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  conciergeChipText: {
+    fontSize: LuxuryFontSize.xs,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   privilegesGrid: {
     flexDirection: 'row',
@@ -500,16 +758,16 @@ const styles = StyleSheet.create({
     borderColor: LuxuryColors.divider,
     borderRadius: LuxuryBorderRadius.xl,
     padding: LuxurySpacing.lg,
-    minHeight: 120,
+    minHeight: 150,
     alignItems: 'center',
     justifyContent: 'center',
     gap: LuxurySpacing.sm,
   },
   heroExplore: {
     fontSize: LuxuryFontSize.xs,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '700',
+    letterSpacing: 1.2,
   },
   privilegeIcon: {
     width: 48,
@@ -526,6 +784,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: LuxuryColors.textPrimary,
     textAlign: 'center',
+  },
+  privilegeSubtitle: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  privilegeBadge: {
+    marginTop: LuxurySpacing.xs,
+    paddingHorizontal: LuxurySpacing.sm,
+    paddingVertical: 3,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212, 175, 55, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.28)',
+  },
+  privilegeBadgeText: {
+    fontSize: 10,
+    color: LuxuryColors.gold,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   feedCenter: {
     alignItems: 'center',
@@ -554,6 +834,42 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textTertiary,
     textAlign: 'center',
     opacity: 0.7,
+  },
+  feedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(212, 175, 55, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.20)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.xs,
+    marginBottom: LuxurySpacing.lg,
+  },
+  feedBadgeText: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  ghostImage: {
+    width: 90,
+    height: 90,
+    backgroundColor: LuxuryColors.surfaceLight,
+  },
+  ghostInfo: {
+    flex: 1,
+    padding: LuxurySpacing.md,
+    gap: LuxurySpacing.sm,
+    justifyContent: 'center',
+  },
+  ghostLine: {
+    height: 11,
+    borderRadius: LuxuryBorderRadius.sm,
+    backgroundColor: LuxuryColors.surfaceLight,
+    width: '80%',
   },
   sellLink: {
     fontSize: LuxuryFontSize.sm,
