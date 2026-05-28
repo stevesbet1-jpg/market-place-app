@@ -290,13 +290,12 @@ export default function ExploreScreen() {
         >
           <View style={styles.conciergeContent}>
             <View style={styles.conciergeIconContainer}>
-              <Ionicons name="sparkles" size={30} color="#FFFFFF" />
+              <Ionicons name="sparkles" size={28} color="#FFFFFF" />
             </View>
             <View style={styles.conciergeText}>
               <Text style={styles.conciergeTitle}>Your AI Concierge</Text>
-              <Text style={styles.conciergeSubtitle}>Personalized journey recommendations await</Text>
+              <Text style={styles.conciergeSubtitle}>Craft your perfect luxury itinerary</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
           </View>
           <View style={styles.conciergePrompts}>
             {(['Private Jet', 'Romantic Escape', 'Yacht Weekend', 'Desert Adventure'] as const).map((prompt) => (
@@ -309,6 +308,10 @@ export default function ExploreScreen() {
                 <Text style={styles.conciergeChipText}>{prompt}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+          <View style={styles.conciergeCTARow}>
+            <Text style={styles.conciergeCTAText}>Start Planning</Text>
+            <Ionicons name="arrow-forward" size={16} color="rgba(255,255,255,0.95)" />
           </View>
         </LinearGradient>
       </TouchableOpacity>
@@ -691,7 +694,9 @@ const styles = StyleSheet.create({
     ...LuxuryShadow.medium,
   },
   conciergeGradient: {
-    padding: LuxurySpacing.lg,
+    paddingHorizontal: LuxurySpacing.lg,
+    paddingTop: LuxurySpacing.xl,
+    paddingBottom: LuxurySpacing.lg,
   },
   conciergeContent: {
     flexDirection: 'row',
@@ -699,9 +704,9 @@ const styles = StyleSheet.create({
     gap: LuxurySpacing.md,
   },
   conciergeIconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.30)',
@@ -734,8 +739,8 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.15)',
   },
   conciergeChip: {
-    paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: LuxuryBorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
@@ -746,6 +751,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     letterSpacing: 0.3,
+  },
+  conciergeCTARow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: LuxurySpacing.xs,
+    marginTop: LuxurySpacing.sm,
+    paddingTop: LuxurySpacing.sm,
+  },
+  conciergeCTAText: {
+    fontSize: LuxuryFontSize.xs,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.90)',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   privilegesGrid: {
     flexDirection: 'row',
