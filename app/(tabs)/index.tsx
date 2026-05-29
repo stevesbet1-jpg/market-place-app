@@ -336,10 +336,14 @@ export default function ExploreScreen() {
               ]}
               onPress={() => handlePrivilegePress(label)}
             >
+              <LinearGradient
+                colors={['#121E35', '#0D1525'] as const}
+                style={StyleSheet.absoluteFill}
+              />
               <View style={styles.privilegeIcon}>
-                <Ionicons name={icon} size={24} color={LuxuryColors.gold} />
+                <Ionicons name={icon} size={20} color={LuxuryColors.gold} />
               </View>
-              <Text style={styles.privilegeTitle} numberOfLines={1}>{label}</Text>
+              <Text style={styles.privilegeTitle}>{label}</Text>
               <Text style={styles.privilegeSubtitle}>{subtitle}</Text>
               <View style={styles.privilegeBadge}>
                 <Text style={styles.privilegeBadgeText}>{badge}</Text>
@@ -394,10 +398,12 @@ export default function ExploreScreen() {
                 </View>
               </View>
               <View style={styles.feedCenter}>
-                <Text style={styles.feedMessage}>Your private marketplace is opening soon.</Text>
-                <Text style={styles.feedSubtitle}>Exclusive member listings will appear here.</Text>
+                <Text style={styles.feedOverline}>Private Marketplace</Text>
+                <Text style={styles.feedHeading}>Opening Soon</Text>
+                <Text style={styles.feedSubtitle}>Exclusive member listings and private exchanges.</Text>
                 <TouchableOpacity onPress={handleSellPress} activeOpacity={0.8} style={styles.feedCta}>
-                  <Text style={styles.feedCtaText}>Be the first to sell</Text>
+                  <Text style={styles.feedCtaText}>Explore Marketplace</Text>
+                  <Ionicons name="arrow-forward" size={11} color={LuxuryColors.gold} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -797,15 +803,16 @@ const styles = StyleSheet.create({
     gap: LuxurySpacing.md,
   },
   privilegeCard: {
-    backgroundColor: LuxuryColors.surfaceLight,
     borderWidth: 1,
-    borderColor: LuxuryColors.divider,
+    borderColor: 'rgba(212,175,55,0.18)',
     borderRadius: LuxuryBorderRadius.xl,
+    overflow: 'hidden',
     padding: LuxurySpacing.lg,
-    minHeight: 150,
+    minHeight: 148,
     alignItems: 'center',
     justifyContent: 'center',
     gap: LuxurySpacing.sm,
+    ...LuxuryShadow.soft,
   },
   heroExplore: {
     fontSize: LuxuryFontSize.xs,
@@ -814,12 +821,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
   privilegeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: LuxuryColors.surfaceLight,
-    borderWidth: 1.5,
-    borderColor: LuxuryColors.gold,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -831,18 +838,19 @@ const styles = StyleSheet.create({
   },
   privilegeSubtitle: {
     fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textTertiary,
+    color: LuxuryColors.textSecondary,
     textAlign: 'center',
-    marginTop: 2,
+    marginTop: 1,
+    opacity: 0.80,
   },
   privilegeBadge: {
     marginTop: LuxurySpacing.xs,
-    paddingHorizontal: LuxurySpacing.sm,
-    paddingVertical: 3,
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: 2,
     borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212, 175, 55, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.28)',
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.40)',
   },
   privilegeBadgeText: {
     fontSize: 10,
@@ -853,8 +861,8 @@ const styles = StyleSheet.create({
   },
   feedCenter: {
     alignItems: 'center',
-    paddingVertical: LuxurySpacing.xxl,
-    gap: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.xl,
+    gap: LuxurySpacing.sm,
   },
   feedMessage: {
     fontSize: LuxuryFontSize.sm,
@@ -862,22 +870,42 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   feedCta: {
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+    paddingHorizontal: LuxurySpacing.lg,
+    paddingVertical: LuxurySpacing.sm,
     borderRadius: LuxuryBorderRadius.full,
-    borderWidth: 1,
-    borderColor: LuxuryColors.gold,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.60)',
+    marginTop: LuxurySpacing.xs,
   },
   feedCtaText: {
-    fontSize: LuxuryFontSize.sm,
+    fontSize: 11,
     color: LuxuryColors.gold,
-    fontWeight: '600',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 2.0,
   },
   feedSubtitle: {
     fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textTertiary,
+    color: LuxuryColors.textSecondary,
     textAlign: 'center',
-    opacity: 0.7,
+    opacity: 0.70,
+    lineHeight: 18,
+  },
+  feedOverline: {
+    fontSize: 9,
+    color: 'rgba(212,175,55,0.70)',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 2.5,
+  },
+  feedHeading: {
+    fontSize: LuxuryFontSize.xl,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: -0.3,
   },
   feedBadge: {
     flexDirection: 'row',
@@ -899,9 +927,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   ghostImage: {
-    width: 90,
-    height: 90,
-    backgroundColor: LuxuryColors.surfaceLight,
+    width: 88,
+    height: 88,
+    margin: 1,
+    borderRadius: LuxuryBorderRadius.sm,
+    backgroundColor: '#121E35',
   },
   ghostInfo: {
     flex: 1,
@@ -910,9 +940,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ghostLine: {
-    height: 11,
+    height: 9,
     borderRadius: LuxuryBorderRadius.sm,
-    backgroundColor: LuxuryColors.surfaceLight,
+    backgroundColor: '#121E35',
     width: '80%',
   },
   sellLink: {
