@@ -662,7 +662,9 @@ const styles = StyleSheet.create({
     height: 100,
   },
   collectionImageStyle: {
-    borderRadius: LuxuryBorderRadius.lg,
+    width: '100%',
+    height: '100%',
+    opacity: 1,
   },
   collectionCardIcon: {
     opacity: 0.85,
