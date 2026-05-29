@@ -257,17 +257,20 @@ export default function ExploreScreen() {
                 <View style={styles.collectionCardTint} />
                 {/* Smooth bottom scrim — protects gold tag and white title only */}
                 <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.32)', 'rgba(0,0,0,0.80)'] as const}
+                  colors={['transparent', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.88)'] as const}
                   style={styles.collectionTextProtect}
                 />
-                <Ionicons
-                  name={COLLECTION_ICONS[card.name] ?? 'image-outline'}
-                  size={30}
-                  color="rgba(255,255,255,0.80)"
-                  style={styles.collectionCardIcon}
-                />
+                {/* Icon sits at top-center, clear of the label zone */}
+                <View style={styles.collectionCardIconWrap}>
+                  <Ionicons
+                    name={COLLECTION_ICONS[card.name] ?? 'image-outline'}
+                    size={25}
+                    color="rgba(255,255,255,0.78)"
+                    style={styles.collectionCardIcon}
+                  />
+                </View>
                 <View style={styles.collectionCardLabel}>
-                  <Text style={styles.collectionCardTag} numberOfLines={1}>{card.tag}</Text>
+                  <Text style={styles.collectionCardTag}>{card.tag}</Text>
                   <Text style={styles.collectionCardName} numberOfLines={1}>{card.name}</Text>
                 </View>
               </View>
@@ -290,7 +293,7 @@ export default function ExploreScreen() {
         >
           <View style={styles.conciergeContent}>
             <View style={styles.conciergeIconContainer}>
-              <Ionicons name="sparkles" size={28} color="#FFFFFF" />
+              <Ionicons name="sparkles" size={22} color="#FFFFFF" />
             </View>
             <View style={styles.conciergeText}>
               <Text style={styles.conciergeTitle}>Your AI Concierge</Text>
@@ -659,7 +662,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 100,
+    height: 110,
   },
   collectionImageStyle: {
     width: '100%',
@@ -667,7 +670,14 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   collectionCardIcon: {
-    opacity: 0.85,
+    opacity: 0.80,
+  },
+  collectionCardIconWrap: {
+    position: 'absolute',
+    top: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   collectionCardLabel: {
     position: 'absolute',
@@ -676,17 +686,18 @@ const styles = StyleSheet.create({
     right: LuxurySpacing.md,
   },
   collectionCardTag: {
-    fontSize: LuxuryFontSize.xs,
+    fontSize: 10,
     color: LuxuryColors.gold,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    letterSpacing: 1.0,
+    marginBottom: 3,
   },
   collectionCardName: {
-    fontSize: LuxuryFontSize.md,
+    fontSize: LuxuryFontSize.sm,
     fontWeight: '700',
     color: '#FFFFFF',
+    letterSpacing: 0.1,
   },
   conciergeCard: {
     marginHorizontal: LuxurySpacing.xl,
@@ -697,8 +708,8 @@ const styles = StyleSheet.create({
   },
   conciergeGradient: {
     paddingHorizontal: LuxurySpacing.lg,
-    paddingTop: LuxurySpacing.xl,
-    paddingBottom: LuxurySpacing.lg,
+    paddingTop: 28,
+    paddingBottom: LuxurySpacing.md,
   },
   conciergeContent: {
     flexDirection: 'row',
@@ -706,12 +717,12 @@ const styles = StyleSheet.create({
     gap: LuxurySpacing.md,
   },
   conciergeIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.30)',
+    borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -719,40 +730,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   conciergeTitle: {
-    fontSize: LuxuryFontSize.xl,
+    fontSize: LuxuryFontSize.lg,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.4,
+    letterSpacing: 0.2,
     marginBottom: LuxurySpacing.xs,
   },
   conciergeSubtitle: {
-    fontSize: LuxuryFontSize.sm,
-    color: 'rgba(255, 255, 255, 0.82)',
-    lineHeight: 20,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.72)',
+    lineHeight: 19,
     letterSpacing: 0.1,
   },
   conciergePrompts: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: LuxurySpacing.sm,
+    gap: 6,
     marginTop: LuxurySpacing.md,
-    paddingTop: LuxurySpacing.md,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.15)',
+    borderTopColor: 'rgba(255,255,255,0.10)',
   },
   conciergeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(255,255,255,0.20)',
   },
   conciergeChipText: {
     fontSize: LuxuryFontSize.xs,
-    color: '#FFFFFF',
+    color: 'rgba(255,255,255,0.90)',
     fontWeight: '600',
-    letterSpacing: 0.3,
+    letterSpacing: 0.6,
   },
   conciergeCTARow: {
     flexDirection: 'row',
@@ -761,12 +772,14 @@ const styles = StyleSheet.create({
     gap: LuxurySpacing.xs,
     marginTop: LuxurySpacing.sm,
     paddingTop: LuxurySpacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.10)',
   },
   conciergeCTAText: {
     fontSize: LuxuryFontSize.xs,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.90)',
-    letterSpacing: 1.2,
+    color: '#FFFFFF',
+    letterSpacing: 1.8,
     textTransform: 'uppercase',
   },
   privilegesGrid: {
