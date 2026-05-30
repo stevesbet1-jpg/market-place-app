@@ -34,9 +34,11 @@ export default function TabLayout() {
       bottom: 0,
       left: 0,
       right: 0,
-      height: 58 + insets.bottom,
-      paddingTop: 10,
-      paddingBottom: 0,
+      // 56px of usable content area + home-indicator space below
+      height: 56 + insets.bottom,
+      paddingTop: 8,
+      // Push tab items above the home indicator
+      paddingBottom: insets.bottom,
       borderTopWidth: 0,
       borderBottomWidth: 0,
       elevation: 0,
@@ -72,8 +74,8 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'Discover',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="compass" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="compass" size={20} color={color} />
             ),
           }}
         />
@@ -81,8 +83,8 @@ export default function TabLayout() {
           name="trips"
           options={{
             title: 'Journeys',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="map" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="map" size={20} color={color} />
             ),
           }}
         />
@@ -90,8 +92,8 @@ export default function TabLayout() {
           name="ai-concierge"
           options={{
             title: 'AI',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="sparkles" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="sparkles" size={20} color={color} />
             ),
           }}
         />
@@ -99,8 +101,8 @@ export default function TabLayout() {
           name="membership"
           options={{
             title: 'Club',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="diamond" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="diamond" size={20} color={color} />
             ),
           }}
         />
@@ -108,8 +110,8 @@ export default function TabLayout() {
           name="profile"
           options={{
             title: 'Profile',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="person" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="person" size={20} color={color} />
             ),
           }}
         />
@@ -158,17 +160,15 @@ const styles = StyleSheet.create({
     opacity: 0.97,
   },
   tabBarItem: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: 2,
-    minWidth: 44,
-    flex: 1,
   },
   tabBarLabel: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
-    letterSpacing: 0.2,
     includeFontPadding: false,
   },
 });
