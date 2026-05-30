@@ -5,17 +5,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import { AnimationTiming } from '../../constants/animations';
 import { getFirebaseApp } from '../../lib/firebase';
 import { getLatestProducts, type Product } from '../../lib/products';
 
 const HERO_CARDS = [
-  { badge: 'Private Access',     title: 'Private Island Escape',    subtitle: 'Exclusive members-only retreat in the Maldives',     tier: 'Founder Circle',  colors: LuxuryGradients.violetGold },
-  { badge: 'Overwater Suite',    title: 'Bora Bora Sanctuary',      subtitle: 'Crystal lagoon villa with private butler service',    tier: 'Diamond Member',  colors: LuxuryGradients.violetDeep },
-  { badge: 'Charter Experience', title: 'Superyacht Mediterranean', subtitle: 'Seven-day exclusive charter along the Amalfi Coast',  tier: 'Founding Member', colors: LuxuryGradients.goldDeep   },
-  { badge: 'Alpine Retreat',     title: 'Swiss Chalet Collection',  subtitle: 'Private mountain chalet with panoramic alpine views', tier: 'Platinum Access', colors: LuxuryGradients.violetDeep },
-  { badge: 'Desert Expedition',  title: 'Sahara Luxury Camp',       subtitle: 'Glamping under a billion stars in the golden dunes',  tier: 'Explorer Circle', colors: LuxuryGradients.violetGold },
+  { badge: 'Private Access',     title: 'Private Island Escape',    subtitle: 'Exclusive members-only retreat in the Maldives',     tier: 'Founder Circle',  image: require('../../assets/collections/private-islands.jpg') },
+  { badge: 'Overwater Suite',    title: 'Bora Bora Sanctuary',      subtitle: 'Crystal lagoon villa with private butler service',    tier: 'Diamond Member',  image: require('../../assets/collections/private-islands.jpg') },
+  { badge: 'Charter Experience', title: 'Superyacht Mediterranean', subtitle: 'Seven-day exclusive charter along the Amalfi Coast',  tier: 'Founding Member', image: require('../../assets/collections/yacht-escapes.jpg')   },
+  { badge: 'Alpine Retreat',     title: 'Swiss Chalet Collection',  subtitle: 'Private mountain chalet with panoramic alpine views', tier: 'Platinum Access', image: require('../../assets/collections/super-villas.jpg')    },
+  { badge: 'Desert Expedition',  title: 'Sahara Luxury Camp',       subtitle: 'Glamping under a billion stars in the golden dunes',  tier: 'Explorer Circle', image: require('../../assets/collections/desert-retreats.jpg') },
 ];
 
 const COLLECTIONS = [
@@ -192,8 +192,11 @@ export default function ExploreScreen() {
               activeOpacity={0.8}
             >
               <View style={styles.heroCard}>
-                <LinearGradient colors={card.colors} style={styles.heroGradient}>
-                  <View style={styles.heroOverlay} />
+                <Image source={card.image} style={[StyleSheet.absoluteFill, styles.heroImage]} resizeMode="cover" />
+                <LinearGradient
+                  colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.42)', 'rgba(0,0,0,0.82)'] as const}
+                  style={styles.heroGradient}
+                >
                   <View style={styles.heroContent}>
                     <View style={styles.heroBadge}>
                       <Text style={styles.heroBadgeText}>{card.badge}</Text>
@@ -545,6 +548,10 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
   },
   heroContent: {
     gap: LuxurySpacing.md,
