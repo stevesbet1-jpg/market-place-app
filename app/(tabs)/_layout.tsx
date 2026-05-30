@@ -79,7 +79,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="trips"
         options={{
-          title: 'Journeys',
+          title: 'Trips',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="airplane" size={size} color={color} />
           ),
@@ -105,7 +105,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="ai-concierge"
         options={{
-          title: 'Concierge',
+          title: 'AI',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="sparkles" size={size} color={color} />
           ),
@@ -114,7 +114,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="membership"
         options={{
-          title: 'Membership',
+          title: 'Club',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="card" size={size} color={color} />
           ),
@@ -171,13 +171,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: 2,
-    paddingHorizontal: 2,
+    minWidth: 44,
+    flex: 1,
   },
   tabBarLabel: {
     fontSize: 9,
     fontWeight: '600',
     marginTop: 2,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+    includeFontPadding: false,
   },
 });
 

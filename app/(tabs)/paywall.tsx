@@ -70,6 +70,27 @@ export default function PaywallScreen() {
         ))}
       </View>
 
+      {/* ── Social proof ── */}
+      <View style={styles.socialProof}>
+        <View style={styles.socialAvatars}>
+          {['A', 'B', 'C', 'D'].map((l, i) => (
+            <View key={l} style={[styles.socialAvatar, { marginLeft: i === 0 ? 0 : -8 }]}>
+              <Text style={styles.socialAvatarLetter}>{l}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.socialTextWrap}>
+          <View style={styles.socialStars}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Ionicons key={i} name="star" size={10} color={LuxuryColors.gold} />
+            ))}
+          </View>
+          <Text style={styles.socialProofText}>
+            Trusted by 2,000+ travelers exploring curated luxury destinations.
+          </Text>
+        </View>
+      </View>
+
       {/* ── CTAs ── */}
       <View style={styles.ctaSection}>
         <TouchableOpacity
@@ -248,6 +269,51 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textTertiary,
     letterSpacing: 0.2,
-    marginTop: LuxurySpacing.xs,
+  },
+  // ── Social proof ──────────────────────────────────────
+  socialProof: {
+    marginHorizontal: LuxurySpacing.xl,
+    marginBottom: LuxurySpacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+    backgroundColor: 'rgba(212,175,55,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.12)',
+    borderRadius: LuxuryBorderRadius.xl,
+    padding: LuxurySpacing.md,
+  },
+  socialAvatars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  socialAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.18)',
+    borderWidth: 1.5,
+    borderColor: LuxuryColors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  socialAvatarLetter: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+  },
+  socialTextWrap: {
+    flex: 1,
+    gap: 3,
+  },
+  socialStars: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  socialProofText: {
+    fontSize: 11,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 16,
+    letterSpacing: 0.1,
   },
 });

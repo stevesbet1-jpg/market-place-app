@@ -93,28 +93,43 @@ export default function TripsScreen() {
       {/* ── Free counter badge ── */}
       <View style={styles.padH}>
         <View style={[styles.trialBadge, isLocked && styles.trialBadgeLocked]}>
-          <Ionicons
-            name={isLocked ? 'lock-closed-outline' : 'diamond-outline'}
-            size={13}
-            color={isLocked ? LuxuryColors.textTertiary : LuxuryColors.gold}
-          />
-          <Text style={[styles.trialBadgeText, isLocked && styles.trialBadgeTextLocked]}>
-            {isLocked
-              ? 'Upgrade to unlock all journeys'
-              : `${freeRemaining} Complimentary ${freeRemaining === 1 ? 'Journey' : 'Journeys'} Remaining`}
-          </Text>
-          {!isLocked && (
-            <View style={styles.trialDots}>
-              {Array.from({ length: FREE_JOURNEY_LIMIT }).map((_, i) => (
-                <View
-                  key={i}
-                  style={[styles.trialDot, i >= freeRemaining && styles.trialDotUsed]}
-                />
-              ))}
-            </View>
-          )}
+          {/* Top row: icon + title + dots */}
+          <View style={styles.trialTopRow}>
+            <Ionicons
+              name={isLocked ? 'lock-closed-outline' : 'diamond-outline'}
+              size={13}
+              color={isLocked ? LuxuryColors.textTertiary : LuxuryColors.gold}
+            />
+            <Text style={[styles.trialBadgeText, isLocked && styles.trialBadgeTextLocked]}>
+              {isLocked
+                ? 'Unlock 20 Premium Journeys'
+                : `${freeRemaining} Complimentary ${freeRemaining === 1 ? 'Journey' : 'Journeys'} Remaining`}
+            </Text>
+            {!isLocked && (
+              <View style={styles.trialDots}>
+                {Array.from({ length: FREE_JOURNEY_LIMIT }).map((_, i) => (
+                  <View
+                    key={i}
+                    style={[styles.trialDot, i >= freeRemaining && styles.trialDotUsed]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+          {/* Locked sub-content */}
           {isLocked && (
-            <Text style={styles.upgradeLink}>Upgrade →</Text>
+            <>
+              <Text style={styles.trialSubtext}>
+                Curated destinations, full itineraries &amp; budget-matched picks.
+              </Text>
+              <Pressable
+                style={styles.upgradeCta}
+                onPress={() => router.push('/(tabs)/paywall')}
+              >
+                <Text style={styles.upgradeCtaText}>Upgrade Membership</Text>
+                <Ionicons name="chevron-forward" size={11} color={LuxuryColors.background} />
+              </Pressable>
+            </>
           )}
         </View>
       </View>
@@ -143,10 +158,13 @@ export default function TripsScreen() {
         })}
       </ScrollView>
 
-      {/* ── Saved journeys (horizontal scroll) ── */}
-      {savedJourneys.length > 0 && (
+      {/* ── Saved Journeys ── */}
+      {savedJourneys.length > 0 ? (
         <View style={styles.savedSection}>
-          <Text style={styles.savedLabel}>Saved Journeys</Text>
+          <View style={styles.savedHeader}>
+            <Text style={styles.savedLabel}>Saved Journeys</Text>
+            <Text style={styles.savedCount}>{savedJourneys.length}</Text>
+          </View>
           <FlatList
             data={savedJourneys}
             horizontal
@@ -164,21 +182,34 @@ export default function TripsScreen() {
                   resizeMode="cover"
                 />
                 <LinearGradient
-                  colors={['transparent', 'rgba(7,17,32,0.85)'] as const}
+                  colors={['transparent', 'rgba(7,17,32,0.88)'] as const}
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={styles.savedCardOverlay}>
-                  <Text style={styles.savedCardName} numberOfLines={1}>{journey.name}</Text>
                   <Text style={styles.savedCardRegion}>{journey.region}</Text>
+                  <Text style={styles.savedCardName} numberOfLines={1}>{journey.name}</Text>
+                  <View style={styles.savedCardBudgeBadge}>
+                    <Text style={styles.savedCardBudgeText}>{journey.budget}</Text>
+                  </View>
                 </View>
-                {isLocked && (
+                {isLocked ? (
                   <View style={styles.savedLockBadge}>
-                    <Ionicons name="lock-closed" size={10} color="rgba(255,255,255,0.7)" />
+                    <Ionicons name="lock-closed" size={9} color="rgba(255,255,255,0.75)" />
+                  </View>
+                ) : (
+                  <View style={styles.savedBookmarkBadge}>
+                    <Ionicons name="bookmark" size={9} color={LuxuryColors.gold} />
                   </View>
                 )}
               </Pressable>
             )}
           />
+        </View>
+      ) : (
+        <View style={styles.savedEmptyState}>
+          <Ionicons name="bookmark-outline" size={18} color="rgba(212,175,55,0.40)" />
+          <Text style={styles.savedEmptyText}>No saved journeys yet</Text>
+          <Text style={styles.savedEmptySubtext}>Tap the bookmark on any journey to save it</Text>
         </View>
       )}
 
@@ -213,7 +244,10 @@ export default function TripsScreen() {
               </View>
               {isLocked && (
                 <View style={styles.lockOverlay}>
-                  <Ionicons name="lock-closed" size={22} color="rgba(255,255,255,0.85)" />
+                  <View style={styles.lockIconWrap}>
+                    <Ionicons name="lock-closed" size={16} color="rgba(255,255,255,0.90)" />
+                  </View>
+                  <Text style={styles.lockLabel}>Members Only</Text>
                 </View>
               )}
             </View>
@@ -293,16 +327,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: LuxurySpacing.xl,
   },
   trialBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
     backgroundColor: 'rgba(212,175,55,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(212,175,55,0.20)',
-    borderRadius: LuxuryBorderRadius.full,
+    borderRadius: LuxuryBorderRadius.xl,
     paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: 10,
+    paddingVertical: 12,
     marginBottom: LuxurySpacing.lg,
+    gap: LuxurySpacing.sm,
+  },
+  trialTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
   },
   trialBadgeLocked: {
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -337,6 +374,29 @@ const styles = StyleSheet.create({
     color: LuxuryColors.gold,
     letterSpacing: 0.3,
   },
+  trialSubtext: {
+    fontSize: 11,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 16,
+    letterSpacing: 0.1,
+  },
+  upgradeCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  upgradeCtaText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.background,
+    letterSpacing: 0.4,
+  },
   budgetFilterScroll: {
     marginBottom: LuxurySpacing.lg,
   },
@@ -368,25 +428,41 @@ const styles = StyleSheet.create({
   savedSection: {
     marginBottom: LuxurySpacing.lg,
   },
+  savedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    paddingHorizontal: LuxurySpacing.xl,
+    marginBottom: LuxurySpacing.sm,
+  },
   savedLabel: {
     fontSize: 9,
     fontWeight: '700',
     color: LuxuryColors.gold,
     letterSpacing: 2.5,
     textTransform: 'uppercase',
-    paddingHorizontal: LuxurySpacing.xl,
-    marginBottom: LuxurySpacing.sm,
+  },
+  savedCount: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: LuxuryColors.textTertiary,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    letterSpacing: 0.3,
   },
   savedList: {
     paddingHorizontal: LuxurySpacing.xl,
     gap: LuxurySpacing.sm,
   },
   savedCard: {
-    width: 130,
-    height: 90,
-    borderRadius: LuxuryBorderRadius.lg,
+    width: 150,
+    height: 110,
+    borderRadius: LuxuryBorderRadius.xl,
     overflow: 'hidden',
     position: 'relative',
+    ...LuxuryShadow.soft,
   },
   savedCardImg: {
     width: '100%',
@@ -398,16 +474,34 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: LuxurySpacing.sm,
+    gap: 2,
+  },
+  savedCardRegion: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
   savedCardName: {
     fontSize: 11,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.1,
+    lineHeight: 14,
   },
-  savedCardRegion: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.65)',
+  savedCardBudgeBadge: {
+    backgroundColor: 'rgba(212,175,55,0.20)',
+    borderRadius: LuxuryBorderRadius.sm,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  savedCardBudgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
     letterSpacing: 0.3,
   },
   savedLockBadge: {
@@ -417,9 +511,44 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(7,17,32,0.65)',
+    backgroundColor: 'rgba(7,17,32,0.70)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  savedBookmarkBadge: {
+    position: 'absolute',
+    top: LuxurySpacing.sm,
+    right: LuxurySpacing.sm,
+    width: 20,
+    height: 20,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savedEmptyState: {
+    marginHorizontal: LuxurySpacing.xl,
+    marginBottom: LuxurySpacing.lg,
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: LuxurySpacing.lg,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    borderRadius: LuxuryBorderRadius.xl,
+    borderStyle: 'dashed',
+  },
+  savedEmptyText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  savedEmptySubtext: {
+    fontSize: 11,
+    color: 'rgba(122,118,104,0.65)',
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
   cardList: {
     gap: LuxurySpacing.md,
@@ -444,9 +573,27 @@ const styles = StyleSheet.create({
   },
   lockOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(7,17,32,0.45)',
+    backgroundColor: 'rgba(7,17,32,0.52)',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 5,
+  },
+  lockIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(7,17,32,0.60)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.80)',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   regionBadge: {
     position: 'absolute',
