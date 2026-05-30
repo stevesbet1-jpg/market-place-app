@@ -73,18 +73,18 @@ export default function TabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: 'Discover',
+            title: 'Explore',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="compass" size={20} color={color} />
+              <Ionicons name="compass" size={18} color={color} />
             ),
           }}
         />
         <Tabs.Screen
           name="trips"
           options={{
-            title: 'Journeys',
+            title: 'Trips',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="map" size={20} color={color} />
+              <Ionicons name="map" size={18} color={color} />
             ),
           }}
         />
@@ -93,7 +93,7 @@ export default function TabLayout() {
           options={{
             title: 'AI',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="sparkles" size={20} color={color} />
+              <Ionicons name="sparkles" size={18} color={color} />
             ),
           }}
         />
@@ -102,7 +102,7 @@ export default function TabLayout() {
           options={{
             title: 'Club',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="diamond" size={20} color={color} />
+              <Ionicons name="diamond" size={18} color={color} />
             ),
           }}
         />
@@ -111,7 +111,7 @@ export default function TabLayout() {
           options={{
             title: 'Profile',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="person" size={20} color={color} />
+              <Ionicons name="person" size={18} color={color} />
             ),
           }}
         />
@@ -164,12 +164,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: 2,
+    overflow: 'visible',
   },
   tabBarLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
-    marginTop: 2,
     includeFontPadding: false,
+    // Ensure the label text is never clipped or ellipsized
+    flexShrink: 0,
+    overflow: 'visible',
   },
 });
 
