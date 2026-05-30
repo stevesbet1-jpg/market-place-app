@@ -16,6 +16,7 @@ const TABS_SAFE_AREA_INSETS = { bottom: 0 };
 function TabBarBackground() {
   return (
     <View style={styles.tabBarBackgroundOuter}>
+      <View style={styles.tabBarTopBorder} />
       <View style={styles.tabBarBackgroundFill} />
     </View>
   );
@@ -33,8 +34,8 @@ export default function TabLayout() {
       bottom: 0,
       left: 0,
       right: 0,
-      height: 46 + insets.bottom,
-      paddingTop: 8,
+      height: 58 + insets.bottom,
+      paddingTop: 10,
       paddingBottom: 0,
       borderTopWidth: 0,
       borderBottomWidth: 0,
@@ -43,7 +44,7 @@ export default function TabLayout() {
       shadowRadius: 0,
       shadowColor: 'transparent',
       shadowOffset: { width: 0, height: 0 },
-      backgroundColor: LuxuryColors.background,
+      backgroundColor: 'transparent',
     }),
     [insets.bottom],
   );
@@ -149,6 +150,14 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: 'visible',
   },
+  tabBarTopBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(212,175,55,0.12)',
+  },
   tabBarBackgroundFill: {
     position: 'absolute',
     top: 0,
@@ -156,15 +165,19 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: -50,
     backgroundColor: LuxuryColors.background,
+    opacity: 0.97,
   },
   tabBarItem: {
-    justifyContent: 'flex-end',
-    paddingBottom: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 2,
+    paddingHorizontal: 2,
   },
   tabBarLabel: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '600',
     marginTop: 2,
+    letterSpacing: 0.3,
   },
 });
 
