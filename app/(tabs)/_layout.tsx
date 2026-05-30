@@ -34,11 +34,10 @@ export default function TabLayout() {
       bottom: 0,
       left: 0,
       right: 0,
-      // 56px of usable content area + home-indicator space below
-      height: 56 + insets.bottom,
-      paddingTop: 8,
+      height: 60 + insets.bottom,
+      paddingTop: 9,
       // Push tab items above the home indicator
-      paddingBottom: insets.bottom,
+      paddingBottom: insets.bottom > 0 ? insets.bottom - 4 : 4,
       borderTopWidth: 0,
       borderBottomWidth: 0,
       elevation: 0,
@@ -75,7 +74,7 @@ export default function TabLayout() {
           options={{
             title: 'Explore',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="compass" size={18} color={color} />
+              <Ionicons name="compass" size={22} color={color} />
             ),
           }}
         />
@@ -84,7 +83,7 @@ export default function TabLayout() {
           options={{
             title: 'Trips',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="map" size={18} color={color} />
+              <Ionicons name="map" size={22} color={color} />
             ),
           }}
         />
@@ -93,7 +92,7 @@ export default function TabLayout() {
           options={{
             title: 'AI',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="sparkles" size={18} color={color} />
+              <Ionicons name="sparkles" size={22} color={color} />
             ),
           }}
         />
@@ -102,7 +101,7 @@ export default function TabLayout() {
           options={{
             title: 'Club',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="diamond" size={18} color={color} />
+              <Ionicons name="diamond" size={22} color={color} />
             ),
           }}
         />
@@ -111,7 +110,7 @@ export default function TabLayout() {
           options={{
             title: 'Profile',
             tabBarIcon: ({ color }) => (
-              <Ionicons name="person" size={18} color={color} />
+              <Ionicons name="person" size={22} color={color} />
             ),
           }}
         />
@@ -167,10 +166,9 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   tabBarLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '600',
     includeFontPadding: false,
-    // Ensure the label text is never clipped or ellipsized
     flexShrink: 0,
     overflow: 'visible',
   },
