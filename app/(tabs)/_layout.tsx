@@ -67,72 +67,58 @@ export default function TabLayout() {
   return (
     <View style={styles.container}>
       <Tabs safeAreaInsets={TABS_SAFE_AREA_INSETS} screenOptions={screenOptions}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="compass" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="trips"
-        options={{
-          title: 'Trips',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="airplane" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="journey-detail"
-        options={{ tabBarButton: () => null }}
-      />
-      <Tabs.Screen
-        name="paywall"
-        options={{ tabBarButton: () => null }}
-      />
-      <Tabs.Screen
-        name="creator-profile"
-        options={{ tabBarButton: () => null }}
-      />
-      <Tabs.Screen
-        name="add-product"
-        options={{
-          title: 'Sell',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="storefront-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="ai-concierge"
-        options={{
-          title: 'AI',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="sparkles" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="membership"
-        options={{
-          title: 'Club',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="card" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
-          ),
-        }}
-      />
+        {/* ── Visible tabs (5) ─────────────────────────────── */}
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Discover',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="compass" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="trips"
+          options={{
+            title: 'Journeys',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="map" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="ai-concierge"
+          options={{
+            title: 'AI',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="sparkles" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="membership"
+          options={{
+            title: 'Club',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="diamond" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="person" size={size} color={color} />
+            ),
+          }}
+        />
+
+        {/* ── Hidden screens (no tab button) ───────────────── */}
+        <Tabs.Screen name="journey-detail" options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="creator-profile" options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="paywall" options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="add-product" options={{ tabBarButton: () => null }} />
       </Tabs>
     </View>
   );
