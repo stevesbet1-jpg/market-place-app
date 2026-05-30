@@ -1,13 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
-import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  LuxuryColors,
+  LuxurySpacing,
+  LuxuryBorderRadius,
+  LuxuryFontSize,
+  LuxuryShadow,
+} from '../../constants/luxuryTheme';
 import { getFirebaseApp } from '../../lib/firebase';
 import { getUserProfile } from '../../lib/userProfile';
 
+const BENEFITS = [
+  {
+    icon: 'people-outline' as const,
+    title: 'Unlimited Creator Itineraries',
+    desc: 'Access every journey from all 6 creators, with full day-by-day plans.',
+  },
+  {
+    icon: 'add-circle-outline' as const,
+    title: 'Weekly New Journeys',
+    desc: 'Fresh creator journeys drop every week — always something to discover.',
+  },
+  {
+    icon: 'bookmark-outline' as const,
+    title: 'Save Unlimited Trips',
+    desc: 'Build your personal travel library with no limits on saved journeys.',
+  },
+  {
+    icon: 'sparkles-outline' as const,
+    title: 'AI Travel Assistant',
+    desc: 'Describe your dream trip and get personalised creator journey matches.',
+  },
+  {
+    icon: 'lock-open-outline' as const,
+    title: 'Creator Exclusive Content',
+    desc: 'Behind-the-scenes notes, packing lists, and insider tips from creators.',
+  },
+] as const;
+
 export default function MembershipScreen() {
+  const insets = useSafeAreaInsets();
   const [memberName, setMemberName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -17,120 +52,162 @@ export default function MembershipScreen() {
     getUserProfile(user.uid)
       .then((p) => {
         const name = p?.fullName ?? user.displayName ?? null;
-        setMemberName(name ? name.split(' ')[0].toUpperCase() : null);
+        setMemberName(name ? name.split(' ')[0] : null);
       })
       .catch(() => {
         const name = user.displayName;
-        setMemberName(name ? name.split(' ')[0].toUpperCase() : null);
+        setMemberName(name ? name.split(' ')[0] : null);
       });
   }, []);
 
-  const handleTierPress = () => {
-    Alert.alert('Membership Details', 'Full membership tier details coming soon.');
+  const handleSubscribe = (plan: 'monthly' | 'annual') => {
+    Alert.alert(
+      plan === 'annual' ? 'Annual Plan' : 'Monthly Plan',
+      'Full payment integration coming soon. You will be notified when memberships open.',
+      [{ text: 'Got it' }],
+    );
   };
 
-  const handlePrivilegePress = (privilegeName: string) => {
-    Alert.alert('Privilege', `${privilegeName} benefit details coming soon.`);
-  };
   return (
     <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
-      showsHorizontalScrollIndicator={false}
       bounces={false}
-      alwaysBounceHorizontal={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
-      automaticallyAdjustKeyboardInsets={false}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.vaultIcon}>
-          <Ionicons name="lock-closed" size={28} color={LuxuryColors.gold} />
+      {/* ── Hero ── */}
+      <View style={[styles.hero, { paddingTop: insets.top + LuxurySpacing.xl }]}>
+        <View style={styles.heroIcon}>
+          <Ionicons name="diamond" size={32} color={LuxuryColors.gold} />
         </View>
-        <Text style={styles.title}>Membership Vault</Text>
-        <Text style={styles.subtitle}>Your elite credentials</Text>
+        <Text style={styles.heroOverline}>Creator Membership</Text>
+        <Text style={styles.heroTitle}>Unlock Every{'\n'}Creator Journey</Text>
+        <Text style={styles.heroSubtitle}>
+          {memberName ? `Welcome, ${memberName}. ` : ''}
+          One membership. Every creator. Unlimited journeys.
+        </Text>
       </View>
 
-      {/* Premium Black Card */}
+      {/* ── Social proof strip ── */}
+      <View style={styles.proofStrip}>
+        <View style={styles.proofAvatars}>
+          {['SC', 'MV', 'JH', 'EK'].map((initials, i) => (
+            <View key={initials} style={[styles.proofAvatar, { marginLeft: i === 0 ? 0 : -8 }]}>
+              <Text style={styles.proofAvatarText}>{initials}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.proofTextWrap}>
+          <View style={styles.proofStars}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Ionicons key={i} name="star" size={10} color={LuxuryColors.gold} />
+            ))}
+          </View>
+          <Text style={styles.proofText}>Trusted by 2,000+ members · 6 creators · 20+ journeys</Text>
+        </View>
+      </View>
+
+      {/* ── Benefits ── */}
       <View style={styles.section}>
-        <View style={styles.cardContainer}>
-          <LinearGradient colors={LuxuryGradients.surfaceDeep} style={styles.blackCard}>
-            <View style={styles.cardGlow} />
-            <View style={styles.cardContent}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="diamond" size={32} color={LuxuryColors.gold} />
-                <Text style={styles.cardBrand}>FOUNDER</Text>
+        <Text style={styles.sectionLabel}>What's included</Text>
+        <View style={styles.benefitsCard}>
+          {BENEFITS.map((b, i) => (
+            <View key={b.title} style={[styles.benefitRow, i > 0 && styles.benefitRowBorder]}>
+              <View style={styles.benefitIconWrap}>
+                <Ionicons name={b.icon} size={18} color={LuxuryColors.gold} />
               </View>
-              <Text style={styles.cardTitle}>BLACK CARD</Text>
-              <Text style={styles.cardSubtitle}>Invitation Only</Text>
-              <View style={styles.cardFooter}>
-                <Text style={styles.cardNumber}>•••• •••• •••• 8888</Text>
-                <Text style={styles.cardMember}>{memberName ?? 'MEMBER'}</Text>
+              <View style={styles.benefitTextWrap}>
+                <Text style={styles.benefitTitle}>{b.title}</Text>
+                <Text style={styles.benefitDesc}>{b.desc}</Text>
               </View>
             </View>
-          </LinearGradient>
+          ))}
         </View>
       </View>
 
-      {/* Current Tier */}
+      {/* ── Pricing ── */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Current Tier</Text>
-        <TouchableOpacity 
-          style={styles.tierCardActive}
-          onPress={handleTierPress}
-          activeOpacity={0.8}
+        <Text style={styles.sectionLabel}>Choose your plan</Text>
+
+        {/* Annual — highlighted */}
+        <TouchableOpacity
+          style={styles.planCardAnnual}
+          onPress={() => handleSubscribe('annual')}
+          activeOpacity={0.88}
         >
-          <View style={styles.tierIconActive}>
-            <Ionicons name="diamond" size={24} color={LuxuryColors.gold} />
+          <View style={styles.planBestValueBadge}>
+            <Text style={styles.planBestValueText}>BEST VALUE</Text>
           </View>
-          <View style={styles.tierInfo}>
-            <Text style={styles.tierTitleActive}>Black Card</Text>
-            <Text style={styles.tierSubtitleActive}>Premium benefits active</Text>
+          <View style={styles.planCardInner}>
+            <View style={styles.planLeft}>
+              <Text style={styles.planName}>Annual</Text>
+              <Text style={styles.planDesc}>Billed once per year</Text>
+            </View>
+            <View style={styles.planRight}>
+              <Text style={styles.planPrice}>$79</Text>
+              <Text style={styles.planPer}>/year</Text>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={LuxuryColors.gold} />
+          <View style={styles.planSavingRow}>
+            <Ionicons name="checkmark-circle" size={14} color={LuxuryColors.gold} />
+            <Text style={styles.planSavingText}>Save 44% vs monthly · Just $6.58/month</Text>
+          </View>
+          <View style={styles.planCta}>
+            <Text style={styles.planCtaText}>Start Annual Membership</Text>
+            <Ionicons name="chevron-forward" size={14} color={LuxuryColors.background} />
+          </View>
         </TouchableOpacity>
+
+        {/* Monthly */}
+        <TouchableOpacity
+          style={styles.planCardMonthly}
+          onPress={() => handleSubscribe('monthly')}
+          activeOpacity={0.88}
+        >
+          <View style={styles.planCardInner}>
+            <View style={styles.planLeft}>
+              <Text style={styles.planNameSecondary}>Monthly</Text>
+              <Text style={styles.planDesc}>Cancel anytime</Text>
+            </View>
+            <View style={styles.planRight}>
+              <Text style={styles.planPriceSecondary}>$11.99</Text>
+              <Text style={styles.planPer}>/month</Text>
+            </View>
+          </View>
+          <View style={styles.planCtaSecondary}>
+            <Text style={styles.planCtaSecondaryText}>Start Monthly Membership</Text>
+            <Ionicons name="chevron-forward" size={14} color={LuxuryColors.gold} />
+          </View>
+        </TouchableOpacity>
+
+        <Text style={styles.planNote}>
+          No real charges are processed. Membership integration coming soon.
+        </Text>
       </View>
 
-      {/* Key Privileges */}
+      {/* ── Creators preview ── */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Key Privileges</Text>
-        <View style={styles.privilegesList}>
-          <TouchableOpacity 
-            style={styles.privilegeItem}
-            onPress={() => handlePrivilegePress('Private Aviation Access')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="airplane" size={20} color={LuxuryColors.gold} />
-            <Text style={styles.privilegeText}>Private Aviation Access</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.privilegeItem}
-            onPress={() => handlePrivilegePress('VIP Dining Reservations')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="restaurant" size={20} color={LuxuryColors.gold} />
-            <Text style={styles.privilegeText}>VIP Dining Reservations</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.privilegeItem}
-            onPress={() => handlePrivilegePress('Complimentary Villa Upgrades')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="diamond" size={20} color={LuxuryColors.gold} />
-            <Text style={styles.privilegeText}>Complimentary Villa Upgrades</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.privilegeItem}
-            onPress={() => handlePrivilegePress('Premium Travel Insurance')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="shield-checkmark" size={20} color={LuxuryColors.gold} />
-            <Text style={styles.privilegeText}>Premium Travel Insurance</Text>
-          </TouchableOpacity>
+        <Text style={styles.sectionLabel}>Featured Creators</Text>
+        <View style={styles.creatorsRow}>
+          {[
+            { initials: 'SC', name: 'Sophia Chen', journeys: 3 },
+            { initials: 'MV', name: 'Marco Vitale', journeys: 6 },
+            { initials: 'JH', name: 'James Hartley', journeys: 2 },
+            { initials: 'EK', name: 'Elena Kovacs', journeys: 3 },
+          ].map((c) => (
+            <View key={c.initials} style={styles.creatorChip}>
+              <View style={styles.creatorChipAvatar}>
+                <Text style={styles.creatorChipInitials}>{c.initials}</Text>
+              </View>
+              <Text style={styles.creatorChipName} numberOfLines={1}>{c.name}</Text>
+              <Text style={styles.creatorChipCount}>{c.journeys} journeys</Text>
+            </View>
+          ))}
         </View>
       </View>
 
+      <View style={{ height: 64 + insets.bottom }} />
     </ScrollView>
   );
 }
@@ -138,161 +215,326 @@ export default function MembershipScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: '100%',
-    maxWidth: '100%',
     backgroundColor: LuxuryColors.background,
-    overflow: 'hidden',
   },
-  header: {
-    paddingTop: LuxurySpacing.xl,
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingBottom: LuxurySpacing.lg,
+
+  // ── Hero ──────────────────────────────────────────────────
+  hero: {
     alignItems: 'center',
+    paddingHorizontal: LuxurySpacing.xl,
+    paddingBottom: LuxurySpacing.xl,
+    gap: LuxurySpacing.md,
+    backgroundColor: LuxuryColors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  vaultIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: LuxuryColors.surfaceLight,
-    borderWidth: 2,
-    borderColor: LuxuryColors.gold,
+  heroIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(212,175,55,0.30)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: LuxurySpacing.lg,
+    marginBottom: LuxurySpacing.xs,
     ...LuxuryShadow.gold,
   },
-  title: {
+  heroOverline: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
+  heroTitle: {
     fontSize: LuxuryFontSize.xxxl,
-    fontWeight: '700',
+    fontWeight: '800',
     color: LuxuryColors.textPrimary,
-    marginBottom: LuxurySpacing.sm,
+    letterSpacing: -0.8,
+    textAlign: 'center',
+    lineHeight: 38,
   },
-  subtitle: {
-    fontSize: LuxuryFontSize.md,
+  heroSubtitle: {
+    fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textSecondary,
+    lineHeight: 21,
+    letterSpacing: 0.1,
+    textAlign: 'center',
+    maxWidth: 300,
   },
-  section: {
+
+  // ── Social proof ──────────────────────────────────────────
+  proofStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
     paddingHorizontal: LuxurySpacing.xl,
-    marginBottom: LuxurySpacing.xxl,
+    paddingVertical: LuxurySpacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  sectionTitle: {
-    fontSize: LuxuryFontSize.xl,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    marginBottom: LuxurySpacing.lg,
-  },
-  cardContainer: {
-    ...LuxuryShadow.metallic,
-  },
-  blackCard: {
-    borderRadius: LuxuryBorderRadius.xxxl,
-    padding: LuxurySpacing.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.4)',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  cardGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(212, 175, 55, 0.08)',
-  },
-  cardContent: {
-    position: 'relative',
-    gap: LuxurySpacing.md,
-  },
-  cardHeader: {
+  proofAvatars: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  cardBrand: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.gold,
-    fontWeight: '700',
-    letterSpacing: 3,
-  },
-  cardTitle: {
-    fontSize: LuxuryFontSize.xxl,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 2,
-  },
-  cardSubtitle: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.gold,
-    fontWeight: '600',
-    letterSpacing: 1,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: LuxurySpacing.sm,
-  },
-  cardNumber: {
-    fontSize: LuxuryFontSize.lg,
-    color: LuxuryColors.textPrimary,
-    fontWeight: '600',
-    letterSpacing: 2,
-  },
-  cardMember: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textSecondary,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  tierCardActive: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+  proofAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.15)',
     borderWidth: 1.5,
-    borderColor: LuxuryColors.gold,
-    borderRadius: LuxuryBorderRadius.xl,
-    padding: LuxurySpacing.lg,
-    gap: LuxurySpacing.md,
-  },
-  tierIconActive: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: LuxuryColors.gold,
-    borderWidth: 1,
-    borderColor: LuxuryColors.gold,
+    borderColor: LuxuryColors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tierInfo: {
-    flex: 1,
-  },
-  tierTitleActive: {
-    fontSize: LuxuryFontSize.lg,
-    fontWeight: '700',
+  proofAvatarText: {
+    fontSize: 8,
+    fontWeight: '800',
     color: LuxuryColors.gold,
   },
-  tierSubtitleActive: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
+  proofTextWrap: {
+    flex: 1,
+    gap: 3,
   },
-  privilegesList: {
+  proofStars: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  proofText: {
+    fontSize: 10,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.1,
+  },
+
+  // ── Section ───────────────────────────────────────────────
+  section: {
+    paddingHorizontal: LuxurySpacing.xl,
+    paddingTop: LuxurySpacing.xl,
     gap: LuxurySpacing.md,
   },
-  privilegeItem: {
+  sectionLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
+
+  // ── Benefits ──────────────────────────────────────────────
+  benefitsCard: {
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: LuxuryBorderRadius.xl,
+    overflow: 'hidden',
+  },
+  benefitRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: LuxurySpacing.md,
+    padding: LuxurySpacing.md,
+  },
+  benefitRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  benefitIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: LuxuryBorderRadius.md,
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  benefitTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  benefitTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  benefitDesc: {
+    fontSize: 11,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 16,
+    letterSpacing: 0.1,
+  },
+
+  // ── Pricing ───────────────────────────────────────────────
+  planCardAnnual: {
+    backgroundColor: 'rgba(212,175,55,0.06)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(212,175,55,0.45)',
+    borderRadius: LuxuryBorderRadius.xl,
+    padding: LuxurySpacing.md,
+    gap: LuxurySpacing.sm,
+    position: 'relative',
+    ...LuxuryShadow.gold,
+  },
+  planBestValueBadge: {
+    position: 'absolute',
+    top: -10,
+    right: LuxurySpacing.md,
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  planBestValueText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: LuxuryColors.background,
+    letterSpacing: 1.2,
+  },
+  planCardMonthly: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: LuxuryBorderRadius.xl,
+    padding: LuxurySpacing.md,
+    gap: LuxurySpacing.sm,
+  },
+  planCardInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: LuxurySpacing.md,
-    backgroundColor: LuxuryColors.surfaceLight,
-    borderWidth: 1,
-    borderColor: LuxuryColors.divider,
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.lg,
+    justifyContent: 'space-between',
   },
-  privilegeText: {
-    fontSize: LuxuryFontSize.md,
-    fontWeight: '600',
+  planLeft: {
+    gap: 2,
+  },
+  planRight: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 3,
+  },
+  planName: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '800',
     color: LuxuryColors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  planNameSecondary: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '700',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: -0.2,
+  },
+  planDesc: {
+    fontSize: 11,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.1,
+  },
+  planPrice: {
+    fontSize: LuxuryFontSize.xxl,
+    fontWeight: '800',
+    color: LuxuryColors.gold,
+    letterSpacing: -0.5,
+  },
+  planPriceSecondary: {
+    fontSize: LuxuryFontSize.xxl,
+    fontWeight: '700',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: -0.5,
+  },
+  planPer: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.1,
+  },
+  planSavingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  planSavingText: {
+    fontSize: 11,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  planCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.full,
+    paddingVertical: 12,
+    marginTop: LuxurySpacing.xs,
+  },
+  planCtaText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '800',
+    color: LuxuryColors.background,
+    letterSpacing: 0.3,
+  },
+  planCtaSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingVertical: 11,
+    marginTop: LuxurySpacing.xs,
+  },
+  planCtaSecondaryText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+  planNote: {
+    fontSize: 10,
+    color: LuxuryColors.textTertiary,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+    lineHeight: 15,
+    marginTop: -LuxurySpacing.xs,
+  },
+
+  // ── Creators ──────────────────────────────────────────────
+  creatorsRow: {
+    flexDirection: 'row',
+    gap: LuxurySpacing.sm,
+    flexWrap: 'wrap',
+  },
+  creatorChip: {
+    alignItems: 'center',
+    gap: 4,
+    width: '22%',
+  },
+  creatorChipAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.30)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorChipInitials: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+  creatorChipName: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.1,
+    textAlign: 'center',
+  },
+  creatorChipCount: {
+    fontSize: 8,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
   },
 });

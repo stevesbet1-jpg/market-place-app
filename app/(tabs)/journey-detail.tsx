@@ -23,7 +23,8 @@ import {
   LuxuryShadow,
 } from '../../constants/luxuryTheme';
 import { JOURNEYS, ImageKey, Journey } from '../../constants/journeys';
-import { getCreatorById, formatFollowers } from '../../constants/creators';
+import { getCreatorById, formatFollowers, formatSaves } from '../../constants/creators';
+import { getReviewsForJourney } from '../../constants/reviews';
 import {
   consumeFreeJourney,
   getSavedIds,
@@ -117,6 +118,7 @@ export default function JourneyDetailScreen() {
 
   const [saved, setSaved] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [followed, setFollowed] = useState(false);
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [sections, setSections] = useState({
@@ -125,6 +127,7 @@ export default function JourneyDetailScreen() {
     experiences: true,
     itinerary: true,
     gallery: true,
+    reviews: true,
   });
 
   const saveScale = useRef(new Animated.Value(1)).current;
@@ -171,6 +174,7 @@ export default function JourneyDetailScreen() {
   const difficulty = getDifficulty(journey);
   const travelStyles = getTravelStyles(journey);
   const creator = getCreatorById(journey.creatorId);
+  const reviews = getReviewsForJourney(journey.id);
 
   return (
     <>
@@ -265,29 +269,66 @@ export default function JourneyDetailScreen() {
         {/* ── Creator strip ───────────────────────────────── */}
         {creator && (
           <View style={styles.creatorStrip}>
-            <View style={styles.creatorLeft}>
+            {/* Top row: avatar + info + follow */}
+            <View style={styles.creatorTopRow}>
               <View style={styles.creatorAvatar}>
                 <Text style={styles.creatorAvatarText}>{creator.initials}</Text>
               </View>
               <View style={styles.creatorInfo}>
                 <Text style={styles.creatorNameText}>{creator.name}</Text>
                 <View style={styles.creatorRatingRow}>
-                  <Ionicons name="star" size={10} color={LuxuryColors.gold} />
-                  <Text style={styles.creatorRatingVal}>{creator.rating.toFixed(1)}</Text>
-                  <Text style={styles.creatorFollowers}> · {formatFollowers(creator.followers)} followers</Text>
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Ionicons
+                      key={s}
+                      name={s <= Math.round(creator.rating) ? 'star' : 'star-outline'}
+                      size={10}
+                      color={LuxuryColors.gold}
+                    />
+                  ))}
+                  <Text style={styles.creatorRatingVal}> {creator.rating.toFixed(1)}</Text>
                 </View>
               </View>
+              <TouchableOpacity
+                style={[styles.followBtn, followed && styles.followBtnActive]}
+                onPress={() => setFollowed((f) => !f)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={followed ? 'checkmark' : 'person-add-outline'}
+                  size={12}
+                  color={followed ? LuxuryColors.background : LuxuryColors.gold}
+                />
+                <Text style={[styles.followBtnText, followed && styles.followBtnTextActive]}>
+                  {followed ? 'Following' : 'Follow'}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.viewProfileBtn}
-              onPress={() =>
-                router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })
-              }
-              activeOpacity={0.8}
-            >
-              <Text style={styles.viewProfileText}>Profile</Text>
-              <Ionicons name="chevron-forward" size={11} color={LuxuryColors.gold} />
-            </TouchableOpacity>
+            {/* Bottom row: stats + view profile */}
+            <View style={styles.creatorBottomRow}>
+              <View style={styles.creatorStat}>
+                <Ionicons name="people-outline" size={11} color={LuxuryColors.textTertiary} />
+                <Text style={styles.creatorStatText}>{formatFollowers(creator.followers)} followers</Text>
+              </View>
+              <View style={styles.creatorStatDot} />
+              <View style={styles.creatorStat}>
+                <Ionicons name="heart-outline" size={11} color={LuxuryColors.textTertiary} />
+                <Text style={styles.creatorStatText}>{formatSaves(journey.savedCount)} saves</Text>
+              </View>
+              <View style={styles.creatorStatDot} />
+              <View style={styles.creatorStat}>
+                <Ionicons name="star" size={11} color={LuxuryColors.gold} />
+                <Text style={[styles.creatorStatText, { color: LuxuryColors.gold }]}>{journey.rating.toFixed(1)}</Text>
+              </View>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.viewProfileText}>Profile →</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -449,6 +490,57 @@ export default function JourneyDetailScreen() {
                   </TouchableOpacity>
                 ))}
               </ScrollView>
+            )}
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Traveler Reviews */}
+          <View style={styles.sectionOuter}>
+            <SectionHeader
+              label={`Traveler Reviews  (${reviews.length})`}
+              isOpen={sections.reviews}
+              onToggle={() => toggleSection('reviews')}
+            />
+            {sections.reviews && (
+              <View style={styles.sectionBody}>
+                {/* Summary bar */}
+                <View style={styles.reviewSummary}>
+                  <Text style={styles.reviewAvgScore}>{journey.rating.toFixed(1)}</Text>
+                  <View style={styles.reviewAvgStars}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Ionicons
+                        key={s}
+                        name={s <= Math.round(journey.rating) ? 'star' : 'star-outline'}
+                        size={14}
+                        color={LuxuryColors.gold}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.reviewAvgLabel}>{reviews.length} reviews</Text>
+                </View>
+                {/* Review cards */}
+                {reviews.map((review) => (
+                  <View key={review.id} style={styles.reviewCard}>
+                    <View style={styles.reviewCardHeader}>
+                      <View style={styles.reviewAvatar}>
+                        <Text style={styles.reviewAvatarText}>{review.initials}</Text>
+                      </View>
+                      <View style={styles.reviewMeta}>
+                        <Text style={styles.reviewAuthor}>{review.author}</Text>
+                        <Text style={styles.reviewLocation}>{review.location}</Text>
+                      </View>
+                      <View style={styles.reviewRating}>
+                        {Array.from({ length: review.rating }).map((_, i) => (
+                          <Ionicons key={i} name="star" size={10} color={LuxuryColors.gold} />
+                        ))}
+                      </View>
+                    </View>
+                    <Text style={styles.reviewText}>{review.text}</Text>
+                    <Text style={styles.reviewDate}>{review.date}</Text>
+                  </View>
+                ))}
+              </View>
             )}
           </View>
 
@@ -689,42 +781,40 @@ const styles = StyleSheet.create({
 
   // ── Creator strip ────────────────────────────────────────
   creatorStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: LuxurySpacing.xl,
     paddingVertical: LuxurySpacing.md,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
     backgroundColor: LuxuryColors.surface,
+    gap: LuxurySpacing.sm,
   },
-  creatorLeft: {
+  creatorTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: LuxurySpacing.sm,
-    flex: 1,
   },
   creatorAvatar: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: LuxuryBorderRadius.full,
     backgroundColor: 'rgba(212,175,55,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(212,175,55,0.40)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   creatorAvatarText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '800',
     color: LuxuryColors.gold,
     letterSpacing: 0.3,
   },
   creatorInfo: {
-    gap: 2,
+    flex: 1,
+    gap: 3,
   },
   creatorNameText: {
-    fontSize: LuxuryFontSize.sm,
+    fontSize: LuxuryFontSize.md,
     fontWeight: '700',
     color: LuxuryColors.textPrimary,
     letterSpacing: 0.1,
@@ -732,28 +822,58 @@ const styles = StyleSheet.create({
   creatorRatingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 2,
   },
   creatorRatingVal: {
     fontSize: 11,
     fontWeight: '700',
     color: LuxuryColors.gold,
-    letterSpacing: 0.1,
+    marginLeft: 2,
   },
-  creatorFollowers: {
+  followBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.45)',
+    backgroundColor: 'transparent',
+  },
+  followBtnActive: {
+    backgroundColor: LuxuryColors.gold,
+    borderColor: LuxuryColors.gold,
+  },
+  followBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.4,
+  },
+  followBtnTextActive: {
+    color: LuxuryColors.background,
+  },
+  creatorBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  creatorStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  creatorStatText: {
     fontSize: 11,
     color: LuxuryColors.textTertiary,
     letterSpacing: 0.1,
   },
-  viewProfileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: LuxuryBorderRadius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
+  creatorStatDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(122,118,104,0.35)',
   },
   viewProfileText: {
     fontSize: 11,
@@ -1029,5 +1149,90 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.70)',
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+
+  // ── Reviews ──────────────────────────────────────────────
+  reviewSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    paddingVertical: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.sm,
+  },
+  reviewAvgScore: {
+    fontSize: LuxuryFontSize.xxl,
+    fontWeight: '800',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  reviewAvgStars: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  reviewAvgLabel: {
+    fontSize: 11,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  reviewCard: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.md,
+    gap: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.sm,
+  },
+  reviewCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+  },
+  reviewAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewAvatarText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+  reviewMeta: {
+    flex: 1,
+    gap: 1,
+  },
+  reviewAuthor: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  reviewLocation: {
+    fontSize: 10,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  reviewText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 20,
+    letterSpacing: 0.1,
+  },
+  reviewDate: {
+    fontSize: 10,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.3,
+    textAlign: 'right',
   },
 });

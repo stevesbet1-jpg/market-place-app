@@ -289,10 +289,14 @@ export default function TripsScreen() {
                 <Text style={styles.metaText}>{journey.bestTime}</Text>
               </View>
 
-              {/* Budget + saves + CTA */}
+              {/* Budget + rating + saves + CTA */}
               <View style={styles.cardFooter}>
                 <View style={styles.budgetChip}>
                   <Text style={styles.budgetChipText}>{journey.dailyBudget}</Text>
+                </View>
+                <View style={styles.ratingChip}>
+                  <Ionicons name="star" size={9} color={LuxuryColors.gold} />
+                  <Text style={styles.ratingChipText}>{journey.rating.toFixed(1)}</Text>
                 </View>
                 <View style={styles.savesChip}>
                   <Ionicons name="heart" size={9} color="rgba(212,175,55,0.60)" />
@@ -753,6 +757,17 @@ const styles = StyleSheet.create({
     color: 'rgba(212,175,55,0.55)',
     fontWeight: '600',
     letterSpacing: 0.1,
+  },
+  ratingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  ratingChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.2,
   },
   exploreLink: {
     flexDirection: 'row',
