@@ -60,7 +60,7 @@ const FEATURED_LISTINGS = [
     category:    'Luxury Property',
     title:       'Santorini Clifftop Estate',
     description: 'Six-bedroom private estate with 270° caldera views and infinity pool.',
-    price:       '€18,500,000',
+    access:      'Founder Collection',
     image:       require('../../assets/collections/super-villas.jpg'),
     seller:      { name: 'James R.', verified: true },
   },
@@ -68,7 +68,7 @@ const FEATURED_LISTINGS = [
     category:    'Superyacht',
     title:       'M/Y Azure Dream',
     description: '58m Benetti — 6 cabins, beach club, helipad. Mediterranean delivery.',
-    price:       '$42,000,000',
+    access:      'Private Introduction',
     image:       require('../../assets/collections/yacht-escapes.jpg'),
     seller:      { name: 'Sofia M.', verified: true },
   },
@@ -76,7 +76,7 @@ const FEATURED_LISTINGS = [
     category:    'Private Aviation',
     title:       'Gulfstream G700 Charter',
     description: 'Ultra-long range · 14 passengers · VVIP cabin · Global routing.',
-    price:       '$185,000 / trip',
+    access:      'Available Through Concierge',
     image:       require('../../assets/collections/private-islands.jpg'),
     seller:      { name: 'Amir K.', verified: true },
   },
@@ -449,10 +449,13 @@ export default function ExploreScreen() {
                     <Text style={styles.featuredTitle}>{listing.title}</Text>
                     <Text style={styles.featuredDesc}>{listing.description}</Text>
                     <View style={styles.featuredPriceRow}>
-                      <Text style={styles.featuredPrice}>{listing.price}</Text>
-                      <View style={styles.featuredEnquireBtn}>
-                        <Text style={styles.featuredEnquireText}>Enquire</Text>
-                        <Ionicons name="arrow-forward" size={10} color={LuxuryColors.background} />
+                      <View style={styles.featuredAccessBadge}>
+                        <Ionicons name="lock-closed" size={10} color={LuxuryColors.gold} />
+                        <Text style={styles.featuredAccessText}>{listing.access}</Text>
+                      </View>
+                      <View style={styles.featuredConciergeCta}>
+                        <Text style={styles.featuredConciergeCtaText}>Via Concierge</Text>
+                        <Ionicons name="chevron-forward" size={10} color="rgba(212,175,55,0.60)" />
                       </View>
                     </View>
                     <View style={styles.featuredDivider} />
@@ -1171,27 +1174,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 2,
   },
-  featuredPrice: {
-    fontSize: LuxuryFontSize.xl,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: -0.3,
-  },
-  featuredEnquireBtn: {
+  featuredAccessBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: LuxuryColors.gold,
+    backgroundColor: 'rgba(212,175,55,0.08)',
     paddingHorizontal: LuxurySpacing.md,
     paddingVertical: LuxurySpacing.xs,
     borderRadius: LuxuryBorderRadius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.30)',
   },
-  featuredEnquireText: {
-    fontSize: 11,
+  featuredAccessText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: LuxuryColors.background,
+    color: LuxuryColors.gold,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    letterSpacing: 0.8,
+  },
+  featuredConciergeCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  featuredConciergeCtaText: {
+    fontSize: 11,
+    color: 'rgba(212,175,55,0.70)',
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   featuredDivider: {
     height: StyleSheet.hairlineWidth,
