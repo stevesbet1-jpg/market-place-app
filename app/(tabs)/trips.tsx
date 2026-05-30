@@ -12,6 +12,9 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   villas:  require('../../assets/collections/super-villas.jpg'),
   yacht:   require('../../assets/collections/yacht-escapes.jpg'),
   desert:  require('../../assets/collections/desert-retreats.jpg'),
+  mountain: require('../../assets/collections/alpine-mountains.jpg'),
+  city:    require('../../assets/collections/japanese-city.jpg'),
+  temple:  require('../../assets/collections/japanese-temple.jpg'),
 };
 
 export default function TripsScreen() {

@@ -1,4 +1,4 @@
-export type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert';
+export type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple';
 
 export interface Journey {
   id: string;
@@ -101,7 +101,7 @@ export const JOURNEYS: readonly Journey[] = [
     duration: '6 Days',
     bestTime: 'Dec – Mar',
     overview: 'Towering peaks, crystalline alpine air, and centuries of precision craftsmanship. The Swiss Alps define the premium mountain experience in every season.',
-    imageKey: 'desert',
+    imageKey: 'mountain',
     places: ['Jungfraujoch — Top of Europe', 'Grindelwald Village', 'Matterhorn Glacier Paradise', 'Aletsch Glacier', 'Lucerne Chapel Bridge'],
     restaurants: ['Restaurant Chesery Gstaad', 'Il Tartufo Verbier', 'Altitude Restaurant Zermatt', 'La Vache Crans-Montana'],
     experiences: ['Off-Piste Ski Touring', 'Glacier Hiking', 'Chocolate Atelier Visit', 'Alpine Wellness Spa', 'Fondue in a Mountain Hut'],
@@ -140,7 +140,7 @@ export const JOURNEYS: readonly Journey[] = [
     duration: '7 Days',
     bestTime: 'Mar – May, Sep – Nov',
     overview: 'The city that moves at the speed of the future without abandoning its ancient soul. From Michelin-star dining to serene temple gardens, Tokyo contains multitudes.',
-    imageKey: 'villas',
+    imageKey: 'city',
     places: ['Senso-ji Temple Asakusa', 'TeamLab Borderless', 'Tsukiji Outer Market', 'Shinjuku Gyoen Garden', 'Roppongi Hills'],
     restaurants: ['Sukiyabashi Jiro Honten', 'Ryugin Nishiazabu', 'Ishikawa Kagurazaka', 'Narisawa Minami-Aoyama'],
     experiences: ['Dawn Tuna Auction Observation', 'Traditional Tea Ceremony', 'Kabuki Theatre Matinée', 'Shibuya Crossing at Night', 'Woodblock Print Workshop'],
@@ -153,7 +153,7 @@ export const JOURNEYS: readonly Journey[] = [
     duration: '5 Days',
     bestTime: 'Mar – Apr, Oct – Nov',
     overview: 'Japan\'s ancient capital holds more UNESCO World Heritage sites than almost any city on earth. Where Zen philosophy becomes visible in garden, temple, and alley.',
-    imageKey: 'villas',
+    imageKey: 'temple',
     places: ['Fushimi Inari-Taisha Shrine', 'Arashiyama Bamboo Grove', 'Kinkaku-ji Golden Pavilion', 'Philosopher\'s Path', 'Nishiki Market'],
     restaurants: ['Kikunoi Honten', 'Nakamura Nakagyo', 'Mizai Gion', 'Kichisen'],
     experiences: ['Dawn Walk at Fushimi Inari', 'Matcha Ceremony at Urasenke', 'Geisha District Evening Walk', 'Ikebana Flower Arrangement', 'Kodo Incense Ceremony'],
@@ -166,7 +166,7 @@ export const JOURNEYS: readonly Journey[] = [
     duration: '7 Days',
     bestTime: 'Jun – Aug · Dec – Feb',
     overview: 'Where volcanic fire meets ancient ice. Iceland offers landscapes that challenge every expectation — geysers, glaciers, aurora borealis, and empty roads to infinity.',
-    imageKey: 'desert',
+    imageKey: 'mountain',
     places: ['Blue Lagoon Geothermal Spa', 'Gullfoss Waterfall', 'Geysir Geothermal Area', 'Skógafoss Falls', 'Jökulsárlón Glacier Lagoon'],
     restaurants: ['Dill Restaurant Reykjavík', 'Matur og Drykkur', 'Grillið Sky Restaurant', 'Fiskfélagið Fish Company'],
     experiences: ['Northern Lights Photography', 'Glacier Hiking Vatnajökull', 'Midnight Sun Walk', 'Whale Watching', 'Puffin Colony Visit'],
@@ -244,7 +244,7 @@ export const JOURNEYS: readonly Journey[] = [
     duration: '4 Days',
     bestTime: 'Feb – Apr',
     overview: 'An island city-state that distills the future of urban living. Immaculate parks, world-class dining, and multilayered cultural districts reward every type of explorer.',
-    imageKey: 'villas',
+    imageKey: 'city',
     places: ['Gardens by the Bay Supertrees', 'Marina Bay Sands Skypark', 'Chinatown Heritage Centre', 'Kampong Glam Arab Quarter', 'Botanic Gardens UNESCO'],
     restaurants: ['Odette National Gallery', 'Les Amis Orchard', 'Burnt Ends Teck Lim', 'Zén Bukit Pasoh'],
     experiences: ['Supertree Grove Light Show', 'Hawker Centre Food Walk', 'Singapore River History Walk', 'Sentosa Island Day', 'Night Safari'],
@@ -270,7 +270,7 @@ export const JOURNEYS: readonly Journey[] = [
     duration: '10 Days',
     bestTime: 'Nov – Mar',
     overview: 'The end of the world, rendered magnificent. Patagonia\'s granite towers, ancient glaciers, and wild pampas represent the last great wilderness — untouched, untamed, unforgettable.',
-    imageKey: 'desert',
+    imageKey: 'mountain',
     places: ['Torres del Paine National Park', 'Perito Moreno Glacier', 'Fitz Roy Massif', 'Puerto Natales', 'Tierra del Fuego'],
     restaurants: ['Eolo Lodge Dining Room', 'La Mesita Grande Torres del Paine', 'Martin Fierro Puerto Natales', 'El Calafate Parrilla'],
     experiences: ['W Trek Multi-Day Hike', 'Glacier Ice Walk', 'Condor Observation', 'Gaucho Estancia Day', 'Stargazing in the Pampa'],
