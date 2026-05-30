@@ -85,6 +85,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="journey-detail"
+        options={{ tabBarButton: () => null }}
+      />
+      <Tabs.Screen
         name="add-product"
         options={{
           title: 'Sell',

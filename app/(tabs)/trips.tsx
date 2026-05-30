@@ -1,90 +1,121 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Image, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryGradients, LuxuryShadow } from '../../constants/luxuryTheme';
+import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
+import { JOURNEYS, Journey, ImageKey } from '../../constants/journeys';
+
+const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
+  islands: require('../../assets/collections/private-islands.jpg'),
+  villas:  require('../../assets/collections/super-villas.jpg'),
+  yacht:   require('../../assets/collections/yacht-escapes.jpg'),
+  desert:  require('../../assets/collections/desert-retreats.jpg'),
+};
 
 export default function TripsScreen() {
-  const handleTripPress = (tripName: string) => {
-    Alert.alert('Journey Details', `${tripName} details coming soon.`);
-  };
+  const insets = useSafeAreaInsets();
 
-  const handleBookAgain = (tripName: string) => {
-    Alert.alert('Book Again', `Booking ${tripName} again coming soon.`);
-  };
+  // Fixed random selection for this session — re-shuffles only on cold app launch
+  const [featuredJourneys] = useState<Journey[]>(() => {
+    const shuffled = [...JOURNEYS].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 5);
+  });
+
   return (
     <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
-      showsHorizontalScrollIndicator={false}
       bounces={false}
-      alwaysBounceHorizontal={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
-      automaticallyAdjustKeyboardInsets={false}
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Your Trips</Text>
-        <Text style={styles.subtitle}>Upcoming and past extraordinary journeys</Text>
+      {/* ── Header ── */}
+      <View style={[styles.header, { paddingTop: insets.top + LuxurySpacing.xl }]}>
+        <Text style={styles.overline}>Luxury Discovery</Text>
+        <Text style={styles.title}>Discover Journeys</Text>
+        <Text style={styles.subtitle}>Curated destinations, refreshed each session</Text>
       </View>
 
-      {/* Upcoming Trip */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Upcoming</Text>
-        <TouchableOpacity 
-          style={styles.tripCard}
-          onPress={() => handleTripPress('Kyoto Cultural Immersion')}
-          activeOpacity={0.8}
-        >
-          <LinearGradient colors={LuxuryGradients.violetGold} style={styles.tripGradient}>
-            <View style={styles.tripContent}>
-              <View style={styles.tripBadge}>
-                <Text style={styles.tripBadgeText}>Confirmed</Text>
-              </View>
-              <Text style={styles.tripTitle}>Kyoto Cultural Immersion</Text>
-              <Text style={styles.tripDate}>March 15-20, 2026</Text>
-              <View style={styles.tripMeta}>
-                <Ionicons name="person" size={16} color="#FFFFFF" />
-                <Text style={styles.tripMetaText}>2 Guests</Text>
-              </View>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
+      {/* ── Complimentary badge ── */}
+      <View style={styles.padH}>
+        <View style={styles.trialBadge}>
+          <Ionicons name="diamond-outline" size={13} color={LuxuryColors.gold} />
+          <Text style={styles.trialBadgeText}>3 Complimentary Journeys Available</Text>
+          <View style={styles.trialDots}>
+            {[0, 1, 2].map((i) => <View key={i} style={styles.trialDot} />)}
+          </View>
+        </View>
       </View>
 
-      {/* Past Trips */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Past Journeys</Text>
-        {[
-          { name: 'Santorini Sunset Retreat', date: 'December 2025', gradient: LuxuryGradients.violetDeep },
-          { name: 'Maldives Paradise Escape', date: 'October 2025', gradient: LuxuryGradients.violetGold },
-        ].map((trip, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.pastTripCard}
-            onPress={() => handleTripPress(trip.name)}
-            activeOpacity={0.8}
+      {/* ── Journey cards ── */}
+      <View style={[styles.padH, styles.cardList]}>
+        {featuredJourneys.map((journey) => (
+          <Pressable
+            key={journey.id}
+            style={({ pressed }) => [
+              styles.journeyCard,
+              pressed && styles.journeyCardPressed,
+            ]}
+            onPress={() =>
+              router.push({ pathname: '/(tabs)/journey-detail', params: { id: journey.id } })
+            }
           >
-            <View style={styles.pastTripImage}>
-              <LinearGradient colors={trip.gradient} style={styles.pastTripGradient}>
-                <Ionicons name="image-outline" size={32} color="rgba(255,255,255,0.5)" />
-              </LinearGradient>
+            {/* Hero image */}
+            <View style={styles.imageWrap}>
+              <Image
+                source={JOURNEY_IMAGES[journey.imageKey]}
+                style={styles.heroImg}
+                resizeMode="cover"
+              />
+              <LinearGradient
+                colors={['transparent', 'rgba(7,17,32,0.80)'] as const}
+                style={StyleSheet.absoluteFill}
+              />
+              {/* Region badge */}
+              <View style={styles.regionBadge}>
+                <Text style={styles.regionText}>{journey.region}</Text>
+              </View>
+              {/* Duration badge */}
+              <View style={styles.durationBadge}>
+                <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.80)" />
+                <Text style={styles.durationText}>{journey.duration}</Text>
+              </View>
             </View>
-            <View style={styles.pastTripInfo}>
-              <Text style={styles.pastTripName} numberOfLines={2} ellipsizeMode="tail">{trip.name}</Text>
-              <Text style={styles.pastTripDate}>{trip.date}</Text>
+
+            {/* Card body */}
+            <View style={styles.cardBody}>
+              <View style={styles.cardMeta}>
+                <Text style={styles.destinationName}>{journey.destination}</Text>
+                <Text style={styles.bestTime}>Best: {journey.bestTime}</Text>
+              </View>
+              <Text style={styles.journeyName}>{journey.name}</Text>
+              <Text style={styles.overviewSnippet} numberOfLines={2}>
+                {journey.overview}
+              </Text>
+              <View style={styles.cardFooter}>
+                <View style={styles.placeChips}>
+                  {journey.places.slice(0, 2).map((place) => (
+                    <View key={place} style={styles.placeChip}>
+                      <Text style={styles.placeChipText} numberOfLines={1}>{place}</Text>
+                    </View>
+                  ))}
+                  {journey.places.length > 2 && (
+                    <Text style={styles.placeMore}>+{journey.places.length - 2}</Text>
+                  )}
+                </View>
+                <View style={styles.exploreLink}>
+                  <Text style={styles.exploreLinkText}>Explore</Text>
+                  <Ionicons name="chevron-forward" size={11} color={LuxuryColors.gold} />
+                </View>
+              </View>
             </View>
-            <TouchableOpacity 
-              style={styles.bookAgainButton}
-              onPress={() => handleBookAgain(trip.name)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.bookAgainText}>Book Again</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
+          </Pressable>
         ))}
       </View>
 
+      <View style={{ height: 64 + insets.bottom }} />
     </ScrollView>
   );
 }
@@ -92,127 +123,199 @@ export default function TripsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: '100%',
-    maxWidth: '100%',
-    backgroundColor: LuxuryColors.surface,
-    overflow: 'hidden',
+    backgroundColor: LuxuryColors.background,
   },
   header: {
-    paddingTop: LuxurySpacing.xl,
     paddingHorizontal: LuxurySpacing.xl,
     paddingBottom: LuxurySpacing.lg,
+  },
+  overline: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    marginBottom: LuxurySpacing.sm,
   },
   title: {
     fontSize: LuxuryFontSize.xxxl,
     fontWeight: '700',
     color: LuxuryColors.textPrimary,
-    marginBottom: LuxurySpacing.sm,
-  },
-  subtitle: {
-    fontSize: LuxuryFontSize.md,
-    color: LuxuryColors.textSecondary,
-  },
-  section: {
-    paddingHorizontal: LuxurySpacing.xl,
-    marginBottom: LuxurySpacing.xxl,
-  },
-  sectionTitle: {
-    fontSize: LuxuryFontSize.xl,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    marginBottom: LuxurySpacing.lg,
-  },
-  tripCard: {
-    borderRadius: LuxuryBorderRadius.xxxl,
-    overflow: 'hidden',
-    ...LuxuryShadow.ambient,
-  },
-  tripGradient: {
-    padding: LuxurySpacing.xl,
-  },
-  tripContent: {
-    gap: LuxurySpacing.sm,
-  },
-  tripBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: LuxurySpacing.xs,
-    borderRadius: LuxuryBorderRadius.lg,
+    letterSpacing: -0.5,
     marginBottom: LuxurySpacing.xs,
   },
-  tripBadgeText: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.gold,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  tripTitle: {
-    fontSize: LuxuryFontSize.xxl,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  tripDate: {
-    fontSize: LuxuryFontSize.md,
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
-  tripMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.xs,
-  },
-  tripMetaText: {
+  subtitle: {
     fontSize: LuxuryFontSize.sm,
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.2,
   },
-  pastTripCard: {
+  padH: {
+    paddingHorizontal: LuxurySpacing.xl,
+  },
+  // ── Complimentary badge ────────────────────────────────
+  trialBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LuxuryColors.glass,
+    gap: LuxurySpacing.sm,
+    backgroundColor: 'rgba(212,175,55,0.08)',
     borderWidth: 1,
-    borderColor: LuxuryColors.glassBorder,
-    borderRadius: LuxuryBorderRadius.xl,
-    padding: LuxurySpacing.lg,
-    marginBottom: LuxurySpacing.md,
+    borderColor: 'rgba(212,175,55,0.20)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: 10,
+    marginBottom: LuxurySpacing.lg,
+  },
+  trialBadgeText: {
+    flex: 1,
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  trialDots: {
+    flexDirection: 'row',
+    gap: 5,
+  },
+  trialDot: {
+    width: 7,
+    height: 7,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: LuxuryColors.gold,
+  },
+  // ── Card list ─────────────────────────────────────────
+  cardList: {
     gap: LuxurySpacing.md,
   },
-  pastTripImage: {
-    width: 80,
-    height: 80,
-    borderRadius: LuxuryBorderRadius.lg,
+  journeyCard: {
+    backgroundColor: LuxuryColors.surface,
+    borderRadius: LuxuryBorderRadius.xxl,
+    overflow: 'hidden',
+    ...LuxuryShadow.soft,
+  },
+  journeyCardPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.92,
+  },
+  // ── Hero image ────────────────────────────────────────
+  imageWrap: {
+    height: 155,
     overflow: 'hidden',
   },
-  pastTripGradient: {
-    flex: 1,
+  heroImg: {
+    width: '100%',
+    height: '100%',
+  },
+  regionBadge: {
+    position: 'absolute',
+    top: LuxurySpacing.md,
+    left: LuxurySpacing.md,
+    backgroundColor: 'rgba(7,17,32,0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  regionText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  durationBadge: {
+    position: 'absolute',
+    top: LuxurySpacing.md,
+    right: LuxurySpacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(7,17,32,0.65)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  pastTripInfo: {
-    flex: 1,
+  durationText: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.80)',
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
-  pastTripName: {
+  // ── Card body ─────────────────────────────────────────
+  cardBody: {
+    padding: LuxurySpacing.md,
+    gap: 6,
+  },
+  cardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  destinationName: {
+    fontSize: LuxuryFontSize.xs,
+    fontWeight: '700',
+    color: LuxuryColors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  bestTime: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  journeyName: {
     fontSize: LuxuryFontSize.lg,
     fontWeight: '700',
     color: LuxuryColors.textPrimary,
-    marginBottom: LuxurySpacing.xs,
+    letterSpacing: -0.2,
   },
-  pastTripDate: {
+  overviewSnippet: {
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textSecondary,
+    lineHeight: 19,
+    letterSpacing: 0.1,
   },
-  bookAgainButton: {
-    backgroundColor: LuxuryColors.surfaceLight,
-    paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: LuxurySpacing.sm,
-    borderRadius: LuxuryBorderRadius.lg,
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  placeChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    flexWrap: 'nowrap',
+  },
+  placeChip: {
+    backgroundColor: 'rgba(212,175,55,0.08)',
     borderWidth: 1,
-    borderColor: LuxuryColors.divider,
+    borderColor: 'rgba(212,175,55,0.18)',
+    borderRadius: LuxuryBorderRadius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    maxWidth: 130,
   },
-  bookAgainText: {
+  placeChipText: {
+    fontSize: 10,
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  placeMore: {
+    fontSize: 10,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.3,
+  },
+  exploreLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  exploreLinkText: {
     fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.gold,
     fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.5,
   },
 });
