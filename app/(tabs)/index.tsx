@@ -55,6 +55,40 @@ const PRIVILEGES = [
   { label: 'Travel Insurance', icon: 'shield-checkmark' as const, subtitle: 'Worldwide Protection',     badge: 'Active'   },
 ] as const;
 
+const FEATURED_LISTINGS = [
+  {
+    category:    'Luxury Property',
+    title:       'Santorini Clifftop Estate',
+    description: 'Six-bedroom private estate with 270° caldera views and infinity pool.',
+    price:       '€18,500,000',
+    image:       require('../../assets/collections/super-villas.jpg'),
+    seller:      { name: 'James R.', verified: true },
+  },
+  {
+    category:    'Superyacht',
+    title:       'M/Y Azure Dream',
+    description: '58m Benetti — 6 cabins, beach club, helipad. Mediterranean delivery.',
+    price:       '$42,000,000',
+    image:       require('../../assets/collections/yacht-escapes.jpg'),
+    seller:      { name: 'Sofia M.', verified: true },
+  },
+  {
+    category:    'Private Aviation',
+    title:       'Gulfstream G700 Charter',
+    description: 'Ultra-long range · 14 passengers · VVIP cabin · Global routing.',
+    price:       '$185,000 / trip',
+    image:       require('../../assets/collections/private-islands.jpg'),
+    seller:      { name: 'Amir K.', verified: true },
+  },
+] as const;
+
+const SELLER_SPOTLIGHT = {
+  name:       'Alexander V.',
+  title:      'Verified Private Broker',
+  credential: 'Knight Frank · 12 Years · $2.4B Closed',
+  initials:   'AV',
+} as const;
+
 
 
 export default function ExploreScreen() {
@@ -380,32 +414,86 @@ export default function ExploreScreen() {
 
           {!productsLoading && !productsError && products.length === 0 && (
             <View>
+              {/* Invite-only badge */}
               <View style={styles.feedBadge}>
                 <Ionicons name="lock-closed" size={11} color={LuxuryColors.gold} />
-                <Text style={styles.feedBadgeText}>Invite Only · Members Can Sell</Text>
+                <Text style={styles.feedBadgeText}>Invite Only · Members Can List</Text>
               </View>
-              <View style={[styles.productCard, { opacity: 0.55 }]}>
-                <View style={styles.ghostImage} />
-                <View style={styles.ghostInfo}>
-                  <View style={[styles.ghostLine, { width: '75%' }]} />
-                  <View style={[styles.ghostLine, { width: '45%' }]} />
-                  <View style={[styles.ghostLine, { width: '30%' }]} />
+
+              {/* Featured Listings overline */}
+              <Text style={styles.mktOverline}>Featured Listings</Text>
+
+              {/* 3 featured listing cards */}
+              {FEATURED_LISTINGS.map((listing) => (
+                <Pressable
+                  key={listing.title}
+                  style={({ pressed }) => [
+                    styles.featuredCard,
+                    pressed && { transform: [{ scale: 0.985 }], opacity: 0.90 },
+                  ]}
+                  onPress={handleConciergePress}
+                >
+                  {/* Image zone */}
+                  <View style={styles.featuredImageWrap}>
+                    <Image source={listing.image} style={styles.featuredImage} resizeMode="cover" />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(7,17,32,0.88)'] as const}
+                      style={styles.featuredImageScrim}
+                    />
+                    <View style={styles.featuredCategoryBadge}>
+                      <Text style={styles.featuredCategoryText}>{listing.category}</Text>
+                    </View>
+                  </View>
+                  {/* Content zone */}
+                  <View style={styles.featuredBody}>
+                    <Text style={styles.featuredTitle}>{listing.title}</Text>
+                    <Text style={styles.featuredDesc}>{listing.description}</Text>
+                    <View style={styles.featuredPriceRow}>
+                      <Text style={styles.featuredPrice}>{listing.price}</Text>
+                      <View style={styles.featuredEnquireBtn}>
+                        <Text style={styles.featuredEnquireText}>Enquire</Text>
+                        <Ionicons name="arrow-forward" size={10} color={LuxuryColors.background} />
+                      </View>
+                    </View>
+                    <View style={styles.featuredDivider} />
+                    <View style={styles.featuredSellerRow}>
+                      <View style={styles.featuredAvatar}>
+                        <Text style={styles.featuredAvatarText}>{listing.seller.name.charAt(0)}</Text>
+                      </View>
+                      <Text style={styles.featuredSellerName}>{listing.seller.name}</Text>
+                      <Ionicons name="checkmark-circle" size={12} color={LuxuryColors.gold} />
+                      <Text style={styles.featuredVerified}>Verified Seller</Text>
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+
+              {/* Seller Spotlight */}
+              <View style={styles.sellerSpotlight}>
+                <LinearGradient
+                  colors={['#0D1830', '#0A1420'] as const}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Text style={styles.spotlightOverline}>Seller Spotlight</Text>
+                <View style={styles.spotlightRow}>
+                  <View style={styles.spotlightAvatar}>
+                    <Text style={styles.spotlightAvatarText}>{SELLER_SPOTLIGHT.initials}</Text>
+                  </View>
+                  <View style={styles.spotlightInfo}>
+                    <View style={styles.spotlightNameRow}>
+                      <Text style={styles.spotlightName}>{SELLER_SPOTLIGHT.name}</Text>
+                      <Ionicons name="checkmark-circle" size={14} color={LuxuryColors.gold} />
+                    </View>
+                    <Text style={styles.spotlightTitle}>{SELLER_SPOTLIGHT.title}</Text>
+                    <Text style={styles.spotlightCredential}>{SELLER_SPOTLIGHT.credential}</Text>
+                  </View>
                 </View>
               </View>
-              <View style={[styles.productCard, { opacity: 0.3 }]}>
-                <View style={styles.ghostImage} />
-                <View style={styles.ghostInfo}>
-                  <View style={[styles.ghostLine, { width: '80%' }]} />
-                  <View style={[styles.ghostLine, { width: '55%' }]} />
-                  <View style={[styles.ghostLine, { width: '35%' }]} />
-                </View>
-              </View>
+
+              {/* List Your Asset CTA */}
               <View style={styles.feedCenter}>
-                <Text style={styles.feedOverline}>Private Marketplace</Text>
-                <Text style={styles.feedHeading}>Opening Soon</Text>
-                <Text style={styles.feedSubtitle}>Exclusive member listings and private exchanges.</Text>
                 <TouchableOpacity onPress={handleSellPress} activeOpacity={0.8} style={styles.feedCta}>
-                  <Text style={styles.feedCtaText}>Explore Marketplace</Text>
+                  <Text style={styles.feedCtaText}>List Your Asset</Text>
                   <Ionicons name="arrow-forward" size={11} color={LuxuryColors.gold} />
                 </TouchableOpacity>
               </View>
@@ -1009,5 +1097,201 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.xs,
     color: LuxuryColors.textTertiary,
     maxWidth: 100,
+  },
+  // ─── Featured Marketplace Cards ──────────────────────────────────────
+  mktOverline: {
+    fontSize: 9,
+    color: 'rgba(212,175,55,0.70)',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 2.5,
+    marginBottom: LuxurySpacing.md,
+  },
+  featuredCard: {
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.18)',
+    borderRadius: LuxuryBorderRadius.xl,
+    overflow: 'hidden',
+    marginBottom: LuxurySpacing.lg,
+    ...LuxuryShadow.medium,
+  },
+  featuredImageWrap: {
+    height: 200,
+    width: '100%',
+  },
+  featuredImage: {
+    width: '100%',
+    height: '100%',
+  },
+  featuredImageScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 80,
+  },
+  featuredCategoryBadge: {
+    position: 'absolute',
+    top: LuxurySpacing.md,
+    left: LuxurySpacing.md,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.xs,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.45)',
+  },
+  featuredCategoryText: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.gold,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  featuredBody: {
+    padding: LuxurySpacing.lg,
+    gap: LuxurySpacing.sm,
+  },
+  featuredTitle: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  featuredDesc: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 20,
+    opacity: 0.85,
+  },
+  featuredPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: LuxurySpacing.xs,
+  },
+  featuredPrice: {
+    fontSize: LuxuryFontSize.xl,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: -0.3,
+  },
+  featuredEnquireBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: LuxuryColors.gold,
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.xs,
+    borderRadius: LuxuryBorderRadius.full,
+  },
+  featuredEnquireText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.background,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  featuredDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(212,175,55,0.15)',
+    marginVertical: LuxurySpacing.xs,
+  },
+  featuredSellerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+  },
+  featuredAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(212,175,55,0.12)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featuredAvatarText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+  },
+  featuredSellerName: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textSecondary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  featuredVerified: {
+    fontSize: 10,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
+  // ─── Seller Spotlight ────────────────────────────────────────────────
+  sellerSpotlight: {
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.18)',
+    borderRadius: LuxuryBorderRadius.xl,
+    overflow: 'hidden',
+    padding: LuxurySpacing.lg,
+    marginBottom: LuxurySpacing.lg,
+    ...LuxuryShadow.soft,
+  },
+  spotlightOverline: {
+    fontSize: 9,
+    color: 'rgba(212,175,55,0.70)',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 2.5,
+    marginBottom: LuxurySpacing.md,
+  },
+  spotlightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+  },
+  spotlightAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spotlightAvatarText: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+  },
+  spotlightInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  spotlightNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+  },
+  spotlightName: {
+    fontSize: LuxuryFontSize.md,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+  },
+  spotlightTitle: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+    opacity: 0.85,
+  },
+  spotlightCredential: {
+    fontSize: 11,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 16,
+    opacity: 0.75,
   },
 });
