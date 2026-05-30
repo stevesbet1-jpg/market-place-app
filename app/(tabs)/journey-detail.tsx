@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,24 +19,56 @@ import {
   LuxuryShadow,
 } from '../../constants/luxuryTheme';
 import { JOURNEYS, ImageKey } from '../../constants/journeys';
+import {
+  consumeFreeJourney,
+  getSavedIds,
+  toggleSaved,
+  FREE_JOURNEY_LIMIT,
+} from '../../constants/journeyStore';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
-  islands: require('../../assets/collections/private-islands.jpg'),
-  villas:  require('../../assets/collections/super-villas.jpg'),
-  yacht:   require('../../assets/collections/yacht-escapes.jpg'),
-  desert:  require('../../assets/collections/desert-retreats.jpg'),
-  mountain: require('../../assets/collections/alpine-mountains.jpg'),
-  city:    require('../../assets/collections/japanese-city.jpg'),
-  temple:  require('../../assets/collections/japanese-temple.jpg'),
+  islands:    require('../../assets/collections/private-islands.jpg'),
+  villas:     require('../../assets/collections/super-villas.jpg'),
+  yacht:      require('../../assets/collections/yacht-escapes.jpg'),
+  desert:     require('../../assets/collections/desert-retreats.jpg'),
+  mountain:   require('../../assets/collections/alpine-mountains.jpg'),
+  city:       require('../../assets/collections/japanese-city.jpg'),
+  temple:     require('../../assets/collections/japanese-temple.jpg'),
+  bali:       require('../../assets/collections/bali-rice.jpg'),
+  seychelles: require('../../assets/collections/seychelles-beach.jpg'),
+  zanzibar:   require('../../assets/collections/zanzibar-coast.jpg'),
+  lakecomo:   require('../../assets/collections/lake-como-view.jpg'),
+  alps:       require('../../assets/collections/swiss-alps-day.jpg'),
 };
 
-const ALL_IMAGE_KEYS: readonly ImageKey[] = ['islands', 'villas', 'yacht', 'desert', 'mountain', 'city', 'temple'];
+const ALL_IMAGE_KEYS: readonly ImageKey[] = [
+  'islands', 'villas', 'yacht', 'desert', 'mountain', 'city', 'temple',
+  'bali', 'seychelles', 'zanzibar', 'lakecomo', 'alps',
+];
 
 export default function JourneyDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const journey = JOURNEYS.find((j) => j.id === id);
+
   const [saved, setSaved] = useState(false);
+  const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
+
+  useEffect(() => {
+    if (!id) return;
+    // Consume free slot (no-op if already opened) then read latest state
+    consumeFreeJourney(id).then((remaining) => {
+      setFreeRemaining(remaining);
+    });
+    // Load saved state
+    getSavedIds().then((ids) => setSaved(ids.includes(id)));
+  }, [id]);
+
+  const handleToggleSave = async () => {
+    if (!id) return;
+    const newIds = await toggleSaved(id);
+    setSaved(newIds.includes(id));
+  };
 
   if (!journey) {
     return (
@@ -87,7 +119,7 @@ export default function JourneyDetailScreen() {
         {/* Save button */}
         <TouchableOpacity
           style={[styles.saveBtn, { top: insets.top + LuxurySpacing.sm }]}
-          onPress={() => setSaved((s) => !s)}
+          onPress={handleToggleSave}
           activeOpacity={0.8}
         >
           <Ionicons
@@ -111,6 +143,18 @@ export default function JourneyDetailScreen() {
               <Ionicons name="sunny-outline" size={13} color={LuxuryColors.gold} />
               <Text style={styles.heroMetaText}>{journey.bestTime}</Text>
             </View>
+            <View style={styles.heroMetaDot} />
+            <View style={styles.heroMetaItem}>
+              <Ionicons name="cash-outline" size={13} color={LuxuryColors.gold} />
+              <Text style={styles.heroMetaText}>{journey.budget} · {journey.dailyBudget}</Text>
+            </View>
+          </View>
+          {/* Free counter badge */}
+          <View style={styles.freeCounterBadge}>
+            <Ionicons name="diamond-outline" size={10} color={LuxuryColors.gold} />
+            <Text style={styles.freeCounterText}>
+              {freeRemaining} of {FREE_JOURNEY_LIMIT} complimentary remaining
+            </Text>
           </View>
         </View>
       </View>
@@ -172,7 +216,27 @@ export default function JourneyDetailScreen() {
 
         <View style={styles.divider} />
 
-        {/* Photo Gallery */}
+        {/* Day-by-Day Itinerary */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Day-by-Day Itinerary</Text>
+          {journey.itinerary.map((dayPlan) => (
+            <View key={dayPlan.day} style={styles.itineraryDay}>
+              <View style={styles.itineraryDayHeader}>
+                <View style={styles.itineraryDayBadge}>
+                  <Text style={styles.itineraryDayNum}>Day {dayPlan.day}</Text>
+                </View>
+              </View>
+              {dayPlan.activities.map((activity, idx) => (
+                <View key={idx} style={styles.listRow}>
+                  <View style={styles.bulletDiamond} />
+                  <Text style={styles.listText}>{activity}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.divider} />
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Photo Gallery</Text>
           <View style={styles.gallery}>
@@ -198,7 +262,7 @@ export default function JourneyDetailScreen() {
         {/* Save Journey CTA */}
         <TouchableOpacity
           style={[styles.saveCta, saved && styles.saveCtaSaved]}
-          onPress={() => setSaved((s) => !s)}
+          onPress={handleToggleSave}
           activeOpacity={0.8}
         >
           <Ionicons
@@ -434,5 +498,46 @@ const styles = StyleSheet.create({
   },
   saveCtaTextSaved: {
     color: LuxuryColors.background,
+  },
+  // ── Free counter badge ────────────────────────────────
+  freeCounterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(7,17,32,0.50)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  freeCounterText: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.75)',
+    letterSpacing: 0.2,
+    fontWeight: '500',
+  },
+  // ── Day-by-Day Itinerary ──────────────────────────────
+  itineraryDay: {
+    gap: 4,
+    marginBottom: LuxurySpacing.md,
+  },
+  itineraryDayHeader: {
+    marginBottom: 2,
+  },
+  itineraryDayBadge: {
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.20)',
+    borderRadius: LuxuryBorderRadius.sm,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  itineraryDayNum: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
   },
 });

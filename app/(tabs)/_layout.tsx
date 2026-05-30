@@ -89,6 +89,10 @@ export default function TabLayout() {
         options={{ tabBarButton: () => null }}
       />
       <Tabs.Screen
+        name="paywall"
+        options={{ tabBarButton: () => null }}
+      />
+      <Tabs.Screen
         name="add-product"
         options={{
           title: 'Sell',

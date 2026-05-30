@@ -1,30 +1,79 @@
-import React, { useState } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, Pressable } from 'react-native';
+﻿import React, { useState, useMemo, useCallback } from 'react';
+import { View, Text, Image, StyleSheet, ScrollView, Pressable, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
-import { JOURNEYS, Journey, ImageKey } from '../../constants/journeys';
+import { JOURNEYS, Journey, ImageKey, BudgetLevel } from '../../constants/journeys';
+import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
-  islands: require('../../assets/collections/private-islands.jpg'),
-  villas:  require('../../assets/collections/super-villas.jpg'),
-  yacht:   require('../../assets/collections/yacht-escapes.jpg'),
-  desert:  require('../../assets/collections/desert-retreats.jpg'),
-  mountain: require('../../assets/collections/alpine-mountains.jpg'),
-  city:    require('../../assets/collections/japanese-city.jpg'),
-  temple:  require('../../assets/collections/japanese-temple.jpg'),
+  islands:    require('../../assets/collections/private-islands.jpg'),
+  villas:     require('../../assets/collections/super-villas.jpg'),
+  yacht:      require('../../assets/collections/yacht-escapes.jpg'),
+  desert:     require('../../assets/collections/desert-retreats.jpg'),
+  mountain:   require('../../assets/collections/alpine-mountains.jpg'),
+  city:       require('../../assets/collections/japanese-city.jpg'),
+  temple:     require('../../assets/collections/japanese-temple.jpg'),
+  bali:       require('../../assets/collections/bali-rice.jpg'),
+  seychelles: require('../../assets/collections/seychelles-beach.jpg'),
+  zanzibar:   require('../../assets/collections/zanzibar-coast.jpg'),
+  lakecomo:   require('../../assets/collections/lake-como-view.jpg'),
+  alps:       require('../../assets/collections/swiss-alps-day.jpg'),
 };
+
+const BUDGET_FILTERS: Array<BudgetLevel | null> = [null, '$', '$$', '$$$', '$$$$'];
 
 export default function TripsScreen() {
   const insets = useSafeAreaInsets();
 
-  // Fixed random selection for this session — re-shuffles only on cold app launch
-  const [featuredJourneys] = useState<Journey[]>(() => {
-    const shuffled = [...JOURNEYS].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 5);
-  });
+  const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
+
+  const [sessionOrder] = useState<Journey[]>(() =>
+    [...JOURNEYS].sort(() => Math.random() - 0.5)
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      Promise.all([getFreeRemaining(), getSavedIds(), getBudgetPref()]).then(
+        ([remaining, saved, pref]) => {
+          setFreeRemaining(remaining);
+          setSavedIds(saved);
+          setBudgetPrefState(pref);
+        }
+      );
+    }, [])
+  );
+
+  const featuredJourneys = useMemo<Journey[]>(() => {
+    if (!budgetPref) return sessionOrder.slice(0, 5);
+    const matching = sessionOrder.filter((j) => j.budget === budgetPref);
+    const others = sessionOrder.filter((j) => j.budget !== budgetPref);
+    return [...matching, ...others].slice(0, 5);
+  }, [budgetPref, sessionOrder]);
+
+  const savedJourneys = useMemo<Journey[]>(
+    () => savedIds.map((id) => JOURNEYS.find((j) => j.id === id)).filter(Boolean) as Journey[],
+    [savedIds]
+  );
+
+  const handleBudgetFilter = async (b: BudgetLevel | null) => {
+    setBudgetPrefState(b);
+    await setBudgetPref(b);
+  };
+
+  const handleCardPress = (journey: Journey) => {
+    if (freeRemaining === 0) {
+      router.push('/(tabs)/paywall');
+    } else {
+      router.push({ pathname: '/(tabs)/journey-detail', params: { id: journey.id } });
+    }
+  };
+
+  const isLocked = freeRemaining === 0;
 
   return (
     <ScrollView
@@ -41,16 +90,97 @@ export default function TripsScreen() {
         <Text style={styles.subtitle}>Curated destinations, refreshed each session</Text>
       </View>
 
-      {/* ── Complimentary badge ── */}
+      {/* ── Free counter badge ── */}
       <View style={styles.padH}>
-        <View style={styles.trialBadge}>
-          <Ionicons name="diamond-outline" size={13} color={LuxuryColors.gold} />
-          <Text style={styles.trialBadgeText}>3 Complimentary Journeys Available</Text>
-          <View style={styles.trialDots}>
-            {[0, 1, 2].map((i) => <View key={i} style={styles.trialDot} />)}
-          </View>
+        <View style={[styles.trialBadge, isLocked && styles.trialBadgeLocked]}>
+          <Ionicons
+            name={isLocked ? 'lock-closed-outline' : 'diamond-outline'}
+            size={13}
+            color={isLocked ? LuxuryColors.textTertiary : LuxuryColors.gold}
+          />
+          <Text style={[styles.trialBadgeText, isLocked && styles.trialBadgeTextLocked]}>
+            {isLocked
+              ? 'Upgrade to unlock all journeys'
+              : `${freeRemaining} Complimentary ${freeRemaining === 1 ? 'Journey' : 'Journeys'} Remaining`}
+          </Text>
+          {!isLocked && (
+            <View style={styles.trialDots}>
+              {Array.from({ length: FREE_JOURNEY_LIMIT }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[styles.trialDot, i >= freeRemaining && styles.trialDotUsed]}
+                />
+              ))}
+            </View>
+          )}
+          {isLocked && (
+            <Text style={styles.upgradeLink}>Upgrade →</Text>
+          )}
         </View>
       </View>
+
+      {/* ── Budget filter pills ── */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.budgetFilterRow}
+        style={styles.budgetFilterScroll}
+      >
+        {BUDGET_FILTERS.map((b) => {
+          const key = String(b);
+          const active = budgetPref === b;
+          return (
+            <Pressable
+              key={key}
+              style={[styles.budgetPill, active && styles.budgetPillActive]}
+              onPress={() => handleBudgetFilter(b)}
+            >
+              <Text style={[styles.budgetPillText, active && styles.budgetPillTextActive]}>
+                {b === null ? 'All Budgets' : b}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {/* ── Saved journeys (horizontal scroll) ── */}
+      {savedJourneys.length > 0 && (
+        <View style={styles.savedSection}>
+          <Text style={styles.savedLabel}>Saved Journeys</Text>
+          <FlatList
+            data={savedJourneys}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(j) => j.id}
+            contentContainerStyle={styles.savedList}
+            renderItem={({ item: journey }) => (
+              <Pressable
+                style={({ pressed }) => [styles.savedCard, pressed && { opacity: 0.85 }]}
+                onPress={() => handleCardPress(journey)}
+              >
+                <Image
+                  source={JOURNEY_IMAGES[journey.imageKey]}
+                  style={styles.savedCardImg}
+                  resizeMode="cover"
+                />
+                <LinearGradient
+                  colors={['transparent', 'rgba(7,17,32,0.85)'] as const}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.savedCardOverlay}>
+                  <Text style={styles.savedCardName} numberOfLines={1}>{journey.name}</Text>
+                  <Text style={styles.savedCardRegion}>{journey.region}</Text>
+                </View>
+                {isLocked && (
+                  <View style={styles.savedLockBadge}>
+                    <Ionicons name="lock-closed" size={10} color="rgba(255,255,255,0.7)" />
+                  </View>
+                )}
+              </Pressable>
+            )}
+          />
+        </View>
+      )}
 
       {/* ── Journey cards ── */}
       <View style={[styles.padH, styles.cardList]}>
@@ -61,9 +191,7 @@ export default function TripsScreen() {
               styles.journeyCard,
               pressed && styles.journeyCardPressed,
             ]}
-            onPress={() =>
-              router.push({ pathname: '/(tabs)/journey-detail', params: { id: journey.id } })
-            }
+            onPress={() => handleCardPress(journey)}
           >
             {/* Hero image */}
             <View style={styles.imageWrap}>
@@ -76,22 +204,27 @@ export default function TripsScreen() {
                 colors={['transparent', 'rgba(7,17,32,0.80)'] as const}
                 style={StyleSheet.absoluteFill}
               />
-              {/* Region badge */}
               <View style={styles.regionBadge}>
                 <Text style={styles.regionText}>{journey.region}</Text>
               </View>
-              {/* Duration badge */}
               <View style={styles.durationBadge}>
                 <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.80)" />
                 <Text style={styles.durationText}>{journey.duration}</Text>
               </View>
+              {isLocked && (
+                <View style={styles.lockOverlay}>
+                  <Ionicons name="lock-closed" size={22} color="rgba(255,255,255,0.85)" />
+                </View>
+              )}
             </View>
 
             {/* Card body */}
             <View style={styles.cardBody}>
               <View style={styles.cardMeta}>
                 <Text style={styles.destinationName}>{journey.destination}</Text>
-                <Text style={styles.bestTime}>Best: {journey.bestTime}</Text>
+                <View style={styles.budgetBadge}>
+                  <Text style={styles.budgetBadgeText}>{journey.budget}</Text>
+                </View>
               </View>
               <Text style={styles.journeyName}>{journey.name}</Text>
               <Text style={styles.overviewSnippet} numberOfLines={2}>
@@ -109,8 +242,12 @@ export default function TripsScreen() {
                   )}
                 </View>
                 <View style={styles.exploreLink}>
-                  <Text style={styles.exploreLinkText}>Explore</Text>
-                  <Ionicons name="chevron-forward" size={11} color={LuxuryColors.gold} />
+                  <Text style={styles.exploreLinkText}>{isLocked ? 'Unlock' : 'Explore'}</Text>
+                  <Ionicons
+                    name={isLocked ? 'lock-closed' : 'chevron-forward'}
+                    size={11}
+                    color={LuxuryColors.gold}
+                  />
                 </View>
               </View>
             </View>
@@ -155,7 +292,6 @@ const styles = StyleSheet.create({
   padH: {
     paddingHorizontal: LuxurySpacing.xl,
   },
-  // ── Complimentary badge ────────────────────────────────
   trialBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -168,12 +304,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: LuxurySpacing.lg,
   },
+  trialBadgeLocked: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
   trialBadgeText: {
     flex: 1,
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.gold,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  trialBadgeTextLocked: {
+    color: LuxuryColors.textSecondary,
   },
   trialDots: {
     flexDirection: 'row',
@@ -185,7 +328,99 @@ const styles = StyleSheet.create({
     borderRadius: LuxuryBorderRadius.full,
     backgroundColor: LuxuryColors.gold,
   },
-  // ── Card list ─────────────────────────────────────────
+  trialDotUsed: {
+    backgroundColor: 'rgba(212,175,55,0.25)',
+  },
+  upgradeLink: {
+    fontSize: LuxuryFontSize.xs,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+  budgetFilterScroll: {
+    marginBottom: LuxurySpacing.lg,
+  },
+  budgetFilterRow: {
+    paddingHorizontal: LuxurySpacing.xl,
+    gap: LuxurySpacing.sm,
+  },
+  budgetPill: {
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: 7,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  budgetPillActive: {
+    backgroundColor: 'rgba(212,175,55,0.12)',
+    borderColor: 'rgba(212,175,55,0.35)',
+  },
+  budgetPillText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.3,
+  },
+  budgetPillTextActive: {
+    color: LuxuryColors.gold,
+  },
+  savedSection: {
+    marginBottom: LuxurySpacing.lg,
+  },
+  savedLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    paddingHorizontal: LuxurySpacing.xl,
+    marginBottom: LuxurySpacing.sm,
+  },
+  savedList: {
+    paddingHorizontal: LuxurySpacing.xl,
+    gap: LuxurySpacing.sm,
+  },
+  savedCard: {
+    width: 130,
+    height: 90,
+    borderRadius: LuxuryBorderRadius.lg,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  savedCardImg: {
+    width: '100%',
+    height: '100%',
+  },
+  savedCardOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: LuxurySpacing.sm,
+  },
+  savedCardName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
+  },
+  savedCardRegion: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 0.3,
+  },
+  savedLockBadge: {
+    position: 'absolute',
+    top: LuxurySpacing.sm,
+    right: LuxurySpacing.sm,
+    width: 20,
+    height: 20,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(7,17,32,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   cardList: {
     gap: LuxurySpacing.md,
   },
@@ -199,7 +434,6 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
     opacity: 0.92,
   },
-  // ── Hero image ────────────────────────────────────────
   imageWrap: {
     height: 155,
     overflow: 'hidden',
@@ -207,6 +441,12 @@ const styles = StyleSheet.create({
   heroImg: {
     width: '100%',
     height: '100%',
+  },
+  lockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(7,17,32,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   regionBadge: {
     position: 'absolute',
@@ -244,7 +484,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.3,
   },
-  // ── Card body ─────────────────────────────────────────
   cardBody: {
     padding: LuxurySpacing.md,
     gap: 6,
@@ -261,10 +500,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.5,
   },
-  bestTime: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
+  budgetBadge: {
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderRadius: LuxuryBorderRadius.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  budgetBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.5,
   },
   journeyName: {
     fontSize: LuxuryFontSize.lg,
@@ -282,43 +528,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 2,
+    marginTop: LuxurySpacing.xs,
   },
   placeChips: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     flex: 1,
     flexWrap: 'nowrap',
+    overflow: 'hidden',
   },
   placeChip: {
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: LuxuryBorderRadius.sm,
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    maxWidth: 130,
+    maxWidth: 110,
   },
   placeChipText: {
     fontSize: 10,
-    color: LuxuryColors.textSecondary,
+    color: LuxuryColors.textTertiary,
     letterSpacing: 0.2,
   },
   placeMore: {
     fontSize: 10,
     color: LuxuryColors.textTertiary,
-    letterSpacing: 0.3,
+    fontWeight: '600',
   },
   exploreLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
+    flexShrink: 0,
   },
   exploreLinkText: {
     fontSize: LuxuryFontSize.xs,
     fontWeight: '700',
     color: LuxuryColors.gold,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });
+
