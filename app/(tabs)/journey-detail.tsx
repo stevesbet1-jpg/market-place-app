@@ -23,6 +23,7 @@ import {
   LuxuryShadow,
 } from '../../constants/luxuryTheme';
 import { JOURNEYS, ImageKey, Journey } from '../../constants/journeys';
+import { getCreatorById, formatFollowers } from '../../constants/creators';
 import {
   consumeFreeJourney,
   getSavedIds,
@@ -169,6 +170,7 @@ export default function JourneyDetailScreen() {
 
   const difficulty = getDifficulty(journey);
   const travelStyles = getTravelStyles(journey);
+  const creator = getCreatorById(journey.creatorId);
 
   return (
     <>
@@ -259,6 +261,35 @@ export default function JourneyDetailScreen() {
             </View>
           </View>
         </View>
+
+        {/* ── Creator strip ───────────────────────────────── */}
+        {creator && (
+          <View style={styles.creatorStrip}>
+            <View style={styles.creatorLeft}>
+              <View style={styles.creatorAvatar}>
+                <Text style={styles.creatorAvatarText}>{creator.initials}</Text>
+              </View>
+              <View style={styles.creatorInfo}>
+                <Text style={styles.creatorNameText}>{creator.name}</Text>
+                <View style={styles.creatorRatingRow}>
+                  <Ionicons name="star" size={10} color={LuxuryColors.gold} />
+                  <Text style={styles.creatorRatingVal}>{creator.rating.toFixed(1)}</Text>
+                  <Text style={styles.creatorFollowers}> · {formatFollowers(creator.followers)} followers</Text>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.viewProfileBtn}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })
+              }
+              activeOpacity={0.8}
+            >
+              <Text style={styles.viewProfileText}>Profile</Text>
+              <Ionicons name="chevron-forward" size={11} color={LuxuryColors.gold} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Content ──────────────────────────────────────── */}
         <View style={styles.content}>
@@ -654,6 +685,81 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.70)',
     letterSpacing: 0.2,
     fontWeight: '500',
+  },
+
+  // ── Creator strip ────────────────────────────────────────
+  creatorStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: LuxurySpacing.xl,
+    paddingVertical: LuxurySpacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: LuxuryColors.surface,
+  },
+  creatorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    flex: 1,
+  },
+  creatorAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorAvatarText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+  creatorInfo: {
+    gap: 2,
+  },
+  creatorNameText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  creatorRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  creatorRatingVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.1,
+  },
+  creatorFollowers: {
+    fontSize: 11,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.1,
+  },
+  viewProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+  },
+  viewProfileText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
   },
 
   // ── Content ─────────────────────────────────────────────

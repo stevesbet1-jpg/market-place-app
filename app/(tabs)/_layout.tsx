@@ -94,6 +94,10 @@ export default function TabLayout() {
         options={{ tabBarButton: () => null }}
       />
       <Tabs.Screen
+        name="creator-profile"
+        options={{ tabBarButton: () => null }}
+      />
+      <Tabs.Screen
         name="add-product"
         options={{
           title: 'Sell',

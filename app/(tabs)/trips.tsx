@@ -6,6 +6,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import { JOURNEYS, Journey, ImageKey, BudgetLevel } from '../../constants/journeys';
+import { getCreatorById, formatSaves } from '../../constants/creators';
 import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
@@ -85,9 +86,9 @@ export default function TripsScreen() {
     >
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + LuxurySpacing.xl }]}>
-        <Text style={styles.overline}>Luxury Discovery</Text>
+        <Text style={styles.overline}>Travel Creator Marketplace</Text>
         <Text style={styles.title}>Discover Journeys</Text>
-        <Text style={styles.subtitle}>Curated destinations, refreshed each session</Text>
+        <Text style={styles.subtitle}>Curated journeys from world-class travel creators</Text>
       </View>
 
       {/* ── Free counter badge ── */}
@@ -120,7 +121,7 @@ export default function TripsScreen() {
           {isLocked && (
             <>
               <Text style={styles.trialSubtext}>
-                Curated destinations, full itineraries &amp; budget-matched picks.
+                Unlimited access to every creator's journey on the platform.
               </Text>
               <Pressable
                 style={styles.upgradeCta}
@@ -243,45 +244,63 @@ export default function TripsScreen() {
                 <Text style={styles.durationText}>{journey.duration}</Text>
               </View>
               {isLocked && (
-                <View style={styles.lockOverlay}>
-                  <View style={styles.lockIconWrap}>
-                    <Ionicons name="lock-closed" size={16} color="rgba(255,255,255,0.90)" />
-                  </View>
-                  <Text style={styles.lockLabel}>Members Only</Text>
+                <View style={styles.premiumBadge}>
+                  <Ionicons name="diamond" size={8} color={LuxuryColors.gold} />
+                  <Text style={styles.premiumBadgeText}>Premium</Text>
                 </View>
               )}
             </View>
 
             {/* Card body */}
             <View style={styles.cardBody}>
-              <View style={styles.cardMeta}>
-                <Text style={styles.destinationName}>{journey.destination}</Text>
-                <View style={styles.budgetBadge}>
-                  <Text style={styles.budgetBadgeText}>{journey.budget}</Text>
-                </View>
-              </View>
+              {/* Creator row */}
+              <Pressable
+                style={styles.creatorRow}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } });
+                }}
+              >
+                {(() => {
+                  const creator = getCreatorById(journey.creatorId);
+                  return (
+                    <>
+                      <View style={styles.creatorAvatar}>
+                        <Text style={styles.creatorAvatarText}>{creator?.initials ?? '??'}</Text>
+                      </View>
+                      <Text style={styles.creatorName} numberOfLines={1}>{creator?.name ?? 'Creator'}</Text>
+                      <View style={styles.creatorRatingPill}>
+                        <Ionicons name="star" size={9} color={LuxuryColors.gold} />
+                        <Text style={styles.creatorRatingText}>{creator?.rating.toFixed(1) ?? '—'}</Text>
+                      </View>
+                    </>
+                  );
+                })()}
+              </Pressable>
+
               <Text style={styles.journeyName}>{journey.name}</Text>
-              <Text style={styles.overviewSnippet} numberOfLines={2}>
-                {journey.overview}
-              </Text>
+
+              {/* Duration + season row */}
+              <View style={styles.metaRow}>
+                <Ionicons name="time-outline" size={11} color={LuxuryColors.textTertiary} />
+                <Text style={styles.metaText}>{journey.duration}</Text>
+                <View style={styles.metaDivider} />
+                <Ionicons name="sunny-outline" size={11} color={LuxuryColors.textTertiary} />
+                <Text style={styles.metaText}>{journey.bestTime}</Text>
+              </View>
+
+              {/* Budget + saves + CTA */}
               <View style={styles.cardFooter}>
-                <View style={styles.placeChips}>
-                  {journey.places.slice(0, 2).map((place) => (
-                    <View key={place} style={styles.placeChip}>
-                      <Text style={styles.placeChipText} numberOfLines={1}>{place}</Text>
-                    </View>
-                  ))}
-                  {journey.places.length > 2 && (
-                    <Text style={styles.placeMore}>+{journey.places.length - 2}</Text>
-                  )}
+                <View style={styles.budgetChip}>
+                  <Text style={styles.budgetChipText}>{journey.dailyBudget}</Text>
+                </View>
+                <View style={styles.savesChip}>
+                  <Ionicons name="heart" size={9} color="rgba(212,175,55,0.60)" />
+                  <Text style={styles.savesText}>{formatSaves(journey.savedCount)}</Text>
                 </View>
                 <View style={styles.exploreLink}>
-                  <Text style={styles.exploreLinkText}>{isLocked ? 'Unlock' : 'Explore'}</Text>
-                  <Ionicons
-                    name={isLocked ? 'lock-closed' : 'chevron-forward'}
-                    size={11}
-                    color={LuxuryColors.gold}
-                  />
+                  <Text style={styles.exploreLinkText}>View Journey</Text>
+                  <Ionicons name="chevron-forward" size={11} color={LuxuryColors.gold} />
                 </View>
               </View>
             </View>
@@ -571,28 +590,25 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(7,17,32,0.52)',
+  premiumBadge: {
+    position: 'absolute',
+    top: LuxurySpacing.md,
+    right: LuxurySpacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  lockIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(7,17,32,0.60)',
+    gap: 4,
+    backgroundColor: 'rgba(7,17,32,0.72)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: 'rgba(212,175,55,0.45)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  lockLabel: {
-    fontSize: 10,
+  premiumBadgeText: {
+    fontSize: 9,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.80)',
-    letterSpacing: 1.2,
+    color: LuxuryColors.gold,
+    letterSpacing: 1.0,
     textTransform: 'uppercase',
   },
   regionBadge: {
@@ -633,31 +649,67 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     padding: LuxurySpacing.md,
-    gap: 6,
+    gap: 8,
   },
-  cardMeta: {
+  creatorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: LuxurySpacing.sm,
   },
-  destinationName: {
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '700',
-    color: LuxuryColors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+  creatorAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  budgetBadge: {
+  creatorAvatarText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+  creatorName: {
+    flex: 1,
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.1,
+  },
+  creatorRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     backgroundColor: 'rgba(212,175,55,0.10)',
-    borderRadius: LuxuryBorderRadius.sm,
+    borderRadius: LuxuryBorderRadius.full,
     paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
-  budgetBadgeText: {
-    fontSize: 11,
+  creatorRatingText: {
+    fontSize: 10,
     fontWeight: '700',
     color: LuxuryColors.gold,
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  metaText: {
+    fontSize: 11,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  metaDivider: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: LuxuryColors.textTertiary,
+    opacity: 0.4,
   },
   journeyName: {
     fontSize: LuxuryFontSize.lg,
@@ -666,6 +718,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   overviewSnippet: {
+    // kept for any future use; not currently rendered on cards
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textSecondary,
     lineHeight: 19,
@@ -674,33 +727,32 @@ const styles = StyleSheet.create({
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: LuxurySpacing.xs,
+    gap: LuxurySpacing.sm,
+    marginTop: 2,
   },
-  placeChips: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+  budgetChip: {
     flex: 1,
-    flexWrap: 'nowrap',
-    overflow: 'hidden',
-  },
-  placeChip: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: LuxuryBorderRadius.sm,
     paddingHorizontal: 7,
     paddingVertical: 3,
-    maxWidth: 110,
   },
-  placeChipText: {
+  budgetChipText: {
     fontSize: 10,
+    fontWeight: '600',
     color: LuxuryColors.textTertiary,
     letterSpacing: 0.2,
   },
-  placeMore: {
+  savesChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  savesText: {
     fontSize: 10,
-    color: LuxuryColors.textTertiary,
+    color: 'rgba(212,175,55,0.55)',
     fontWeight: '600',
+    letterSpacing: 0.1,
   },
   exploreLink: {
     flexDirection: 'row',

@@ -17,11 +17,11 @@ import {
 } from '../../constants/luxuryTheme';
 
 const BENEFITS = [
-  { icon: 'compass-outline' as const, text: 'Unlimited destination guides' },
-  { icon: 'calendar-outline' as const, text: 'Full day-by-day itineraries for every journey' },
-  { icon: 'cash-outline' as const, text: 'Budget-matched recommendations' },
-  { icon: 'add-circle-outline' as const, text: 'New destinations added every week' },
-  { icon: 'bookmark-outline' as const, text: 'Save and revisit unlimited journeys' },
+  { icon: 'people-outline' as const,    text: 'Unlimited access to all creator journeys' },
+  { icon: 'calendar-outline' as const,  text: 'Full day-by-day itineraries from expert creators' },
+  { icon: 'cash-outline' as const,      text: 'Budget-matched picks from top travel creators' },
+  { icon: 'bookmark-outline' as const,  text: 'Save and revisit unlimited journeys' },
+  { icon: 'add-circle-outline' as const, text: 'New creator journeys added every week' },
 ];
 
 export default function PaywallScreen() {
@@ -50,10 +50,10 @@ export default function PaywallScreen() {
         </View>
 
         <Text style={styles.overline}>Unlock Full Access</Text>
-        <Text style={styles.title}>Unlock Unlimited Journeys</Text>
+        <Text style={styles.title}>Unlimited Creator Journeys</Text>
         <Text style={styles.subtitle}>
-          You have used all 3 complimentary journeys.{'\n'}
-          Upgrade to explore every destination.
+          You've used all 3 complimentary journeys.{"\n"}
+          Upgrade for unlimited access to every{"\n"}creator's journey on the platform.
         </Text>
       </View>
 
@@ -86,7 +86,7 @@ export default function PaywallScreen() {
             ))}
           </View>
           <Text style={styles.socialProofText}>
-            Trusted by 2,000+ travelers exploring curated luxury destinations.
+            Trusted by 2,000+ travelers exploring creator-curated journeys.
           </Text>
         </View>
       </View>

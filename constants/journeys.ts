@@ -17,6 +17,10 @@ export interface Journey {
   imageKey: ImageKey;
   budget: BudgetLevel;
   dailyBudget: string;
+  /** Links to a Creator in constants/creators.ts */
+  creatorId: string;
+  /** Platform save count (used for social proof on cards) */
+  savedCount: number;
   itinerary: readonly ItineraryDay[];
   readonly places: readonly string[];
   readonly restaurants: readonly string[];
@@ -26,6 +30,8 @@ export interface Journey {
 export const JOURNEYS: readonly Journey[] = [
   {
     id: 'maldives',
+    creatorId: 'james-hartley',
+    savedCount: 1840,
     name: 'Maldives Escape',
     destination: 'Maldives',
     region: 'Indian Ocean',
@@ -50,6 +56,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'santorini',
+    creatorId: 'marco-vitale',
+    savedCount: 2310,
     name: 'Santorini Retreat',
     destination: 'Santorini',
     region: 'Cyclades, Greece',
@@ -72,6 +80,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'dubai',
+    creatorId: 'nadia-al-rashid',
+    savedCount: 1620,
     name: 'Dubai Edition',
     destination: 'Dubai',
     region: 'UAE',
@@ -94,6 +104,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'bora-bora',
+    creatorId: 'james-hartley',
+    savedCount: 2180,
     name: 'Bora Bora Sanctuary',
     destination: 'Bora Bora',
     region: 'French Polynesia',
@@ -117,6 +129,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'seychelles',
+    creatorId: 'amara-osei',
+    savedCount: 1490,
     name: 'Seychelles Escape',
     destination: 'Seychelles',
     region: 'Indian Ocean',
@@ -141,6 +155,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'bali',
+    creatorId: 'amara-osei',
+    savedCount: 3840,
     name: 'Bali Immersion',
     destination: 'Bali',
     region: 'Indonesia',
@@ -166,6 +182,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'swiss-alps',
+    creatorId: 'elena-kovacs',
+    savedCount: 1260,
     name: 'Swiss Alps Winter',
     destination: 'Swiss Alps',
     region: 'Switzerland',
@@ -189,6 +207,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'monaco',
+    creatorId: 'marco-vitale',
+    savedCount: 1710,
     name: 'Monaco Grand Tour',
     destination: 'Monaco',
     region: 'French Riviera',
@@ -210,6 +230,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'amalfi-coast',
+    creatorId: 'marco-vitale',
+    savedCount: 2090,
     name: 'Amalfi Coast Journey',
     destination: 'Amalfi Coast',
     region: 'Campania, Italy',
@@ -233,6 +255,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'tokyo',
+    creatorId: 'sophia-chen',
+    savedCount: 4200,
     name: 'Tokyo Discovery',
     destination: 'Tokyo',
     region: 'Kantō, Japan',
@@ -257,6 +281,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'kyoto',
+    creatorId: 'sophia-chen',
+    savedCount: 3150,
     name: 'Kyoto Cultural Immersion',
     destination: 'Kyoto',
     region: 'Kansai, Japan',
@@ -279,6 +305,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'iceland',
+    creatorId: 'elena-kovacs',
+    savedCount: 1870,
     name: 'Iceland Wild',
     destination: 'Iceland',
     region: 'North Atlantic',
@@ -303,6 +331,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'french-riviera',
+    creatorId: 'marco-vitale',
+    savedCount: 2540,
     name: 'French Riviera',
     destination: 'Côte d\'Azur',
     region: 'Provence, France',
@@ -326,6 +356,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'tuscany',
+    creatorId: 'marco-vitale',
+    savedCount: 1980,
     name: 'Tuscany Harvest',
     destination: 'Tuscany',
     region: 'Central Italy',
@@ -350,6 +382,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'marrakech',
+    creatorId: 'nadia-al-rashid',
+    savedCount: 1430,
     name: 'Marrakech Medina',
     destination: 'Marrakech',
     region: 'Morocco',
@@ -372,6 +406,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'cappadocia',
+    creatorId: 'nadia-al-rashid',
+    savedCount: 1670,
     name: 'Cappadocia Sky',
     destination: 'Cappadocia',
     region: 'Anatolia, Turkey',
@@ -393,6 +429,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'zanzibar',
+    creatorId: 'amara-osei',
+    savedCount: 1320,
     name: 'Zanzibar Shores',
     destination: 'Zanzibar',
     region: 'Tanzania',
@@ -416,6 +454,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'singapore',
+    creatorId: 'sophia-chen',
+    savedCount: 2760,
     name: 'Singapore Edit',
     destination: 'Singapore',
     region: 'Southeast Asia',
@@ -437,6 +477,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'lake-como',
+    creatorId: 'marco-vitale',
+    savedCount: 1550,
     name: 'Lake Como Idyll',
     destination: 'Lake Como',
     region: 'Lombardy, Italy',
@@ -459,6 +501,8 @@ export const JOURNEYS: readonly Journey[] = [
   },
   {
     id: 'patagonia',
+    creatorId: 'elena-kovacs',
+    savedCount: 980,
     name: 'Patagonia Expedition',
     destination: 'Patagonia',
     region: 'Chile & Argentina',
