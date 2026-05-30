@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Pressable,
   Alert,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -77,7 +78,13 @@ export default function CreatorProfileScreen() {
   };
 
   const handleSocialPress = (type: string, handle: string) => {
-    Alert.alert(type, `${handle}\n\nExternal links open in a future update.`);
+    let url = '';
+    if (type === 'Instagram') url = handle.startsWith('http') ? handle : `https://instagram.com/${handle.replace('@', '')}`;
+    else if (type === 'YouTube') url = handle.startsWith('http') ? handle : `https://youtube.com/${handle}`;
+    else url = handle.startsWith('http') ? handle : `https://${handle}`;
+    Linking.openURL(url).catch(() =>
+      Alert.alert('Could not open link', `Visit ${handle} manually.`),
+    );
   };
 
   return (

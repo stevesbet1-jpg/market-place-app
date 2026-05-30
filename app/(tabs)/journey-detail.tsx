@@ -9,6 +9,7 @@ import {
   Modal,
   Animated,
   Dimensions,
+  Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -142,6 +143,24 @@ export default function JourneyDetailScreen() {
     getSavedIds().then((ids) => setSaved(ids.includes(id)));
   }, [id]);
 
+  const handleShare = useCallback(async () => {
+    if (!journey) return;
+    try {
+      await Share.share({
+        title: journey.name,
+        message: `${journey.name} — ${journey.destination}\n\nDiscover this ${journey.duration} journey curated by a top travel creator. ${journey.overview.slice(0, 120)}…`,
+      });
+    } catch (_) { /* user dismissed */ }
+  }, [journey]);
+
+  const handleStartPlanning = useCallback(() => {
+    if (!journey) return;
+    router.push({
+      pathname: '/(tabs)/ai-concierge',
+      params: { query: `${journey.duration} in ${journey.destination}` },
+    });
+  }, [journey]);
+
   const handleToggleSave = async () => {
     if (!id || saveLoading) return;
     setSaveLoading(true);
@@ -204,6 +223,15 @@ export default function JourneyDetailScreen() {
             activeOpacity={0.8}
           >
             <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          {/* Share in hero */}
+          <TouchableOpacity
+            style={[styles.shareHeroBtn, { top: insets.top + LuxurySpacing.sm }]}
+            onPress={handleShare}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="share-outline" size={20} color="#FFFFFF" />
           </TouchableOpacity>
 
           {/* Save in hero */}
@@ -271,10 +299,19 @@ export default function JourneyDetailScreen() {
           <View style={styles.creatorStrip}>
             {/* Top row: avatar + info + follow */}
             <View style={styles.creatorTopRow}>
-              <View style={styles.creatorAvatar}>
-                <Text style={styles.creatorAvatarText}>{creator.initials}</Text>
-              </View>
-              <View style={styles.creatorInfo}>
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })}
+                activeOpacity={0.8}
+              >
+                <View style={styles.creatorAvatar}>
+                  <Text style={styles.creatorAvatarText}>{creator.initials}</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.creatorInfo}
+                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })}
+                activeOpacity={0.8}
+              >
                 <Text style={styles.creatorNameText}>{creator.name}</Text>
                 <View style={styles.creatorRatingRow}>
                   {[1, 2, 3, 4, 5].map((s) => (
@@ -287,7 +324,7 @@ export default function JourneyDetailScreen() {
                   ))}
                   <Text style={styles.creatorRatingVal}> {creator.rating.toFixed(1)}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.followBtn, followed && styles.followBtnActive]}
                 onPress={() => setFollowed((f) => !f)}
@@ -544,6 +581,73 @@ export default function JourneyDetailScreen() {
             )}
           </View>
 
+          {/* Similar Journeys */}
+          {(() => {
+            const similar = JOURNEYS.filter(
+              (j) => j.id !== journey.id && j.region === journey.region,
+            ).slice(0, 3);
+            if (similar.length === 0) return null;
+            return (
+              <View style={styles.sectionOuter}>
+                <Text style={styles.sectionLabel}>Similar Journeys</Text>
+                <View style={styles.sectionBody}>
+                  {similar.map((sj) => (
+                    <TouchableOpacity
+                      key={sj.id}
+                      style={styles.similarCard}
+                      onPress={() =>
+                        router.push({ pathname: '/(tabs)/journey-detail', params: { id: sj.id } })
+                      }
+                      activeOpacity={0.85}
+                    >
+                      <Image
+                        source={JOURNEY_IMAGES[sj.imageKey]}
+                        style={styles.similarCardThumb}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.similarCardInfo}>
+                        <Text style={styles.similarCardName} numberOfLines={1}>{sj.name}</Text>
+                        <Text style={styles.similarCardDest} numberOfLines={1}>
+                          {sj.destination} · {sj.duration}
+                        </Text>
+                        <View style={styles.similarCardMeta}>
+                          <Ionicons name="star" size={10} color={LuxuryColors.gold} />
+                          <Text style={styles.similarCardRating}>{sj.rating.toFixed(1)}</Text>
+                          <Text style={styles.similarCardBudget}>{sj.dailyBudget}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
+
+          <View style={styles.divider} />
+
+          {/* Action buttons row */}
+          <View style={styles.actionRow}>
+            {/* Start Planning */}
+            <TouchableOpacity
+              style={styles.startPlanningBtn}
+              onPress={handleStartPlanning}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="sparkles-outline" size={16} color={LuxuryColors.background} />
+              <Text style={styles.startPlanningText}>Start Planning</Text>
+            </TouchableOpacity>
+
+            {/* Share */}
+            <TouchableOpacity
+              style={styles.shareBtn}
+              onPress={handleShare}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="share-outline" size={16} color={LuxuryColors.gold} />
+            </TouchableOpacity>
+          </View>
+
           {/* Save Journey CTA — animated + haptic */}
           <Animated.View style={{ transform: [{ scale: saveScale }] }}>
             <TouchableOpacity
@@ -683,6 +787,18 @@ const styles = StyleSheet.create({
   saveHeroBtn: {
     position: 'absolute',
     right: LuxurySpacing.lg,
+    width: 36,
+    height: 36,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(7,17,32,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  shareHeroBtn: {
+    position: 'absolute',
+    right: LuxurySpacing.lg + 44,
     width: 36,
     height: 36,
     borderRadius: LuxuryBorderRadius.full,
@@ -1149,6 +1265,93 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.70)',
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+
+  // ── Similar Journeys ─────────────────────────────────────
+  similarCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: LuxuryBorderRadius.lg,
+    overflow: 'hidden',
+    marginBottom: LuxurySpacing.sm,
+    gap: LuxurySpacing.md,
+    paddingRight: LuxurySpacing.md,
+  },
+  similarCardThumb: {
+    width: 72,
+    height: 72,
+    flexShrink: 0,
+  },
+  similarCardInfo: {
+    flex: 1,
+    gap: 2,
+    paddingVertical: LuxurySpacing.xs,
+  },
+  similarCardName: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  similarCardDest: {
+    fontSize: 10,
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.1,
+  },
+  similarCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  similarCardRating: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.2,
+  },
+  similarCardBudget: {
+    fontSize: 10,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.1,
+  },
+
+  // ── Action row ───────────────────────────────────────────
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    paddingHorizontal: LuxurySpacing.xl,
+    paddingVertical: LuxurySpacing.md,
+  },
+  startPlanningBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: LuxurySpacing.sm,
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.full,
+    paddingVertical: 13,
+  },
+  startPlanningText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '800',
+    color: LuxuryColors.background,
+    letterSpacing: 0.3,
+  },
+  shareBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: LuxuryBorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+    backgroundColor: 'transparent',
   },
 
   // ── Reviews ──────────────────────────────────────────────

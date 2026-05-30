@@ -7,10 +7,20 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import { getFirebaseApp } from '../../lib/firebase';
 import { logoutFromFirebase } from '../../lib/firebaseAuth';
 import { getUserProfile, type UserProfile } from '../../lib/userProfile';
+import { getSavedIds } from '../../constants/journeyStore';
+import { JOURNEYS, type ImageKey } from '../../constants/journeys';
+import { CREATORS } from '../../constants/creators';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savedJourneys, setSavedJourneys] = useState<(typeof JOURNEYS)[number][]>([]);
+
+  useEffect(() => {
+    getSavedIds().then((ids) => {
+      setSavedJourneys(JOURNEYS.filter((j) => ids.includes(j.id)));
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,6 +203,91 @@ export default function ProfileScreen() {
         ))}
       </View>
 
+      {/* Saved Journeys */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Saved Journeys</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/trips')} activeOpacity={0.7}>
+            <Text style={styles.sectionLink}>Browse All</Text>
+          </TouchableOpacity>
+        </View>
+        {savedJourneys.length === 0 ? (
+          <TouchableOpacity
+            style={styles.emptyCard}
+            onPress={() => router.push('/(tabs)/trips')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="bookmark-outline" size={24} color={LuxuryColors.textTertiary} />
+            <Text style={styles.emptyCardText}>No saved journeys yet</Text>
+            <Text style={styles.emptyCardLink}>Explore journeys →</Text>
+          </TouchableOpacity>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.savedScroll}>
+            {savedJourneys.map((j) => (
+              <TouchableOpacity
+                key={j.id}
+                style={styles.savedCard}
+                onPress={() => router.push({ pathname: '/(tabs)/journey-detail', params: { id: j.id } })}
+                activeOpacity={0.85}
+              >
+                <View style={styles.savedCardThumb}>
+                  <Ionicons name="map-outline" size={22} color={LuxuryColors.gold} />
+                </View>
+                <Text style={styles.savedCardName} numberOfLines={2}>{j.name}</Text>
+                <Text style={styles.savedCardDest} numberOfLines={1}>{j.destination}</Text>
+                <View style={styles.savedCardRating}>
+                  <Ionicons name="star" size={10} color={LuxuryColors.gold} />
+                  <Text style={styles.savedCardRatingText}>{j.rating.toFixed(1)}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+
+      {/* Membership CTA */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.membershipCta}
+          onPress={() => router.push('/(tabs)/membership')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.membershipCtaLeft}>
+            <Ionicons name="diamond" size={20} color={LuxuryColors.gold} />
+            <View>
+              <Text style={styles.membershipCtaTitle}>Creator Membership</Text>
+              <Text style={styles.membershipCtaDesc}>Unlock every creator journey</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={LuxuryColors.gold} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Explore Creators */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Creators</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/trips')} activeOpacity={0.7}>
+            <Text style={styles.sectionLink}>See All</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.creatorsRow}>
+          {CREATORS.slice(0, 4).map((c) => (
+            <TouchableOpacity
+              key={c.id}
+              style={styles.creatorChip}
+              onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: c.id } })}
+              activeOpacity={0.8}
+            >
+              <View style={styles.creatorChipAvatar}>
+                <Text style={styles.creatorChipInitials}>{c.initials}</Text>
+              </View>
+              <Text style={styles.creatorChipName} numberOfLines={1}>{c.name.split(' ')[0]}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       {/* Sign Out */}
       <TouchableOpacity
         style={styles.signOutButton}
@@ -330,14 +425,157 @@ const styles = StyleSheet.create({
     paddingVertical: LuxurySpacing.lg,
     borderRadius: LuxuryBorderRadius.xl,
     borderWidth: 1.5,
-    borderColor: LuxuryColors.goldDark,
+    borderColor: 'rgba(212,175,55,0.35)',
     alignItems: 'center',
     marginBottom: LuxurySpacing.xl,
   },
   signOutText: {
     fontSize: LuxuryFontSize.md,
     fontWeight: '600',
-    color: LuxuryColors.goldDark,
+    color: LuxuryColors.gold,
+  },
+
+  // ── Saved Journeys ───────────────────────────────────────
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: LuxurySpacing.md,
+  },
+  sectionLink: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: LuxurySpacing.sm,
+    paddingVertical: LuxurySpacing.xl,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: LuxuryBorderRadius.xl,
+  },
+  emptyCardText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.1,
+  },
+  emptyCardLink: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  savedScroll: {
+    marginHorizontal: -LuxurySpacing.xl,
+    paddingHorizontal: LuxurySpacing.xl,
+  },
+  savedCard: {
+    width: 120,
+    marginRight: LuxurySpacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.sm,
+    gap: 4,
+  },
+  savedCardThumb: {
+    width: '100%',
+    height: 56,
+    borderRadius: LuxuryBorderRadius.md,
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  savedCardName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  savedCardDest: {
+    fontSize: 10,
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.1,
+  },
+  savedCardRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  savedCardRatingText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.2,
+  },
+
+  // ── Membership CTA ───────────────────────────────────────
+  membershipCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(212,175,55,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.30)',
+    borderRadius: LuxuryBorderRadius.xl,
+    padding: LuxurySpacing.md,
+  },
+  membershipCtaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+  },
+  membershipCtaTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  membershipCtaDesc: {
+    fontSize: 11,
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.1,
+  },
+
+  // ── Creators row ─────────────────────────────────────────
+  creatorsRow: {
+    flexDirection: 'row',
+    gap: LuxurySpacing.md,
+  },
+  creatorChip: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  creatorChipAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorChipInitials: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+  creatorChipName: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
 });
 

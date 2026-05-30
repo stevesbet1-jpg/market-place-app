@@ -11,7 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   LuxuryColors,
@@ -22,6 +22,7 @@ import {
 } from '../../constants/luxuryTheme';
 import { JOURNEYS, ImageKey } from '../../constants/journeys';
 import { getCreatorById } from '../../constants/creators';
+import { toggleSaved, getSavedIds } from '../../constants/journeyStore';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   islands:    require('../../assets/collections/private-islands.jpg'),
@@ -65,8 +66,14 @@ function scoreJourney(query: string, journey: (typeof JOURNEYS)[number]): number
 
 export default function AIPlannerScreen() {
   const insets = useSafeAreaInsets();
-  const [query, setQuery] = useState('');
+  const params = useLocalSearchParams<{ query?: string }>();
+  const [query, setQuery] = useState(params.query ?? '');
   const [inputFocused, setInputFocused] = useState(false);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    getSavedIds().then(setSavedIds);
+  }, []);
 
   const handleChipPress = useCallback((chip: string) => {
     setQuery(chip);
@@ -74,6 +81,15 @@ export default function AIPlannerScreen() {
 
   const handleJourneyPress = useCallback((id: string) => {
     router.push({ pathname: '/(tabs)/journey-detail', params: { id } });
+  }, []);
+
+  const handleCreatorPress = useCallback((creatorId: string) => {
+    router.push({ pathname: '/(tabs)/creator-profile', params: { id: creatorId } });
+  }, []);
+
+  const handleSave = useCallback(async (id: string) => {
+    const newIds = await toggleSaved(id);
+    setSavedIds(newIds);
   }, []);
 
   // Top-3 journeys that best match the current query; if empty fall back to top-rated
@@ -192,12 +208,16 @@ export default function AIPlannerScreen() {
 
                   {/* Creator row */}
                   {creator && (
-                    <View style={styles.creatorRow}>
+                    <TouchableOpacity
+                      style={styles.creatorRow}
+                      onPress={() => handleCreatorPress(creator.id)}
+                      activeOpacity={0.7}
+                    >
                       <View style={styles.creatorAvatar}>
                         <Text style={styles.creatorAvatarText}>{creator.initials}</Text>
                       </View>
                       <Text style={styles.creatorName} numberOfLines={1}>{creator.name}</Text>
-                    </View>
+                    </TouchableOpacity>
                   )}
 
                   {/* Rating + budget */}
@@ -210,7 +230,17 @@ export default function AIPlannerScreen() {
                   </View>
                 </View>
 
-                <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
+                <TouchableOpacity
+                  onPress={() => handleSave(journey.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={savedIds.includes(journey.id) ? 'bookmark' : 'bookmark-outline'}
+                    size={18}
+                    color={savedIds.includes(journey.id) ? LuxuryColors.gold : LuxuryColors.textTertiary}
+                  />
+                </TouchableOpacity>
               </TouchableOpacity>
             );
           })}
