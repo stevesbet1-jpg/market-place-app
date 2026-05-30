@@ -80,6 +80,53 @@ function getTravelStyles(journey: Journey): string[] {
   return [...new Set(tags)].slice(0, 4);
 }
 
+// ─── Mock premium content generators ──────────────────────────────────────
+function getMockHotels(journey: Journey) {
+  const d = journey.destination;
+  return [
+    { name: `${d} Grand Resort & Spa`,    stars: 5, price: '$450–750/night',    type: 'Resort',   note: 'Creator recommended' },
+    { name: `${d} Boutique Collection`,   stars: 4, price: '$180–280/night',    type: 'Boutique', note: 'Best value pick'     },
+    { name: `Private Villa ${d}`,         stars: 5, price: '$600–1,200/night',  type: 'Villa',    note: 'Ultimate privacy'   },
+  ];
+}
+
+function getInsiderTips(journey: Journey): string[] {
+  const r0 = journey.restaurants[0] ?? 'top restaurants';
+  const e0 = journey.experiences[0] ?? 'local experiences';
+  const p0 = journey.places[0] ?? journey.destination;
+  return [
+    `Reserve ${r0} at least 3 weeks ahead — tables fill fast in peak season.`,
+    `Visit ${p0} before 8 am to avoid crowds and catch the best natural light.`,
+    `${e0} sells out quickly — book immediately on arrival.`,
+    `Creator's tip: pack one versatile layer for ${journey.destination}'s microclimate shifts.`,
+    `Use local SIM cards from the airport — saves 80 % on roaming costs.`,
+  ];
+}
+
+// ─── Paywall gate ────────────────────────────────────────────────────────────
+function PaywallBanner({ sectionName }: { sectionName: string }) {
+  return (
+    <View style={styles.paywallBanner}>
+      <View style={styles.paywallIconCircle}>
+        <Ionicons name="lock-closed" size={22} color={LuxuryColors.gold} />
+      </View>
+      <Text style={styles.paywallTitle}>Club Members Only</Text>
+      <Text style={styles.paywallDesc}>
+        Unlock the full {sectionName}, hotels, insider tips and creator notes
+        with a Club membership.
+      </Text>
+      <TouchableOpacity
+        style={styles.paywallCta}
+        onPress={() => router.push('/(tabs)/membership')}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="diamond" size={12} color={LuxuryColors.background} />
+        <Text style={styles.paywallCtaText}>Unlock with Club</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ─── Collapsible section header ─────────────────────────────────────────────
 interface SectionHeaderProps {
   label: string;
@@ -122,11 +169,15 @@ export default function JourneyDetailScreen() {
   const [followed, setFollowed] = useState(false);
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+  const [isPremium, setIsPremium] = useState(false);
   const [sections, setSections] = useState({
     places: true,
     restaurants: true,
     experiences: true,
     itinerary: true,
+    hotels: true,
+    map: true,
+    insiderTips: true,
     gallery: true,
     reviews: true,
   });
@@ -401,7 +452,7 @@ export default function JourneyDetailScreen() {
 
           <View style={styles.divider} />
 
-          {/* Restaurants & Cafés */}
+          {/* Restaurants & Cafés — first item visible, rest locked */}
           <View style={styles.sectionOuter}>
             <SectionHeader
               label="Restaurants & Cafés"
@@ -410,7 +461,8 @@ export default function JourneyDetailScreen() {
             />
             {sections.restaurants && (
               <View style={styles.sectionBody}>
-                {journey.restaurants.map((r) => (
+                {/* Always show the first restaurant as a teaser */}
+                {journey.restaurants.slice(0, 1).map((r) => (
                   <View key={r} style={styles.listRow}>
                     <Ionicons
                       name="restaurant-outline"
@@ -421,6 +473,65 @@ export default function JourneyDetailScreen() {
                     <Text style={styles.listText}>{r}</Text>
                   </View>
                 ))}
+                {/* Gate the rest */}
+                {isPremium ? (
+                  journey.restaurants.slice(1).map((r) => (
+                    <View key={r} style={styles.listRow}>
+                      <Ionicons
+                        name="restaurant-outline"
+                        size={12}
+                        color={LuxuryColors.gold}
+                        style={styles.listIcon}
+                      />
+                      <Text style={styles.listText}>{r}</Text>
+                    </View>
+                  ))
+                ) : (
+                  journey.restaurants.length > 1 && (
+                    <PaywallBanner sectionName="restaurant list" />
+                  )
+                )}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Hotels — locked for members */}
+          <View style={styles.sectionOuter}>
+            <SectionHeader
+              label="Where to Stay"
+              isOpen={sections.hotels}
+              onToggle={() => toggleSection('hotels')}
+            />
+            {sections.hotels && (
+              <View style={styles.sectionBody}>
+                {isPremium ? (
+                  getMockHotels(journey).map((hotel) => (
+                    <View key={hotel.name} style={styles.hotelCard}>
+                      <View style={styles.hotelCardLeft}>
+                        <View style={styles.hotelIconWrap}>
+                          <Ionicons name="bed-outline" size={16} color={LuxuryColors.gold} />
+                        </View>
+                        <View style={styles.hotelInfo}>
+                          <Text style={styles.hotelName} numberOfLines={1}>{hotel.name}</Text>
+                          <View style={styles.hotelStars}>
+                            {Array.from({ length: hotel.stars }).map((_, i) => (
+                              <Ionicons key={i} name="star" size={9} color={LuxuryColors.gold} />
+                            ))}
+                            <Text style={styles.hotelType}> · {hotel.type}</Text>
+                          </View>
+                          <Text style={styles.hotelPrice}>{hotel.price}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.hotelNoteBadge}>
+                        <Text style={styles.hotelNoteText}>{hotel.note}</Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <PaywallBanner sectionName="hotel recommendations" />
+                )}
               </View>
             )}
           </View>
@@ -454,7 +565,7 @@ export default function JourneyDetailScreen() {
 
           <View style={styles.divider} />
 
-          {/* Day-by-Day Itinerary — luxury cards */}
+          {/* Day-by-Day Itinerary — Day 1 free, rest locked */}
           <View style={styles.sectionOuter}>
             <SectionHeader
               label="Day-by-Day Itinerary"
@@ -463,7 +574,8 @@ export default function JourneyDetailScreen() {
             />
             {sections.itinerary && (
               <View style={styles.sectionBody}>
-                {journey.itinerary.map((dayPlan) => (
+                {/* Day 1 always visible */}
+                {journey.itinerary.slice(0, 1).map((dayPlan) => (
                   <View key={dayPlan.day} style={styles.itineraryCard}>
                     <View style={styles.itineraryCardHeader}>
                       <View style={styles.itineraryDayBadge}>
@@ -485,7 +597,71 @@ export default function JourneyDetailScreen() {
                     </View>
                   </View>
                 ))}
+                {/* Remaining days gated */}
+                {isPremium ? (
+                  journey.itinerary.slice(1).map((dayPlan) => (
+                    <View key={dayPlan.day} style={styles.itineraryCard}>
+                      <View style={styles.itineraryCardHeader}>
+                        <View style={styles.itineraryDayBadge}>
+                          <Text style={styles.itineraryDayNum}>Day {dayPlan.day}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.itineraryActivities}>
+                        {dayPlan.activities.map((activity, idx) => (
+                          <View key={idx} style={styles.itineraryActivityRow}>
+                            <Ionicons
+                              name="location-outline"
+                              size={11}
+                              color={LuxuryColors.gold}
+                              style={styles.itineraryActivityIcon}
+                            />
+                            <Text style={styles.itineraryActivityText}>{activity}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  journey.itinerary.length > 1 && (
+                    <PaywallBanner sectionName={`full ${journey.itinerary.length}-day itinerary`} />
+                  )
+                )}
               </View>
+            )}
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Journey Route Map placeholder */}
+          <View style={styles.sectionOuter}>
+            <SectionHeader
+              label="Journey Route"
+              isOpen={sections.map}
+              onToggle={() => toggleSection('map')}
+            />
+            {sections.map && (
+              isPremium ? (
+                <View style={styles.mapPlaceholder}>
+                  <Ionicons name="map" size={32} color="rgba(212,175,55,0.35)" />
+                  <Text style={styles.mapTitle}>{journey.destination} Route</Text>
+                  <Text style={styles.mapSub}>
+                    {journey.places.length} stops · {journey.duration}
+                  </Text>
+                  <View style={styles.mapStopsRow}>
+                    {journey.places.slice(0, 4).map((place, i) => (
+                      <View key={place} style={styles.mapStop}>
+                        <View style={styles.mapStopDot} />
+                        {i < Math.min(journey.places.length, 4) - 1 && (
+                          <View style={styles.mapStopLine} />
+                        )}
+                        <Text style={styles.mapStopName} numberOfLines={1}>{place}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : (
+                <PaywallBanner sectionName="journey route map" />
+              )
             )}
           </View>
 
@@ -580,6 +756,33 @@ export default function JourneyDetailScreen() {
               </View>
             )}
           </View>
+
+          {/* Insider Tips — Creator notes, gated */}
+          <View style={styles.sectionOuter}>
+            <SectionHeader
+              label="Creator's Insider Tips"
+              isOpen={sections.insiderTips}
+              onToggle={() => toggleSection('insiderTips')}
+            />
+            {sections.insiderTips && (
+              <View style={styles.sectionBody}>
+                {isPremium ? (
+                  getInsiderTips(journey).map((tip, i) => (
+                    <View key={i} style={styles.tipCard}>
+                      <View style={styles.tipNumBadge}>
+                        <Text style={styles.tipNum}>{i + 1}</Text>
+                      </View>
+                      <Text style={styles.tipText}>{tip}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <PaywallBanner sectionName="insider tips" />
+                )}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.divider} />
 
           {/* Similar Journeys */}
           {(() => {
@@ -1437,5 +1640,220 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textTertiary,
     letterSpacing: 0.3,
     textAlign: 'right',
+  },
+
+  // ── Paywall Banner ───────────────────────────────────────
+  paywallBanner: {
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+    backgroundColor: 'rgba(212,175,55,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.18)',
+    borderRadius: LuxuryBorderRadius.xl,
+    paddingVertical: LuxurySpacing.xl,
+    paddingHorizontal: LuxurySpacing.xl,
+    marginTop: LuxurySpacing.sm,
+  },
+  paywallIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(212,175,55,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paywallTitle: {
+    fontSize: LuxuryFontSize.md,
+    fontWeight: '800',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.2,
+  },
+  paywallDesc: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    letterSpacing: 0.1,
+  },
+  paywallCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.full,
+    paddingVertical: 11,
+    paddingHorizontal: LuxurySpacing.xl,
+    marginTop: 4,
+  },
+  paywallCtaText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '800',
+    color: LuxuryColors.background,
+    letterSpacing: 0.4,
+  },
+
+  // ── Hotels ───────────────────────────────────────────────
+  hotelCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.md,
+    gap: LuxurySpacing.sm,
+  },
+  hotelCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    flex: 1,
+  },
+  hotelIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: LuxuryBorderRadius.md,
+    backgroundColor: 'rgba(212,175,55,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  hotelInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  hotelName: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  hotelStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 1,
+  },
+  hotelType: {
+    fontSize: 10,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  hotelPrice: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.1,
+  },
+  hotelNoteBadge: {
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    borderRadius: LuxuryBorderRadius.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  hotelNoteText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.3,
+  },
+
+  // ── Journey Route Map Placeholder ────────────────────────
+  mapPlaceholder: {
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+    backgroundColor: 'rgba(13,21,37,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.12)',
+    borderRadius: LuxuryBorderRadius.xl,
+    paddingVertical: LuxurySpacing.xl,
+    paddingHorizontal: LuxurySpacing.xl,
+    marginTop: LuxurySpacing.sm,
+  },
+  mapTitle: {
+    fontSize: LuxuryFontSize.md,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  mapSub: {
+    fontSize: 11,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  mapStopsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 0,
+    marginTop: LuxurySpacing.sm,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  mapStop: {
+    alignItems: 'center',
+    gap: 4,
+    width: 70,
+  },
+  mapStopDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: LuxuryColors.gold,
+    borderWidth: 2,
+    borderColor: 'rgba(212,175,55,0.30)',
+  },
+  mapStopLine: {
+    position: 'absolute',
+    top: 4,
+    left: '50%',
+    width: 70,
+    height: 2,
+    backgroundColor: 'rgba(212,175,55,0.20)',
+  },
+  mapStopName: {
+    fontSize: 9,
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+
+  // ── Insider Tips ─────────────────────────────────────────
+  tipCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: LuxurySpacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.10)',
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.md,
+  },
+  tipNumBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(212,175,55,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  tipNum: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: LuxuryColors.gold,
+    letterSpacing: 0.2,
+  },
+  tipText: {
+    flex: 1,
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 20,
+    letterSpacing: 0.1,
   },
 });
