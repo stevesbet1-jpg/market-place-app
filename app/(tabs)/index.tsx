@@ -1117,7 +1117,7 @@ const styles = StyleSheet.create({
     ...LuxuryShadow.medium,
   },
   featuredImageWrap: {
-    height: 200,
+    height: 155,
     width: '100%',
   },
   featuredImage: {
@@ -1129,7 +1129,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 80,
+    height: 60,
   },
   featuredCategoryBadge: {
     position: 'absolute',
@@ -1150,8 +1150,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   featuredBody: {
-    padding: LuxurySpacing.lg,
-    gap: LuxurySpacing.sm,
+    padding: LuxurySpacing.md,
+    gap: 5,
   },
   featuredTitle: {
     fontSize: LuxuryFontSize.lg,
@@ -1169,7 +1169,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: LuxurySpacing.xs,
+    marginTop: 2,
   },
   featuredPrice: {
     fontSize: LuxuryFontSize.xl,
@@ -1196,7 +1196,7 @@ const styles = StyleSheet.create({
   featuredDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(212,175,55,0.15)',
-    marginVertical: LuxurySpacing.xs,
+    marginVertical: 3,
   },
   featuredSellerRow: {
     flexDirection: 'row',
