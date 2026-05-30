@@ -79,21 +79,21 @@ export const LuxuryFontFamily = {
 export const LuxuryShadow = {
   // Ultra-soft ambient shadows for depth
   soft: {
-    shadowColor: '#8B5CF6',
+    shadowColor: '#030A14',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 32,
     elevation: 6,
   },
   medium: {
-    shadowColor: '#8B5CF6',
+    shadowColor: '#030A14',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 40,
     elevation: 10,
   },
   strong: {
-    shadowColor: '#D946EF',
+    shadowColor: '#030A14',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 56,
@@ -117,7 +117,7 @@ export const LuxuryShadow = {
   },
   // Deep ambient glow for hero cards
   ambient: {
-    shadowColor: '#6B21A8',
+    shadowColor: '#030A14',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
     shadowRadius: 64,

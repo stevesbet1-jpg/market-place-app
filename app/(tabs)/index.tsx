@@ -49,10 +49,10 @@ const COLLECTION_IMAGES = {
 };
 
 const PRIVILEGES = [
-  { label: 'Private Aviation', icon: 'airplane'         as const, subtitle: 'Worldwide access',   badge: 'Included' },
-  { label: 'VIP Dining',       icon: 'restaurant'       as const, subtitle: '50+ restaurants',    badge: 'Active'   },
-  { label: 'Villa Upgrades',   icon: 'diamond'          as const, subtitle: 'Guaranteed upgrade', badge: 'Included' },
-  { label: 'Travel Insurance', icon: 'shield-checkmark' as const, subtitle: 'Global coverage',    badge: 'Active'   },
+  { label: 'Private Aviation', icon: 'airplane'         as const, subtitle: 'Access, Anywhere',         badge: 'Included' },
+  { label: 'VIP Dining',       icon: 'restaurant'       as const, subtitle: 'Michelin-Starred Dining',  badge: 'Active'   },
+  { label: 'Villa Upgrades',   icon: 'diamond'          as const, subtitle: 'Preferred Villa Upgrades', badge: 'Included' },
+  { label: 'Travel Insurance', icon: 'shield-checkmark' as const, subtitle: 'Worldwide Protection',     badge: 'Active'   },
 ] as const;
 
 
@@ -611,9 +611,11 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textPrimary,
   },
   sectionLink: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.violetLight,
-    fontWeight: '600',
+    fontSize: 11,
+    color: LuxuryColors.gold,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
   },
   collectionCard: {
     overflow: 'hidden',
@@ -794,7 +796,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.95)',
-    letterSpacing: 2.2,
+    letterSpacing: 2.0,
     textTransform: 'uppercase',
   },
   privilegesGrid: {
@@ -809,7 +811,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     padding: LuxurySpacing.lg,
     minHeight: 148,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     gap: LuxurySpacing.sm,
     ...LuxuryShadow.soft,
@@ -834,12 +836,10 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     fontWeight: '700',
     color: LuxuryColors.textPrimary,
-    textAlign: 'center',
   },
   privilegeSubtitle: {
     fontSize: LuxuryFontSize.xs,
     color: LuxuryColors.textSecondary,
-    textAlign: 'center',
     marginTop: 1,
     opacity: 0.80,
   },
@@ -946,9 +946,11 @@ const styles = StyleSheet.create({
     width: '80%',
   },
   sellLink: {
-    fontSize: LuxuryFontSize.sm,
+    fontSize: 11,
     color: LuxuryColors.gold,
     fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
   },
   productCard: {
     flexDirection: 'row',
