@@ -29,6 +29,10 @@ import { getFirestoreDb, isFirebaseConfigured } from './firebase';
 import type {
   CreatorExperience,
   ExperienceUploadPayload,
+  Hotel,
+  Restaurant,
+  HiddenGem,
+  DailyPlanEntry,
 } from '../constants/creatorExperienceModel';
 
 // ─── Collection name ──────────────────────────────────────────────────────────
@@ -61,12 +65,14 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     coverImage: (data.coverImage as string | null) ?? null,
     description: (data.description as string) ?? '',
     tips: (data.tips as string[]) ?? [],
-    hiddenGems: (data.hiddenGems as string[]) ?? [],
-    restaurants: (data.restaurants as string[]) ?? [],
-    hotels: (data.hotels as string[]) ?? [],
-    dailyPlan: (data.dailyPlan as CreatorExperience['dailyPlan']) ?? [],
+    hiddenGems: (data.hiddenGems as HiddenGem[]) ?? [],
+    restaurants: (data.restaurants as Restaurant[]) ?? [],
+    hotels: (data.hotels as Hotel[]) ?? [],
+    dailyPlan: (data.dailyPlan as DailyPlanEntry[]) ?? [],
     status: (data.status as CreatorExperience['status']) ?? 'draft',
+    published: Boolean(data.published),
     createdAt: null,
+    updatedAt: null,
   };
 }
 
@@ -127,6 +133,21 @@ export async function updateExperience(
 }
 
 /**
+ * Publishes an experience directly.
+ * Sets status: 'published' and published: true.
+ * Used when a creator clicks Publish on their own experience.
+ */
+export async function publishExperience(experienceId: string): Promise<void> {
+  requireFirebase();
+  const db = getFirestoreDb();
+  await updateDoc(doc(db, COLLECTION, experienceId), {
+    status: 'published',
+    published: true,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * Permanently deletes an experience document.
  * Confirmed by the caller before calling this function.
  */
@@ -174,7 +195,7 @@ export async function getPublishedExperiences(): Promise<CreatorExperience[]> {
     const db = getFirestoreDb();
     const q = query(
       collection(db, COLLECTION),
-      where('status', '==', 'published'),
+      where('published', '==', true),
       orderBy('createdAt', 'desc')
     );
     const snap = await getDocs(q);

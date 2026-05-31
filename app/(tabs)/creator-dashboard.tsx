@@ -48,6 +48,7 @@ import {
 import {
   getCreatorExperiences,
   updateExperience,
+  publishExperience,
   deleteExperience,
 } from '../../lib/creatorExperienceService';
 import {
@@ -113,10 +114,12 @@ function ExperienceRow({
   experience,
   onDelete,
   onSubmitForReview,
+  onPublish,
 }: {
   experience: CreatorExperience;
   onDelete: () => void;
   onSubmitForReview: () => void;
+  onPublish: () => void;
 }) {
   const imgSrc = experience.coverImage ? { uri: experience.coverImage } : null;
   const color = statusColor(experience.status);
@@ -178,6 +181,17 @@ function ExperienceRow({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="paper-plane-outline" size={18} color={LuxuryColors.gold} />
+          </TouchableOpacity>
+        )}
+
+        {experience.status !== 'published' && (
+          <TouchableOpacity
+            style={rowStyles.actionBtn}
+            onPress={onPublish}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="checkmark-circle-outline" size={18} color={LuxuryColors.success} />
           </TouchableOpacity>
         )}
 
@@ -520,6 +534,7 @@ export default function CreatorDashboardScreen() {
                 experience={exp}
                 onDelete={() => handleDelete(exp.id, exp.title)}
                 onSubmitForReview={() => handleSubmitForReview(exp.id, exp.title)}
+                onPublish={() => handlePublish(exp.id, exp.title)}
               />
             ))}
             {experiences.length > 3 && (
@@ -592,6 +607,7 @@ export default function CreatorDashboardScreen() {
             experience={item}
             onDelete={() => handleDelete(item.id, item.title)}
             onSubmitForReview={() => handleSubmitForReview(item.id, item.title)}
+            onPublish={() => handlePublish(item.id, item.title)}
           />
         )}
       />
@@ -701,6 +717,27 @@ export default function CreatorDashboardScreen() {
               if (creator?.id) loadExperiences(creator.id);
             } catch (e: unknown) {
               Alert.alert('Delete Failed', e instanceof Error ? e.message : 'Unknown error');
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handlePublish(experienceId: string, title: string) {
+    Alert.alert(
+      'Publish Experience',
+      `Publish "${title}"? It will immediately be visible to all travelers.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Publish',
+          onPress: async () => {
+            try {
+              await publishExperience(experienceId);
+              if (creator?.id) loadExperiences(creator.id);
+            } catch (e: unknown) {
+              Alert.alert('Publish Failed', e instanceof Error ? e.message : 'Unknown error');
             }
           },
         },

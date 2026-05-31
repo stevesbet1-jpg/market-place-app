@@ -31,7 +31,23 @@ export type BudgetRange = '$' | '$$' | '$$$' | '$$$$';
 
 export interface DailyPlanEntry {
   day: number;
-  activities: string[];
+  title: string;
+  description: string;
+}
+
+export interface Hotel {
+  name: string;
+  address: string;
+}
+
+export interface Restaurant {
+  name: string;
+  description: string;
+}
+
+export interface HiddenGem {
+  name: string;
+  description: string;
 }
 
 // ─── Main model ───────────────────────────────────────────────────────────────
@@ -61,38 +77,44 @@ export interface CreatorExperience {
   /** Creator's personal tips for this experience */
   tips: string[];
   /** Off-the-beaten-path spots */
-  hiddenGems: string[];
-  restaurants: string[];
-  hotels: string[];
+  hiddenGems: HiddenGem[];
+  restaurants: Restaurant[];
+  hotels: Hotel[];
   /** Day-by-day plan */
   dailyPlan: DailyPlanEntry[];
 
   // ── Lifecycle ───────────────────────────────────────────────────────
   status: ExperienceStatus;
+  /** true once the creator publishes — drives Discover / Trips queries */
+  published: boolean;
 
   // ── Timestamps ──────────────────────────────────────────────────────
   /** Unix-ms at creation. Null until server writes createdAt. */
   createdAt: number | null;
+  /** Unix-ms of last update. Null until first update. */
+  updatedAt: number | null;
 }
 
 // ─── Firestore document shape ─────────────────────────────────────────────────
 
-/** As stored in Firestore — createdAt is a Timestamp, not a number. */
+/** As stored in Firestore — createdAt/updatedAt are Timestamps, not numbers. */
 export interface CreatorExperienceDoc
-  extends Omit<CreatorExperience, 'id' | 'createdAt'> {
+  extends Omit<CreatorExperience, 'id' | 'createdAt' | 'updatedAt'> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createdAt: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  updatedAt: any;
 }
 
 // ─── Upload payload ───────────────────────────────────────────────────────────
 
 /**
  * Fields a creator fills in when submitting an experience.
- * id / status / createdAt are set by the service layer.
+ * id / status / createdAt / updatedAt are set by the service layer.
  */
 export type ExperienceUploadPayload = Omit<
   CreatorExperience,
-  'id' | 'status' | 'createdAt'
+  'id' | 'status' | 'createdAt' | 'updatedAt'
 >;
 
 // ─── Display helpers ──────────────────────────────────────────────────────────

@@ -8,8 +8,10 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import type { BudgetLevel } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 import { getPublishedJourneys } from '../../lib/creatorJourneyService';
+import { getPublishedExperiences } from '../../lib/creatorExperienceService';
 import { formatSaves } from '../../constants/creators';
 import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
+import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
 type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple' | 'bali' | 'seychelles' | 'zanzibar' | 'lakecomo' | 'alps';
 
@@ -48,19 +50,21 @@ export default function TripsScreen() {
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
   const [allJourneys, setAllJourneys] = useState<CreatorJourney[]>([]);
+  const [allExperiences, setAllExperiences] = useState<CreatorExperience[]>([]);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       setLoading(true);
-      Promise.all([getFreeRemaining(), getSavedIds(), getBudgetPref(), getPublishedJourneys()]).then(
-        ([remaining, saved, pref, journeys]) => {
+      Promise.all([getFreeRemaining(), getSavedIds(), getBudgetPref(), getPublishedJourneys(), getPublishedExperiences()]).then(
+        ([remaining, saved, pref, journeys, exps]) => {
           if (cancelled) return;
           setFreeRemaining(remaining as number);
           setSavedIds(saved as string[]);
           setBudgetPrefState(pref as BudgetLevel | null);
           setAllJourneys([...(journeys as CreatorJourney[])].sort(() => Math.random() - 0.5));
+          setAllExperiences(exps as CreatorExperience[]);
           setLoading(false);
         }
       ).catch(() => { if (!cancelled) setLoading(false); });
@@ -354,6 +358,35 @@ export default function TripsScreen() {
           </Pressable>
         ))}
       </View>
+
+      {/* ── Published Experiences ── */}
+      {allExperiences.length > 0 && (
+        <View style={styles.expSection}>
+          <Text style={styles.expSectionTitle}>Creator Experiences</Text>
+          <Text style={styles.expSectionSub}>Travel blueprints from independent creators</Text>
+          {allExperiences.map((exp) => (
+            <Pressable
+              key={exp.id}
+              style={styles.expCard}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
+              }
+            >
+              <View style={styles.expCardLeft}>
+                <Ionicons name="globe-outline" size={22} color={LuxuryColors.gold} />
+              </View>
+              <View style={styles.expCardBody}>
+                <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
+                <Text style={styles.expCardMeta} numberOfLines={1}>
+                  {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
+                </Text>
+                <Text style={styles.expCardCreator}>by {exp.creatorName}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <View style={{ height: 64 + insets.bottom }} />
     </ScrollView>
@@ -843,6 +876,61 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: LuxuryColors.gold,
     letterSpacing: 0.3,
+  },
+  expSection: {
+    paddingHorizontal: LuxurySpacing.xl,
+    paddingTop: LuxurySpacing.xl,
+    paddingBottom: LuxurySpacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  expSectionTitle: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    marginBottom: LuxurySpacing.xs,
+  },
+  expSectionSub: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+    marginBottom: LuxurySpacing.md,
+  },
+  expCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: LuxuryColors.glassBorder,
+    borderRadius: LuxuryBorderRadius.md,
+    padding: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.sm,
+    gap: LuxurySpacing.sm,
+  },
+  expCardLeft: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: LuxuryColors.goldGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expCardBody: {
+    flex: 1,
+    gap: 2,
+  },
+  expCardTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    color: LuxuryColors.textPrimary,
+  },
+  expCardMeta: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+  },
+  expCardCreator: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.gold,
+    fontStyle: 'italic',
   },
 });
 

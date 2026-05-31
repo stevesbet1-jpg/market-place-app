@@ -18,7 +18,9 @@ import {
   LuxuryFontSize,
 } from '../../constants/luxuryTheme';
 import { getApprovedCreators, hasRealCreators } from '../../lib/creatorService';
+import { getPublishedExperiences } from '../../lib/creatorExperienceService';
 import type { Creator } from '../../constants/creators';
+import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
 // ─── Creator Card ─────────────────────────────────────────────────────────────
 
@@ -137,6 +139,7 @@ export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
 
   const [creators, setCreators] = useState<Creator[]>([]);
+  const [experiences, setExperiences] = useState<CreatorExperience[]>([]);
   const [showingDemo, setShowingDemo] = useState(false);
   const [loading, setLoading] = useState(true);
   // true only when Firebase is configured but returned 0 approved creators
@@ -147,14 +150,15 @@ export default function DiscoverScreen() {
       let cancelled = false;
       setLoading(true);
 
-      Promise.all([getApprovedCreators(), hasRealCreators()]).then(
-        ([list, anyReal]) => {
+      Promise.all([getApprovedCreators(), hasRealCreators(), getPublishedExperiences()]).then(
+        ([list, anyReal, exps]) => {
           if (cancelled) return;
-          const allDemo = list.every((c) => c.isDemo);
-          setCreators(list);
+          const allDemo = (list as Creator[]).every((c) => c.isDemo);
+          setCreators(list as Creator[]);
+          setExperiences(exps as CreatorExperience[]);
           setShowingDemo(allDemo);
           // Empty state: Firebase configured but zero real creators found
-          setReallyEmpty(anyReal === false && list.length === 0);
+          setReallyEmpty(anyReal === false && (list as Creator[]).length === 0);
           setLoading(false);
         }
       ).catch(() => {
@@ -227,6 +231,36 @@ export default function DiscoverScreen() {
               <Text style={styles.applyCtaText}>Apply as Creator</Text>
               <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
             </TouchableOpacity>
+
+            {/* Published Experiences section */}
+            {experiences.length > 0 && (
+              <View style={styles.expSection}>
+                <Text style={styles.expSectionTitle}>Creator Experiences</Text>
+                <Text style={styles.expSectionSub}>Curated travel blueprints from creators</Text>
+                {experiences.map((exp) => (
+                  <TouchableOpacity
+                    key={exp.id}
+                    style={styles.expCard}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
+                    }
+                  >
+                    <View style={styles.expCardLeft}>
+                      <Ionicons name="globe-outline" size={22} color={LuxuryColors.gold} />
+                    </View>
+                    <View style={styles.expCardBody}>
+                      <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
+                      <Text style={styles.expCardMeta} numberOfLines={1}>
+                        {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
+                      </Text>
+                      <Text style={styles.expCardCreator} numberOfLines={1}>by {exp.creatorName}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -467,5 +501,59 @@ const styles = StyleSheet.create({
     color: LuxuryColors.gold,
     fontSize: 14,
     fontWeight: '600',
+  },
+  expSection: {
+    marginTop: LuxurySpacing.xl,
+    paddingTop: LuxurySpacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  expSectionTitle: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    marginBottom: LuxurySpacing.xs,
+  },
+  expSectionSub: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+    marginBottom: LuxurySpacing.md,
+  },
+  expCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: LuxuryColors.glassBorder,
+    borderRadius: LuxuryBorderRadius.md,
+    padding: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.sm,
+    gap: LuxurySpacing.sm,
+  },
+  expCardLeft: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: LuxuryColors.goldGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expCardBody: {
+    flex: 1,
+    gap: 2,
+  },
+  expCardTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    color: LuxuryColors.textPrimary,
+  },
+  expCardMeta: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+  },
+  expCardCreator: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.gold,
+    fontStyle: 'italic',
   },
 });

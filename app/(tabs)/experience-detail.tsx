@@ -40,7 +40,7 @@ import {
   LuxuryFontSize,
   LuxuryShadow,
 } from '../../constants/luxuryTheme';
-import type { CreatorExperience, DailyPlanEntry, TravelStyle } from '../../constants/creatorExperienceModel';
+import type { CreatorExperience, DailyPlanEntry, TravelStyle, Restaurant, HiddenGem, Hotel } from '../../constants/creatorExperienceModel';
 import { travelStyleLabel } from '../../constants/creatorExperienceModel';
 import { getExperienceById } from '../../lib/creatorExperienceService';
 import {
@@ -220,61 +220,24 @@ function PaywallBanner({
 // ─── Day Card ─────────────────────────────────────────────────────────────────
 
 function DayCard({ entry }: { entry: DailyPlanEntry }) {
-  const { morning, afternoon, evening } = splitTimeOfDay(entry.activities);
-
   return (
     <View style={dayStyles.card}>
       <View style={dayStyles.dayHeader}>
         <View style={dayStyles.dayBadge}>
           <Text style={dayStyles.dayBadgeText}>Day {entry.day}</Text>
         </View>
+        {entry.title ? <Text style={dayStyles.dayTitle}>{entry.title}</Text> : null}
       </View>
-
-      {morning.length > 0 && (
-        <View style={dayStyles.slotBlock}>
-          <View style={dayStyles.slotLabel}>
-            <Ionicons name="sunny-outline" size={13} color={LuxuryColors.gold} />
-            <Text style={dayStyles.slotLabelText}>Morning</Text>
-          </View>
-          {morning.map((a, i) => <BulletItem key={i} text={a} />)}
-        </View>
-      )}
-
-      {afternoon.length > 0 && (
-        <View style={dayStyles.slotBlock}>
-          <View style={dayStyles.slotLabel}>
-            <Ionicons name="partly-sunny-outline" size={13} color={LuxuryColors.gold} />
-            <Text style={dayStyles.slotLabelText}>Afternoon</Text>
-          </View>
-          {afternoon.map((a, i) => <BulletItem key={i} text={a} />)}
-        </View>
-      )}
-
-      {evening.length > 0 && (
-        <View style={dayStyles.slotBlock}>
-          <View style={dayStyles.slotLabel}>
-            <Ionicons name="moon-outline" size={13} color={LuxuryColors.gold} />
-            <Text style={dayStyles.slotLabelText}>Evening</Text>
-          </View>
-          {evening.map((a, i) => <BulletItem key={i} text={a} />)}
-        </View>
-      )}
+      {entry.description ? (
+        <Text style={dayStyles.dayDescription}>{entry.description}</Text>
+      ) : null}
     </View>
   );
 }
 
 // ─── Restaurant Card ──────────────────────────────────────────────────────────
 
-function RestaurantCard({ name, index }: { name: string; index: number }) {
-  // Best-effort parse: "Name — Type — Note" or just the raw string
-  const parts = name.split(/\s*[—–-]\s*/);
-  const displayName = parts[0]?.trim() ?? name;
-  const cuisine = parts[1]?.trim();
-  const note = parts[2]?.trim();
-
-  const priceLevel = index % 4; // deterministic visual variation
-  const price = ['$', '$$', '$$$', '$$$$'][priceLevel];
-
+function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
   return (
     <View style={placeStyles.card}>
       <View style={placeStyles.cardLeft}>
@@ -283,10 +246,10 @@ function RestaurantCard({ name, index }: { name: string; index: number }) {
         </View>
       </View>
       <View style={placeStyles.cardBody}>
-        <Text style={placeStyles.placeName}>{displayName}</Text>
-        {cuisine && <Text style={placeStyles.placeType}>{cuisine}</Text>}
-        {note && <Text style={placeStyles.placeNote}>{note}</Text>}
-        <Text style={placeStyles.priceLevel}>{price}</Text>
+        <Text style={placeStyles.placeName}>{restaurant.name}</Text>
+        {restaurant.description ? (
+          <Text style={placeStyles.placeNote}>{restaurant.description}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -294,11 +257,7 @@ function RestaurantCard({ name, index }: { name: string; index: number }) {
 
 // ─── Hidden Gem Card ──────────────────────────────────────────────────────────
 
-function HiddenGemCard({ gem }: { gem: string }) {
-  const parts = gem.split(/\s*[—–-]\s*/);
-  const displayName = parts[0]?.trim() ?? gem;
-  const note = parts[1]?.trim();
-
+function HiddenGemCard({ gem }: { gem: HiddenGem }) {
   return (
     <View style={placeStyles.card}>
       <View style={placeStyles.cardLeft}>
@@ -307,8 +266,10 @@ function HiddenGemCard({ gem }: { gem: string }) {
         </View>
       </View>
       <View style={placeStyles.cardBody}>
-        <Text style={placeStyles.placeName}>{displayName}</Text>
-        {note && <Text style={placeStyles.placeNote}>{note}</Text>}
+        <Text style={placeStyles.placeName}>{gem.name}</Text>
+        {gem.description ? (
+          <Text style={placeStyles.placeNote}>{gem.description}</Text>
+        ) : null}
         <View style={placeStyles.insiderBadge}>
           <Text style={placeStyles.insiderBadgeText}>Insider Tip</Text>
         </View>
@@ -684,22 +645,19 @@ export default function ExperienceDetailScreen() {
                 {experience.hotels.length > 0 && (
                   <View style={{ marginBottom: LuxurySpacing.md }}>
                     <Text style={detailStyles.subLabel}>Where to Stay</Text>
-                    {experience.hotels.map((h, i) => {
-                      const parts = h.split(/\s*[—–-]\s*/);
-                      return (
-                        <View key={i} style={placeStyles.card}>
-                          <View style={placeStyles.cardLeft}>
-                            <View style={placeStyles.iconCircle}>
-                              <Ionicons name="bed-outline" size={18} color={LuxuryColors.gold} />
-                            </View>
-                          </View>
-                          <View style={placeStyles.cardBody}>
-                            <Text style={placeStyles.placeName}>{parts[0]?.trim() ?? h}</Text>
-                            {parts[1] && <Text style={placeStyles.placeNote}>{parts[1].trim()}</Text>}
+                    {experience.hotels.map((h: Hotel, i: number) => (
+                      <View key={i} style={placeStyles.card}>
+                        <View style={placeStyles.cardLeft}>
+                          <View style={placeStyles.iconCircle}>
+                            <Ionicons name="bed-outline" size={18} color={LuxuryColors.gold} />
                           </View>
                         </View>
-                      );
-                    })}
+                        <View style={placeStyles.cardBody}>
+                          <Text style={placeStyles.placeName}>{h.name}</Text>
+                          {h.address ? <Text style={placeStyles.placeNote}>{h.address}</Text> : null}
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 )}
 
@@ -723,7 +681,7 @@ export default function ExperienceDetailScreen() {
             {isUnlocked ? (
               experience.restaurants.length > 0 ? (
                 experience.restaurants.map((r, i) => (
-                  <RestaurantCard key={i} name={r} index={i} />
+                  <RestaurantCard key={i} restaurant={r} />
                 ))
               ) : (
                 <View style={detailStyles.emptyCard}>
@@ -1190,6 +1148,18 @@ const dayStyles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  dayTitle: {
+    color: LuxuryColors.textPrimary,
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    marginTop: LuxurySpacing.xs,
+  },
+  dayDescription: {
+    color: LuxuryColors.textSecondary,
+    fontSize: LuxuryFontSize.sm,
+    lineHeight: 22,
+    marginTop: LuxurySpacing.xs,
   },
   slotBlock: {
     marginBottom: LuxurySpacing.sm,
