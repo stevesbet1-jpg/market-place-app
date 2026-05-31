@@ -1,4 +1,4 @@
-﻿import React from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,31 +6,23 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   LuxuryColors,
   LuxurySpacing,
   LuxuryBorderRadius,
   LuxuryFontSize,
-  LuxuryShadow,
 } from '../../constants/luxuryTheme';
-import { CREATORS, formatFollowers, type Creator } from '../../constants/creators';
-import { JOURNEYS } from '../../constants/journeys';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function journeyCountForCreator(creatorId: string): number {
-  return JOURNEYS.filter((j) => j.creatorId === creatorId).length;
-}
+import { getApprovedCreators, hasRealCreators } from '../../lib/creatorService';
+import type { Creator } from '../../constants/creators';
 
 // ─── Creator Card ─────────────────────────────────────────────────────────────
 
 function CreatorCard({ creator }: { creator: Creator }) {
-  const journeyCount = journeyCountForCreator(creator.id);
-
   return (
     <TouchableOpacity
       style={styles.card}
@@ -52,20 +44,35 @@ function CreatorCard({ creator }: { creator: Creator }) {
 
       {/* Info */}
       <View style={styles.cardInfo}>
-        <Text style={styles.cardName}>{creator.name}</Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.cardName}>{creator.name}</Text>
+          {creator.isDemo && (
+            <View style={styles.demoPill}>
+              <Text style={styles.demoPillText}>DEMO</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.cardBio} numberOfLines={2}>{creator.bio}</Text>
 
         {/* Stats row */}
         <View style={styles.statsRow}>
-          <View style={styles.stat}>
-            <Ionicons name="people" size={11} color={LuxuryColors.textTertiary} />
-            <Text style={styles.statText}>{formatFollowers(creator.followers)}</Text>
-          </View>
-          <View style={styles.statDot} />
+          {creator.followers > 0 && (
+            <>
+              <View style={styles.stat}>
+                <Ionicons name="people" size={11} color={LuxuryColors.textTertiary} />
+                <Text style={styles.statText}>
+                  {creator.followers >= 1000
+                    ? `${(creator.followers / 1000).toFixed(1)}K`
+                    : String(creator.followers)}
+                </Text>
+              </View>
+              <View style={styles.statDot} />
+            </>
+          )}
           <View style={styles.stat}>
             <Ionicons name="map" size={11} color={LuxuryColors.textTertiary} />
             <Text style={styles.statText}>
-              {journeyCount} {journeyCount === 1 ? 'Journey' : 'Journeys'}
+              {creator.totalJourneys} {creator.totalJourneys === 1 ? 'Journey' : 'Journeys'}
             </Text>
           </View>
           {creator.instagram && (
@@ -86,10 +93,77 @@ function CreatorCard({ creator }: { creator: Creator }) {
   );
 }
 
+// ─── Demo notice banner ───────────────────────────────────────────────────────
+
+function DemoNoticeBanner() {
+  return (
+    <View style={styles.demoNotice}>
+      <Ionicons name="information-circle-outline" size={16} color={LuxuryColors.gold} />
+      <Text style={styles.demoNoticeText}>
+        These are placeholder profiles for UI testing. Real creators are joining soon.
+      </Text>
+    </View>
+  );
+}
+
+// ─── Empty state — no creators yet ───────────────────────────────────────────
+
+function EmptyCreatorsState() {
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIconWrap}>
+        <Ionicons name="people-outline" size={36} color={LuxuryColors.textTertiary} />
+      </View>
+      <Text style={styles.emptyTitle}>Creators are joining soon</Text>
+      <Text style={styles.emptySubtitle}>
+        We are onboarding the first wave of travel creators. Be among the first to publish
+        your journeys and reach thousands of premium travellers.
+      </Text>
+      <TouchableOpacity
+        style={styles.applyBtn}
+        onPress={() => router.push('/(tabs)/apply-creator')}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.background} />
+        <Text style={styles.applyBtnText}>Apply as Creator</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
+
+  const [creators, setCreators] = useState<Creator[]>([]);
+  const [showingDemo, setShowingDemo] = useState(false);
+  const [loading, setLoading] = useState(true);
+  // true only when Firebase is configured but returned 0 approved creators
+  const [reallyEmpty, setReallyEmpty] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setLoading(true);
+
+      Promise.all([getApprovedCreators(), hasRealCreators()]).then(
+        ([list, anyReal]) => {
+          if (cancelled) return;
+          const allDemo = list.every((c) => c.isDemo);
+          setCreators(list);
+          setShowingDemo(allDemo);
+          // Empty state: Firebase configured but zero real creators found
+          setReallyEmpty(anyReal === false && list.length === 0);
+          setLoading(false);
+        }
+      ).catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+      return () => { cancelled = true; };
+    }, [])
+  );
 
   return (
     <View style={styles.root}>
@@ -108,24 +182,53 @@ export default function DiscoverScreen() {
           <Text style={styles.headerEyebrow}>TRAVEL CREATORS</Text>
           <Text style={styles.headerTitle}>Discover</Text>
           <Text style={styles.headerSub}>
-            Follow world-class creators and unlock their handcrafted journeys
+            Browse handcrafted journeys from independent travel creators
           </Text>
         </View>
 
-        {/* Creator count badge */}
-        <View style={styles.countRow}>
-          <View style={styles.countBadge}>
-            <Ionicons name="people" size={13} color={LuxuryColors.gold} />
-            <Text style={styles.countText}>{CREATORS.length} Verified Creators</Text>
-          </View>
-        </View>
+        {loading ? (
+          <ActivityIndicator
+            color={LuxuryColors.gold}
+            style={styles.loader}
+          />
+        ) : reallyEmpty ? (
+          <EmptyCreatorsState />
+        ) : (
+          <>
+            {/* Demo notice — shown while only seed data exists */}
+            {showingDemo && <DemoNoticeBanner />}
 
-        {/* Creator list */}
-        <View style={styles.list}>
-          {CREATORS.map((creator) => (
-            <CreatorCard key={creator.id} creator={creator} />
-          ))}
-        </View>
+            {/* Creator count */}
+            {!showingDemo && (
+              <View style={styles.countRow}>
+                <View style={styles.countBadge}>
+                  <Ionicons name="people" size={13} color={LuxuryColors.gold} />
+                  <Text style={styles.countText}>
+                    {creators.length} Creator{creators.length !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Creator list */}
+            <View style={styles.list}>
+              {creators.map((creator) => (
+                <CreatorCard key={creator.id} creator={creator} />
+              ))}
+            </View>
+
+            {/* Apply CTA — always visible */}
+            <TouchableOpacity
+              style={styles.applyCtaRow}
+              onPress={() => router.push('/(tabs)/apply-creator')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.gold} />
+              <Text style={styles.applyCtaText}>Apply as Creator</Text>
+              <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -138,17 +241,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: LuxuryColors.background,
   },
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: LuxurySpacing.xl,
   },
+  loader: {
+    marginTop: 80,
+  },
 
   // Header
-  header: {
-    marginBottom: LuxurySpacing.xl,
-  },
+  header: { marginBottom: LuxurySpacing.xl },
   headerEyebrow: {
     fontSize: 10,
     fontWeight: '700',
@@ -167,13 +269,29 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textSecondary,
     lineHeight: 20,
-    letterSpacing: 0.1,
+  },
+
+  // Demo notice
+  demoNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(212,175,55,0.06)',
+    borderRadius: LuxuryBorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.15)',
+    padding: 12,
+    marginBottom: LuxurySpacing.lg,
+  },
+  demoNoticeText: {
+    flex: 1,
+    color: LuxuryColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
   // Count badge
-  countRow: {
-    marginBottom: LuxurySpacing.lg,
-  },
+  countRow: { marginBottom: LuxurySpacing.lg },
   countBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -194,9 +312,7 @@ const styles = StyleSheet.create({
   },
 
   // List
-  list: {
-    gap: LuxurySpacing.md,
-  },
+  list: { gap: LuxurySpacing.md, marginBottom: LuxurySpacing.xl },
 
   // Card
   card: {
@@ -211,10 +327,7 @@ const styles = StyleSheet.create({
   },
 
   // Avatar
-  avatarWrap: {
-    position: 'relative',
-    alignSelf: 'flex-start',
-  },
+  avatarWrap: { position: 'relative', alignSelf: 'flex-start' },
   avatar: {
     width: 56,
     height: 56,
@@ -253,24 +366,31 @@ const styles = StyleSheet.create({
   },
 
   // Card body
-  cardInfo: {
-    flex: 1,
-    gap: 4,
-  },
+  cardInfo: { flex: 1, gap: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardName: {
     fontSize: LuxuryFontSize.md,
     fontWeight: '700',
     color: LuxuryColors.textPrimary,
     letterSpacing: 0.1,
   },
+  demoPill: {
+    backgroundColor: 'rgba(122,118,104,0.2)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  demoPillText: {
+    color: LuxuryColors.textTertiary,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
   cardBio: {
     fontSize: 12,
     color: LuxuryColors.textSecondary,
     lineHeight: 17,
-    letterSpacing: 0.1,
   },
-
-  // Stats
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -278,22 +398,74 @@ const styles = StyleSheet.create({
     gap: 5,
     marginTop: 2,
   },
-  stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  statText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.1,
-  },
+  stat: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  statText: { fontSize: 10, fontWeight: '600', color: LuxuryColors.textTertiary },
   statDot: {
     width: 2,
     height: 2,
     borderRadius: 1,
     backgroundColor: LuxuryColors.textTertiary,
     opacity: 0.5,
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 48,
+    paddingBottom: 32,
+    gap: 16,
+  },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    color: LuxuryColors.textPrimary,
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    color: LuxuryColors.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 300,
+  },
+  applyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.md,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    marginTop: 8,
+  },
+  applyBtnText: {
+    color: LuxuryColors.background,
+    fontWeight: '800',
+    fontSize: 15,
+  },
+
+  // Apply CTA row (bottom of filled list)
+  applyCtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  applyCtaText: {
+    flex: 1,
+    color: LuxuryColors.gold,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

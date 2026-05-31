@@ -12,11 +12,27 @@ export interface Creator {
   followers: number;
   /** Number of published journeys */
   totalJourneys: number;
+  /**
+   * true  — populated from hardcoded seed data; not a real person on the platform.
+   * false — a real creator who signed up via creator onboarding.
+   */
+  isDemo: boolean;
 }
+
+// ─── Seed-data notice ─────────────────────────────────────────────────────────
+//
+// CREATORS below are DEMO / SEED data only.
+// They exist to make the UI testable before real creators onboard.
+// These are NOT real people verified on this platform.
+// Real creators are stored in Firestore (creators collection) and
+// fetched via lib/creatorService.ts.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const CREATORS: readonly Creator[] = [
   {
     id: 'sophia-chen',
+    isDemo: true,
     name: 'Sophia Chen',
     initials: 'SC',
     bio: 'Tokyo-based travel writer and photographer specialising in Asia\'s hidden cultural gems, ancient temple circuits and hyper-modern city escapes.',
@@ -29,6 +45,7 @@ export const CREATORS: readonly Creator[] = [
   },
   {
     id: 'marco-vitale',
+    isDemo: true,
     name: 'Marco Vitale',
     initials: 'MV',
     bio: 'Italian explorer and lifestyle journalist. Six years documenting the Riviera, Aegean islands and Tuscan countryside for the world\'s top luxury travel titles.',
@@ -41,6 +58,7 @@ export const CREATORS: readonly Creator[] = [
   },
   {
     id: 'james-hartley',
+    isDemo: true,
     name: 'James Hartley',
     initials: 'JH',
     bio: 'Underwater photographer and ocean conservationist. Specialises in remote island sanctuaries, overwater living and rare marine encounters.',
@@ -52,6 +70,7 @@ export const CREATORS: readonly Creator[] = [
   },
   {
     id: 'elena-kovacs',
+    isDemo: true,
     name: 'Elena Kovacs',
     initials: 'EK',
     bio: 'Adventure travel guide with a passion for remote wilderness. From Patagonian glaciers to Icelandic highlands, she finds luxury in the extremes.',
@@ -64,6 +83,7 @@ export const CREATORS: readonly Creator[] = [
   },
   {
     id: 'nadia-al-rashid',
+    isDemo: true,
     name: 'Nadia Al-Rashid',
     initials: 'NA',
     bio: 'Dubai-born cultural storyteller blending desert heritage with contemporary luxury. Known for her intimate guides to Morocco, Cappadocia and the Gulf.',
@@ -75,6 +95,7 @@ export const CREATORS: readonly Creator[] = [
   },
   {
     id: 'amara-osei',
+    isDemo: true,
     name: 'Amara Osei',
     initials: 'AO',
     bio: 'Tropical island specialist born in Accra. Her acclaimed guides to Zanzibar, Seychelles and Bali have reshaped how travellers experience island culture.',

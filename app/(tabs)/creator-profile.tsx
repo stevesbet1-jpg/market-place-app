@@ -94,6 +94,16 @@ export default function CreatorProfileScreen() {
       bounces={false}
       contentInsetAdjustmentBehavior="never"
     >
+      {/* ── Demo disclaimer ── */}
+      {creator.isDemo && (
+        <View style={[styles.demoBanner, { marginTop: insets.top + 8 }]}>
+          <Ionicons name="information-circle-outline" size={15} color={LuxuryColors.textSecondary} />
+          <Text style={styles.demoBannerText}>
+            Demo profile — placeholder content for UI testing only. Not a verified creator.
+          </Text>
+        </View>
+      )}
+
       {/* ── Back button ── */}
       <TouchableOpacity
         style={[styles.backBtn, { top: insets.top + LuxurySpacing.sm }]}
@@ -245,6 +255,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: LuxuryColors.background,
   },
+
+  // Demo disclaimer banner
+  demoBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(122,118,104,0.1)',
+    borderRadius: LuxuryBorderRadius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(122,118,104,0.2)',
+    marginHorizontal: LuxurySpacing.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    zIndex: 10,
+  },
+  demoBannerText: {
+    flex: 1,
+    color: LuxuryColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
   notFound: {
     alignItems: 'center',
     justifyContent: 'center',
