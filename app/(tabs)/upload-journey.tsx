@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,13 @@ import {
   LuxurySpacing,
 } from '../../constants/luxuryTheme';
 import { publishCreatorJourney, saveDraftJourney } from '../../lib/creatorJourneyService';
+import {
+  getCurrentUid,
+  getMyApprovedCreatorProfile,
+  getMyApplicationStatus,
+} from '../../lib/creatorService';
 import type { BudgetLevel, JourneyUploadPayload } from '../../constants/creatorJourneyModel';
+import type { Creator } from '../../constants/creators';
 
 // ─── Local form types ─────────────────────────────────────────────────────────
 
@@ -60,6 +66,36 @@ const BUDGET_LEVELS: BudgetLevel[] = ['$', '$$', '$$$', '$$$$'];
 
 export default function UploadJourneyScreen() {
   const insets = useSafeAreaInsets();
+
+  // ── Auth + approval gate ─────────────────────────────────────────────
+  const [checking, setChecking] = useState(true);
+  const [creatorProfile, setCreatorProfile] = useState<Creator | null>(null);
+  const [accessStatus, setAccessStatus] = useState<'no-auth' | 'none' | 'pending' | 'rejected' | 'approved' | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkAccess = async () => {
+      const uid = getCurrentUid();
+      if (!uid) {
+        if (!cancelled) { setAccessStatus('no-auth'); setChecking(false); }
+        return;
+      }
+      const profile = await getMyApprovedCreatorProfile(uid);
+      if (!cancelled) {
+        if (profile) {
+          setCreatorProfile(profile);
+          setAccessStatus('approved');
+        } else {
+          const status = await getMyApplicationStatus(uid);
+          setAccessStatus(status === 'none' ? 'none' : status);
+        }
+        setChecking(false);
+      }
+    };
+    checkAccess();
+    return () => { cancelled = true; };
+  }, []);
+
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -115,9 +151,8 @@ export default function UploadJourneyScreen() {
 
   const buildPayload = useCallback((): JourneyUploadPayload => {
     return {
-      // TODO: replace with real auth session values
-      creatorId: 'current-user',
-      creatorName: 'Creator',
+      creatorId: creatorProfile?.id ?? getCurrentUid() ?? 'unknown',
+      creatorName: creatorProfile?.name ?? 'Creator',
       title: title.trim(),
       destination: destination.trim(),
       region: region.trim(),
@@ -136,6 +171,7 @@ export default function UploadJourneyScreen() {
       })),
     };
   }, [
+    creatorProfile,
     title,
     destination,
     region,
@@ -205,6 +241,78 @@ export default function UploadJourneyScreen() {
       setSaving(false);
     }
   }, [title, buildPayload]);
+
+  // ── Access gate ──────────────────────────────────────────────────────
+
+  if (checking) {
+    return (
+      <View style={[gateStyles.center, { backgroundColor: LuxuryColors.background }]}>
+        <ActivityIndicator color={LuxuryColors.gold} />
+      </View>
+    );
+  }
+
+  if (accessStatus !== 'approved') {
+    const isNoAuth = accessStatus === 'no-auth';
+    const isPending = accessStatus === 'pending';
+    const isRejected = accessStatus === 'rejected';
+
+    const icon = isNoAuth
+      ? 'person-circle-outline'
+      : isPending
+      ? 'time-outline'
+      : isRejected
+      ? 'close-circle-outline'
+      : 'add-circle-outline'; // 'none'
+
+    const title = isNoAuth
+      ? 'Sign In Required'
+      : isPending
+      ? 'Application Under Review'
+      : isRejected
+      ? 'Application Not Accepted'
+      : 'Creators Only';
+
+    const body = isNoAuth
+      ? 'You need a Voya account to upload journeys.'
+      : isPending
+      ? 'Your creator application is being reviewed. You will receive an email when approved.'
+      : isRejected
+      ? 'Your creator application was not accepted at this time. You may reapply in 60 days.'
+      : 'Only approved creators can publish journeys. Apply as a creator to get started.';
+
+    const ctaLabel = isNoAuth ? 'Sign In' : isPending ? 'Back to Discover' : 'Apply as Creator';
+    const ctaAction = isNoAuth
+      ? () => router.replace('/(auth)/login')
+      : isPending
+      ? () => router.back()
+      : () => router.push('/(tabs)/apply-creator');
+
+    return (
+      <View
+        style={[
+          gateStyles.center,
+          { backgroundColor: LuxuryColors.background, paddingTop: insets.top, paddingBottom: insets.bottom },
+        ]}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={gateStyles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color={LuxuryColors.textPrimary} />
+        </TouchableOpacity>
+        <View style={gateStyles.body}>
+          <Ionicons
+            name={icon}
+            size={52}
+            color={isPending ? LuxuryColors.gold : isRejected ? LuxuryColors.error : LuxuryColors.textTertiary}
+          />
+          <Text style={gateStyles.title}>{title}</Text>
+          <Text style={gateStyles.body2}>{body}</Text>
+          <TouchableOpacity style={gateStyles.cta} onPress={ctaAction} activeOpacity={0.85}>
+            <Text style={gateStyles.ctaText}>{ctaLabel}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   // ── Render ───────────────────────────────────────────────────────────
 
@@ -678,5 +786,51 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
     lineHeight: 18,
+  },
+});
+
+
+const gateStyles = StyleSheet.create({
+  center: {
+    flex: 1,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  backBtn: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    padding: 8,
+  },
+  body: {
+    alignItems: 'center',
+    gap: 16,
+    maxWidth: 320,
+  },
+  title: {
+    color: LuxuryColors.textPrimary,
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  body2: {
+    color: LuxuryColors.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  cta: {
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.md,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    marginTop: 8,
+  },
+  ctaText: {
+    color: LuxuryColors.background,
+    fontWeight: '800',
+    fontSize: 15,
   },
 });

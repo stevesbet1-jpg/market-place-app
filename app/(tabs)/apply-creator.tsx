@@ -1,21 +1,22 @@
-/**
+﻿/**
  * apply-creator.tsx
  *
  * Creator onboarding application form.
  *
- * Flow:
- *   1. Applicant fills in name, bio, social links, motivation.
- *   2. Application is written to Firestore as status='pending'.
- *   3. Admin reviews and flips status to 'approved' — creator then appears
- *      in the live Discover feed and can publish journeys.
+ * On mount:
+ *   1. Reads the current Firebase Auth UID.
+ *   2. Queries Firestore for an existing application from this UID.
+ *   3. Shows the correct state:
+ *        - 'none'     → show the form
+ *        - 'pending'  → "Application Under Review"
+ *        - 'approved' → "You're Approved — go upload"
+ *        - 'rejected' → "Not accepted" with option to contact
+ *        - no auth    → "Sign in to apply"
  *
- * Until approval:
- *   - Their profile is NOT shown to users.
- *   - They cannot publish journeys.
- *   - They receive a confirmation that their application is under review.
+ * Submission is idempotent: the service rejects duplicate applications.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -37,7 +38,12 @@ import {
   LuxuryBorderRadius,
   LuxuryFontSize,
 } from '../../constants/luxuryTheme';
-import { submitCreatorApplication } from '../../lib/creatorService';
+import {
+  submitCreatorApplication,
+  getMyApplicationStatus,
+  getCurrentUid,
+} from '../../lib/creatorService';
+import type { ApplicationStatus } from '../../lib/creatorService';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -59,10 +65,169 @@ function FieldLabel({ text, required }: { text: string; required?: boolean }) {
   );
 }
 
+// ─── Status gate views ────────────────────────────────────────────────────────
+
+function StatusView({
+  status,
+  email,
+  onBack,
+}: {
+  status: ApplicationStatus | 'no-auth';
+  email?: string;
+  onBack: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+
+  const config = {
+    'no-auth': {
+      icon: 'person-circle-outline' as const,
+      iconColor: LuxuryColors.textTertiary,
+      title: 'Sign in to Apply',
+      body: 'You need a Voya account to apply as a creator. Sign in or create an account first.',
+      cta: 'Go to Sign In',
+      ctaAction: () => router.replace('/(auth)/login'),
+      ctaStyle: 'gold' as const,
+    },
+    pending: {
+      icon: 'time-outline' as const,
+      iconColor: LuxuryColors.gold,
+      title: 'Application Under Review',
+      body: `Your application has been received and is being reviewed by our team. We'll be in touch at${email ? ` ${email}` : ' your registered email'} within 3–5 business days.`,
+      cta: 'Back to Discover',
+      ctaAction: onBack,
+      ctaStyle: 'outline' as const,
+    },
+    approved: {
+      icon: 'checkmark-circle' as const,
+      iconColor: LuxuryColors.success,
+      title: "You're Approved",
+      body: 'Your creator application was approved. Subscribe to the Creator plan and start publishing journeys.',
+      cta: 'Upload a Journey',
+      ctaAction: () => router.push('/(tabs)/upload-journey'),
+      ctaStyle: 'gold' as const,
+    },
+    rejected: {
+      icon: 'close-circle-outline' as const,
+      iconColor: LuxuryColors.error,
+      title: 'Application Not Accepted',
+      body: 'We were not able to approve your application at this time. This may be due to content focus, audience fit, or capacity. You are welcome to reapply in 60 days.',
+      cta: 'Back to Discover',
+      ctaAction: onBack,
+      ctaStyle: 'outline' as const,
+    },
+  };
+
+  const c = config[status as keyof typeof config];
+
+  return (
+    <View
+      style={[
+        statusStyles.container,
+        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 },
+      ]}
+    >
+      <TouchableOpacity onPress={onBack} style={statusStyles.backBtn}>
+        <Ionicons name="arrow-back" size={22} color={LuxuryColors.textPrimary} />
+      </TouchableOpacity>
+
+      <View style={statusStyles.body}>
+        <View style={[statusStyles.iconWrap, { borderColor: `${c.iconColor}22` }]}>
+          <Ionicons name={c.icon} size={48} color={c.iconColor} />
+        </View>
+
+        <Text style={statusStyles.title}>{c.title}</Text>
+        <Text style={statusStyles.bodyText}>{c.body}</Text>
+
+        {status === 'pending' && (
+          <View style={statusStyles.stepsCard}>
+            {[
+              'Application submitted ✓',
+              'Team review (3–5 business days)',
+              'Email notification sent',
+              'Creator subscription + journey upload',
+            ].map((step, i) => (
+              <View key={i} style={statusStyles.stepRow}>
+                <View
+                  style={[
+                    statusStyles.stepDot,
+                    i === 0 && statusStyles.stepDotDone,
+                    i === 1 && statusStyles.stepDotActive,
+                  ]}
+                />
+                <Text
+                  style={[
+                    statusStyles.stepText,
+                    i === 0 && statusStyles.stepTextDone,
+                    i > 1 && statusStyles.stepTextFuture,
+                  ]}
+                >
+                  {step}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[
+            statusStyles.cta,
+            c.ctaStyle === 'outline' && statusStyles.ctaOutline,
+          ]}
+          onPress={c.ctaAction}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              statusStyles.ctaText,
+              c.ctaStyle === 'outline' && statusStyles.ctaTextOutline,
+            ]}
+          >
+            {c.cta}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ApplyCreatorScreen() {
   const insets = useSafeAreaInsets();
+
+  // ── Auth + existing status ────────────────────────────────────────────
+  const [checking, setChecking] = useState(true);
+  const [uid, setUid] = useState<string | null>(null);
+  const [existingStatus, setExistingStatus] = useState<ApplicationStatus | 'no-auth' | null>(null);
+  const [existingEmail, setExistingEmail] = useState<string | undefined>();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveStatus = async () => {
+      const currentUid = getCurrentUid();
+      if (!currentUid) {
+        if (!cancelled) {
+          setExistingStatus('no-auth');
+          setChecking(false);
+        }
+        return;
+      }
+      setUid(currentUid);
+
+      const status = await getMyApplicationStatus(currentUid);
+      if (!cancelled) {
+        // 'none' means first visit — show the form, not a status view
+        setExistingStatus(status === 'none' ? null : status);
+        setChecking(false);
+      }
+    };
+
+    resolveStatus();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Form state ────────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -96,6 +261,14 @@ export default function ApplyCreatorScreen() {
 
   const handleSubmit = useCallback(async () => {
     if (!validate()) return;
+
+    // Re-check auth at submit time
+    const currentUid = getCurrentUid();
+    if (!currentUid) {
+      Alert.alert('Not signed in', 'Please sign in before applying.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       await submitCreatorApplication({
@@ -106,8 +279,9 @@ export default function ApplyCreatorScreen() {
         youtube: youtube.trim() || undefined,
         website: website.trim() || undefined,
         motivation: motivation.trim(),
-        applicantUid: 'pending-auth', // TODO: replace with real auth UID
+        applicantUid: currentUid,
       });
+      setExistingEmail(email.trim());
       setSubmitted(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not submit. Please try again.';
@@ -117,35 +291,43 @@ export default function ApplyCreatorScreen() {
     }
   }, [validate, name, email, bio, instagram, youtube, website, motivation]);
 
-  // ── Success state ────────────────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────────────────────
 
-  if (submitted) {
+  if (checking) {
     return (
-      <View style={[styles.successContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <View style={styles.successIconWrap}>
-          <Ionicons name="checkmark-circle" size={52} color={LuxuryColors.gold} />
-        </View>
-        <Text style={styles.successTitle}>Application Submitted</Text>
-        <Text style={styles.successBody}>
-          Thank you! We review every application personally. You will hear back at{' '}
-          <Text style={styles.successEmail}>{email}</Text> within 3–5 business days.
-        </Text>
-        <Text style={styles.successNote}>
-          Once approved, you can create a profile, upload journeys, and reach thousands
-          of premium travellers.
-        </Text>
-        <TouchableOpacity
-          style={styles.successBtn}
-          onPress={() => router.back()}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.successBtnText}>Back to Discover</Text>
-        </TouchableOpacity>
+      <View style={[loadStyles.center, { backgroundColor: LuxuryColors.background }]}>
+        <ActivityIndicator color={LuxuryColors.gold} />
       </View>
     );
   }
 
-  // ── Form ─────────────────────────────────────────────────────────────────
+  // ── Status gate views ─────────────────────────────────────────────────
+
+  if (existingStatus === 'no-auth') {
+    return (
+      <StatusView status="no-auth" onBack={() => router.back()} />
+    );
+  }
+
+  if (submitted || existingStatus === 'pending') {
+    return (
+      <StatusView
+        status="pending"
+        email={existingEmail}
+        onBack={() => router.back()}
+      />
+    );
+  }
+
+  if (existingStatus === 'approved') {
+    return <StatusView status="approved" onBack={() => router.back()} />;
+  }
+
+  if (existingStatus === 'rejected') {
+    return <StatusView status="rejected" onBack={() => router.back()} />;
+  }
+
+  // ── Form (status === null, i.e. first-time applicant) ─────────────────
 
   return (
     <KeyboardAvoidingView
@@ -178,12 +360,10 @@ export default function ApplyCreatorScreen() {
               <Ionicons name="people-outline" size={16} color={LuxuryColors.gold} />
               <Text style={styles.introBadgeText}>Creator Marketplace</Text>
             </View>
-            <Text style={styles.introTitle}>
-              Share Your Travel Knowledge
-            </Text>
+            <Text style={styles.introTitle}>Share Your Travel Knowledge</Text>
             <Text style={styles.introBody}>
-              We are selecting the first wave of creators to publish their handcrafted
-              journeys. Applications are reviewed by our team before approval.
+              Applications are reviewed by our team before approval.
+              Approved creators can subscribe and publish journeys.
             </Text>
           </View>
 
@@ -192,8 +372,8 @@ export default function ApplyCreatorScreen() {
             {[
               { n: '1', text: 'Submit your application below' },
               { n: '2', text: 'We review and approve your profile' },
-              { n: '3', text: 'You upload journeys with a Creator Subscription' },
-              { n: '4', text: 'Your itineraries reach premium travellers' },
+              { n: '3', text: 'Subscribe to the Creator plan' },
+              { n: '4', text: 'Upload journeys — reach premium travellers' },
             ].map((step) => (
               <View key={step.n} style={styles.stepRow}>
                 <View style={styles.stepNum}>
@@ -204,7 +384,7 @@ export default function ApplyCreatorScreen() {
             ))}
           </View>
 
-          {/* ── About You ────────────────────────────────────────────────── */}
+          {/* About You */}
           <SectionHeader title="About You" />
 
           <FieldLabel text="Full Name" required />
@@ -241,12 +421,12 @@ export default function ApplyCreatorScreen() {
             textAlignVertical="top"
             maxLength={400}
           />
-          <Text style={styles.hint}>{bio.length}/400 characters</Text>
+          <Text style={styles.hint}>{bio.length}/400</Text>
 
-          {/* ── Social Presence ───────────────────────────────────────────── */}
+          {/* Social Presence */}
           <SectionHeader title="Social Presence" />
           <Text style={styles.sectionNote}>
-            At least one social channel helps us verify your content and audience.
+            At least one channel helps us verify your content and audience.
           </Text>
 
           <FieldLabel text="Instagram Handle" />
@@ -283,7 +463,7 @@ export default function ApplyCreatorScreen() {
             keyboardType="url"
           />
 
-          {/* ── Motivation ───────────────────────────────────────────────── */}
+          {/* Motivation */}
           <SectionHeader title="Why Join?" />
 
           <FieldLabel text="Tell us about your travel style" required />
@@ -298,9 +478,9 @@ export default function ApplyCreatorScreen() {
             textAlignVertical="top"
             maxLength={800}
           />
-          <Text style={styles.hint}>{motivation.length}/800 characters</Text>
+          <Text style={styles.hint}>{motivation.length}/800</Text>
 
-          {/* ── Submit ───────────────────────────────────────────────────── */}
+          {/* Submit */}
           <TouchableOpacity
             style={[styles.submitBtn, submitting && styles.btnDisabled]}
             onPress={handleSubmit}
@@ -313,14 +493,100 @@ export default function ApplyCreatorScreen() {
           </TouchableOpacity>
 
           <Text style={styles.submitNote}>
-            Applications are reviewed manually. We do not auto-approve. You will be
-            notified by email when your application is processed.
+            Applications are reviewed manually. You will be notified by email when
+            your application is processed.
           </Text>
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+// ─── Status view styles ───────────────────────────────────────────────────────
+
+const statusStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: LuxuryColors.background,
+    paddingHorizontal: LuxurySpacing.md,
+  },
+  backBtn: { padding: 4, marginBottom: 8 },
+  body: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    paddingHorizontal: 8,
+  },
+  iconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  title: {
+    color: LuxuryColors.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  bodyText: {
+    color: LuxuryColors.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 320,
+  },
+  stepsCard: {
+    width: '100%',
+    backgroundColor: LuxuryColors.surface,
+    borderRadius: LuxuryBorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    padding: LuxurySpacing.md,
+    gap: 12,
+    marginVertical: 4,
+  },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    flexShrink: 0,
+  },
+  stepDotDone: { backgroundColor: LuxuryColors.success },
+  stepDotActive: { backgroundColor: LuxuryColors.gold },
+  stepText: { color: LuxuryColors.textSecondary, fontSize: 13 },
+  stepTextDone: { color: LuxuryColors.success },
+  stepTextFuture: { color: LuxuryColors.textTertiary },
+  cta: {
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.md,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    marginTop: 8,
+  },
+  ctaOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  ctaText: {
+    color: LuxuryColors.background,
+    fontWeight: '800',
+    fontSize: 15,
+  },
+  ctaTextOutline: { color: LuxuryColors.textSecondary },
+});
+
+const loadStyles = StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+});
 
 // ─── Sub-component styles ─────────────────────────────────────────────────────
 
@@ -333,23 +599,12 @@ const sectionStyles = StyleSheet.create({
     letterSpacing: 1.8,
     textTransform: 'uppercase',
   },
-  line: {
-    height: 1,
-    backgroundColor: 'rgba(212,175,55,0.15)',
-    marginTop: 8,
-  },
+  line: { height: 1, backgroundColor: 'rgba(212,175,55,0.15)', marginTop: 8 },
 });
 
 const fieldStyles = StyleSheet.create({
-  label: {
-    color: LuxuryColors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  required: {
-    color: LuxuryColors.gold,
-  },
+  label: { color: LuxuryColors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  required: { color: LuxuryColors.gold },
 });
 
 // ─── Screen styles ────────────────────────────────────────────────────────────
@@ -357,8 +612,6 @@ const fieldStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   container: { flex: 1, backgroundColor: LuxuryColors.background },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -368,21 +621,10 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(212,175,55,0.1)',
   },
   backBtn: { padding: 4, marginRight: 8 },
-  headerTitle: {
-    flex: 1,
-    color: LuxuryColors.textPrimary,
-    fontSize: 17,
-    fontWeight: '700',
-  },
+  headerTitle: { flex: 1, color: LuxuryColors.textPrimary, fontSize: 17, fontWeight: '700' },
   headerSpacer: { width: 30 },
   btnDisabled: { opacity: 0.45 },
-
-  scrollContent: {
-    paddingHorizontal: LuxurySpacing.md,
-    paddingTop: LuxurySpacing.md,
-  },
-
-  // Intro
+  scrollContent: { paddingHorizontal: LuxurySpacing.md, paddingTop: LuxurySpacing.md },
   intro: { alignItems: 'center', paddingVertical: 24, gap: 12 },
   introBadge: {
     flexDirection: 'row',
@@ -402,21 +644,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  introTitle: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.xxl,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  introBody: {
-    color: LuxuryColors.textSecondary,
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 320,
-  },
-
-  // Steps card
+  introTitle: { color: LuxuryColors.textPrimary, fontSize: LuxuryFontSize.xxl, fontWeight: '800', textAlign: 'center' },
+  introBody: { color: LuxuryColors.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 22, maxWidth: 320 },
   stepsCard: {
     backgroundColor: LuxuryColors.surface,
     borderRadius: LuxuryBorderRadius.md,
@@ -436,26 +665,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  stepNumText: {
-    color: LuxuryColors.gold,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  stepText: {
-    color: LuxuryColors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-
-  sectionNote: {
-    color: LuxuryColors.textTertiary,
-    fontSize: 12,
-    marginTop: -6,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-
-  // Inputs
+  stepNumText: { color: LuxuryColors.gold, fontSize: 12, fontWeight: '800' },
+  stepText: { color: LuxuryColors.textSecondary, fontSize: 13, lineHeight: 18 },
+  sectionNote: { color: LuxuryColors.textTertiary, fontSize: 12, marginTop: -6, marginBottom: 12, lineHeight: 18 },
   input: {
     backgroundColor: LuxuryColors.surface,
     borderRadius: LuxuryBorderRadius.sm,
@@ -469,14 +681,7 @@ const styles = StyleSheet.create({
   },
   textArea: { minHeight: 84, paddingTop: 12 },
   textAreaLg: { minHeight: 120, paddingTop: 12 },
-  hint: {
-    color: LuxuryColors.textTertiary,
-    fontSize: 12,
-    marginTop: -6,
-    marginBottom: 14,
-  },
-
-  // Submit
+  hint: { color: LuxuryColors.textTertiary, fontSize: 12, marginTop: -6, marginBottom: 14 },
   submitBtn: {
     backgroundColor: LuxuryColors.gold,
     borderRadius: LuxuryBorderRadius.md,
@@ -484,70 +689,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 32,
   },
-  submitBtnText: {
-    color: LuxuryColors.background,
-    fontWeight: '800',
-    fontSize: 16,
-    letterSpacing: 0.5,
-  },
-  submitNote: {
-    color: LuxuryColors.textTertiary,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 12,
-    lineHeight: 18,
-  },
-
-  // Success state
-  successContainer: {
-    flex: 1,
-    backgroundColor: LuxuryColors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 16,
-  },
-  successIconWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  successTitle: {
-    color: LuxuryColors.textPrimary,
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  successBody: {
-    color: LuxuryColors.textSecondary,
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  successEmail: {
-    color: LuxuryColors.gold,
-    fontWeight: '600',
-  },
-  successNote: {
-    color: LuxuryColors.textTertiary,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  successBtn: {
-    marginTop: 16,
-    backgroundColor: LuxuryColors.gold,
-    borderRadius: LuxuryBorderRadius.md,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-  },
-  successBtnText: {
-    color: LuxuryColors.background,
-    fontWeight: '800',
-    fontSize: 15,
-  },
+  submitBtnText: { color: LuxuryColors.background, fontWeight: '800', fontSize: 16, letterSpacing: 0.5 },
+  submitNote: { color: LuxuryColors.textTertiary, fontSize: 12, textAlign: 'center', marginTop: 12, lineHeight: 18 },
 });

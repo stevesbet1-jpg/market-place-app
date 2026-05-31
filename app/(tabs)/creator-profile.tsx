@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,8 @@ import {
   LuxuryFontSize,
   LuxuryShadow,
 } from '../../constants/luxuryTheme';
-import { CREATORS, getCreatorById, formatFollowers, formatSaves } from '../../constants/creators';
+import { formatFollowers, formatSaves } from '../../constants/creators';
+import { getCreatorById } from '../../lib/creatorService';
 import { JOURNEYS, ImageKey } from '../../constants/journeys';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
@@ -42,10 +43,27 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
 export default function CreatorProfileScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const creator = getCreatorById(id ?? '');
+  const [creator, setCreator] = useState<Awaited<ReturnType<typeof getCreatorById>>>(null);
+  const [loadingCreator, setLoadingCreator] = useState(true);
   const [followed, setFollowed] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    getCreatorById(id ?? '').then((c) => {
+      if (!cancelled) { setCreator(c); setLoadingCreator(false); }
+    });
+    return () => { cancelled = true; };
+  }, [id]);
+
   const creatorJourneys = JOURNEYS.filter((j) => j.creatorId === id);
+
+  if (loadingCreator) {
+    return (
+      <View style={[styles.container, styles.notFound]}>
+        <Text style={styles.notFoundText}>Loading…</Text>
+      </View>
+    );
+  }
 
   if (!creator) {
     return (

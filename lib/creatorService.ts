@@ -22,9 +22,11 @@ import {
   query,
   where,
   orderBy,
+  limit,
   serverTimestamp,
 } from 'firebase/firestore';
-import { getFirestoreDb, isFirebaseConfigured } from './firebase';
+import { getAuth } from 'firebase/auth';
+import { getFirestoreDb, isFirebaseConfigured, getFirebaseApp } from './firebase';
 import { CREATORS } from '../constants/creators';
 import type { Creator } from '../constants/creators';
 
@@ -133,13 +135,116 @@ export async function hasRealCreators(): Promise<boolean> {
   }
 }
 
+// ─── Application status ───────────────────────────────────────────────────────
+
+export type ApplicationStatus = 'none' | 'pending' | 'approved' | 'rejected';
+
+export interface CreatorApplication {
+  id: string;
+  applicantUid: string;
+  name: string;
+  email: string;
+  bio: string;
+  instagram?: string;
+  youtube?: string;
+  website?: string;
+  motivation: string;
+  status: ApplicationStatus;
+  /** ISO string — set by the service when the doc is created */
+  submittedAt: unknown;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the Firebase Auth UID of the currently signed-in user, or null.
+ * Used by screens that need to personalise Firestore reads/writes.
+ */
+export function getCurrentUid(): string | null {
+  if (!isFirebaseConfigured()) return null;
+  try {
+    const auth = getAuth(getFirebaseApp());
+    return auth.currentUser?.uid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Application reads ────────────────────────────────────────────────────────
+
+/**
+ * Returns the most recent creator application for this UID.
+ * Returns null if the user has never applied or Firebase is not configured.
+ */
+export async function getMyApplication(uid: string): Promise<CreatorApplication | null> {
+  if (!isFirebaseConfigured() || !uid) return null;
+
+  try {
+    const db = getFirestoreDb();
+    const q = query(
+      collection(db, 'creator_applications'),
+      where('applicantUid', '==', uid),
+      orderBy('submittedAt', 'desc'),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const d = snap.docs[0];
+    return { id: d.id, ...d.data() } as CreatorApplication;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns the application status for this UID:
+ *   'none'     — no application found
+ *   'pending'  — submitted, awaiting review
+ *   'approved' — approved; creator can publish
+ *   'rejected' — not accepted
+ */
+export async function getMyApplicationStatus(uid: string): Promise<ApplicationStatus> {
+  const app = await getMyApplication(uid);
+  return app?.status ?? 'none';
+}
+
+/**
+ * Returns the approved Creator doc for this UID, or null.
+ * Used by upload-journey to gate access.
+ *
+ * Approved creators have a document in the `creators` collection
+ * with their uid stored as `applicantUid`.
+ */
+export async function getMyApprovedCreatorProfile(uid: string): Promise<Creator | null> {
+  if (!isFirebaseConfigured() || !uid) return null;
+
+  try {
+    const db = getFirestoreDb();
+    const q = query(
+      collection(db, COLLECTION),
+      where('applicantUid', '==', uid),
+      where('status', '==', 'approved'),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const d = snap.docs[0];
+    return { id: d.id, ...d.data(), isDemo: false } as Creator;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Creator application write ────────────────────────────────────────────────
 
 /**
  * Submits a creator application to Firestore.
- * Applications start with status='pending' and are reviewed before approval.
+ * Idempotent: if the user already has a pending application, returns its ID
+ * without creating a duplicate.
  *
- * @returns The new Firestore document ID.
+ * Applications start with status='pending' and require manual approval.
+ *
+ * @returns The Firestore document ID (new or existing).
  */
 export async function submitCreatorApplication(
   payload: CreatorApplicationPayload
@@ -150,14 +255,24 @@ export async function submitCreatorApplication(
     );
   }
 
+  if (!payload.applicantUid || payload.applicantUid === 'pending-auth') {
+    throw new Error(
+      'You must be signed in to apply as a creator.'
+    );
+  }
+
+  // Idempotency: prevent duplicate submissions
+  const existing = await getMyApplication(payload.applicantUid);
+  if (existing) {
+    // Already applied — return existing doc ID; status may be pending/approved/rejected
+    return existing.id;
+  }
+
   const db = getFirestoreDb();
   const ref = await addDoc(collection(db, 'creator_applications'), {
     ...payload,
-    status: 'pending',
+    status: 'pending' as ApplicationStatus,
     isDemo: false,
-    rating: 0,
-    followers: 0,
-    totalJourneys: 0,
     submittedAt: serverTimestamp(),
   });
   return ref.id;
