@@ -86,6 +86,16 @@ function bestSeason(exp: CreatorExperience): string {
   return 'Year-round';
 }
 
+function whoItsFor(style: TravelStyle): string {
+  switch (style) {
+    case 'luxury':    return 'Discerning travelers seeking premium experiences';
+    case 'adventure': return 'Active explorers and adventure seekers';
+    case 'budget':    return 'Budget-conscious travelers';
+    case 'family':    return 'Families with children';
+    case 'food':      return 'Food enthusiasts and culinary explorers';
+  }
+}
+
 /**
  * Splits an activities array into morning / afternoon / evening thirds.
  * Returns an object with up to 3 keys. Falls back to a flat list if < 3 items.
@@ -574,7 +584,17 @@ export default function ExperienceDetailScreen() {
           <View style={detailStyles.section}>
             <SectionTitle title="Overview" icon="information-circle-outline" />
 
-            <Text style={detailStyles.description}>{experience.description}</Text>
+            {experience.description ? (
+              <Text style={detailStyles.description}>{experience.description}</Text>
+            ) : (
+              <Text style={detailStyles.emptyState}>No description added yet.</Text>
+            )}
+
+            {/* Who it's for */}
+            <View style={detailStyles.whoRow}>
+              <Ionicons name="people-outline" size={14} color={LuxuryColors.gold} />
+              <Text style={detailStyles.whoText}>For: {whoItsFor(experience.travelStyle)}</Text>
+            </View>
 
             {/* Info pills grid */}
             <View style={detailStyles.pillGrid}>
@@ -588,22 +608,22 @@ export default function ExperienceDetailScreen() {
           {/* ─────────────────────────────────────────────────────────────
               3. CREATOR NOTES
           ───────────────────────────────────────────────────────────── */}
-          {experience.tips.length > 0 && (
-            <View style={detailStyles.section}>
-              <SectionTitle title="Creator Notes" icon="bulb-outline" />
+          <View style={detailStyles.section}>
+            <SectionTitle title="Creator Notes" icon="bulb-outline" />
 
-              <View style={creatorStyles.noteCard}>
-                <View style={creatorStyles.creatorRow}>
-                  <View style={creatorStyles.avatar}>
-                    <Text style={creatorStyles.avatarInitials}>{initials}</Text>
-                  </View>
-                  <View>
-                    <Text style={creatorStyles.byLine}>Tips from {experience.creatorName}</Text>
-                    <Text style={creatorStyles.byLineSub}>Creator insights</Text>
-                  </View>
+            <View style={creatorStyles.noteCard}>
+              <View style={creatorStyles.creatorRow}>
+                <View style={creatorStyles.avatar}>
+                  <Text style={creatorStyles.avatarInitials}>{initials}</Text>
                 </View>
+                <View>
+                  <Text style={creatorStyles.byLine}>Tips from {experience.creatorName}</Text>
+                  <Text style={creatorStyles.byLineSub}>Creator insights</Text>
+                </View>
+              </View>
 
-                {experience.tips.map((tip, i) => (
+              {experience.tips.length > 0 ? (
+                experience.tips.map((tip, i) => (
                   <View key={i} style={creatorStyles.tipRow}>
                     <Ionicons
                       name="sparkles-outline"
@@ -613,35 +633,44 @@ export default function ExperienceDetailScreen() {
                     />
                     <Text style={creatorStyles.tipText}>{tip}</Text>
                   </View>
-                ))}
-              </View>
+                ))
+              ) : (
+                <Text style={detailStyles.emptyState}>No creator tips added yet.</Text>
+              )}
             </View>
-          )}
+          </View>
 
           {/* ─────────────────────────────────────────────────────────────
               4. DAILY PLAN
           ───────────────────────────────────────────────────────────── */}
-          {experience.dailyPlan.length > 0 && (
-            <View style={detailStyles.section}>
-              <SectionTitle title="Daily Plan" icon="calendar-number-outline" />
+          <View style={detailStyles.section}>
+            <SectionTitle title="Daily Plan" icon="calendar-number-outline" />
 
-              {/* Day 1 always visible */}
-              {firstDay && <DayCard entry={firstDay} />}
+            {experience.dailyPlan.length === 0 ? (
+              <View style={detailStyles.emptyCard}>
+                <Ionicons name="calendar-outline" size={28} color={LuxuryColors.textTertiary} />
+                <Text style={detailStyles.emptyCardText}>No itinerary added yet.</Text>
+              </View>
+            ) : (
+              <>
+                {/* Day 1 always visible */}
+                {firstDay && <DayCard entry={firstDay} />}
 
-              {/* Days 2+ require unlock */}
-              {remainingDays.length > 0 && (
-                isUnlocked ? (
-                  remainingDays.map((day) => <DayCard key={day.day} entry={day} />)
-                ) : (
-                  <PaywallBanner
-                    sectionName={`${remainingDays.length} more day${remainingDays.length > 1 ? 's' : ''}`}
-                    freeRemaining={freeRemaining}
-                    onUseFreeCredit={handleUseFreeCredit}
-                  />
-                )
-              )}
-            </View>
-          )}
+                {/* Days 2+ require unlock */}
+                {remainingDays.length > 0 && (
+                  isUnlocked ? (
+                    remainingDays.map((day) => <DayCard key={day.day} entry={day} />)
+                  ) : (
+                    <PaywallBanner
+                      sectionName={`${remainingDays.length} more day${remainingDays.length > 1 ? 's' : ''}`}
+                      freeRemaining={freeRemaining}
+                      onUseFreeCredit={handleUseFreeCredit}
+                    />
+                  )
+                )}
+              </>
+            )}
+          </View>
 
           {/* ─────────────────────────────────────────────────────────────
               5. PLACES & MAP PREVIEW
@@ -688,44 +717,54 @@ export default function ExperienceDetailScreen() {
           {/* ─────────────────────────────────────────────────────────────
               6. RESTAURANTS & CAFÉS
           ───────────────────────────────────────────────────────────── */}
-          {experience.restaurants.length > 0 && (
-            <View style={detailStyles.section}>
-              <SectionTitle title="Restaurants & Cafés" icon="restaurant-outline" />
+          <View style={detailStyles.section}>
+            <SectionTitle title="Restaurants & Cafés" icon="restaurant-outline" />
 
-              {isUnlocked ? (
+            {isUnlocked ? (
+              experience.restaurants.length > 0 ? (
                 experience.restaurants.map((r, i) => (
                   <RestaurantCard key={i} name={r} index={i} />
                 ))
               ) : (
-                <PaywallBanner
-                  sectionName={`${experience.restaurants.length} restaurant${experience.restaurants.length > 1 ? 's' : ''}`}
-                  freeRemaining={freeRemaining}
-                  onUseFreeCredit={handleUseFreeCredit}
-                />
-              )}
-            </View>
-          )}
+                <View style={detailStyles.emptyCard}>
+                  <Ionicons name="restaurant-outline" size={28} color={LuxuryColors.textTertiary} />
+                  <Text style={detailStyles.emptyCardText}>No restaurants added yet.</Text>
+                </View>
+              )
+            ) : (
+              <PaywallBanner
+                sectionName="restaurants and cafés"
+                freeRemaining={freeRemaining}
+                onUseFreeCredit={handleUseFreeCredit}
+              />
+            )}
+          </View>
 
           {/* ─────────────────────────────────────────────────────────────
               7. HIDDEN GEMS
           ───────────────────────────────────────────────────────────── */}
-          {experience.hiddenGems.length > 0 && (
-            <View style={detailStyles.section}>
-              <SectionTitle title="Hidden Gems" icon="sparkles-outline" />
+          <View style={detailStyles.section}>
+            <SectionTitle title="Hidden Gems" icon="sparkles-outline" />
 
-              {isUnlocked ? (
+            {isUnlocked ? (
+              experience.hiddenGems.length > 0 ? (
                 experience.hiddenGems.map((gem, i) => (
                   <HiddenGemCard key={i} gem={gem} />
                 ))
               ) : (
-                <PaywallBanner
-                  sectionName={`${experience.hiddenGems.length} hidden gem${experience.hiddenGems.length > 1 ? 's' : ''}`}
-                  freeRemaining={freeRemaining}
-                  onUseFreeCredit={handleUseFreeCredit}
-                />
-              )}
-            </View>
-          )}
+                <View style={detailStyles.emptyCard}>
+                  <Ionicons name="star-outline" size={28} color={LuxuryColors.textTertiary} />
+                  <Text style={detailStyles.emptyCardText}>No hidden gems added yet.</Text>
+                </View>
+              )
+            ) : (
+              <PaywallBanner
+                sectionName="hidden gems and insider spots"
+                freeRemaining={freeRemaining}
+                onUseFreeCredit={handleUseFreeCredit}
+              />
+            )}
+          </View>
 
           {/* ─────────────────────────────────────────────────────────────
               8. SAVE EXPERIENCE
@@ -972,6 +1011,40 @@ const detailStyles = StyleSheet.create({
     fontSize: LuxuryFontSize.md,
     lineHeight: 26,
     marginBottom: LuxurySpacing.lg,
+  },
+  emptyState: {
+    color: LuxuryColors.textTertiary,
+    fontSize: LuxuryFontSize.sm,
+    fontStyle: 'italic',
+    marginBottom: LuxurySpacing.md,
+  },
+  emptyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: LuxuryColors.surfaceLight,
+    borderRadius: LuxuryBorderRadius.md,
+    padding: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.sm,
+  },
+  emptyCardText: {
+    color: LuxuryColors.textTertiary,
+    fontSize: LuxuryFontSize.sm,
+    fontStyle: 'italic',
+  },
+  whoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+    marginBottom: LuxurySpacing.lg,
+  },
+  whoText: {
+    color: LuxuryColors.textSecondary,
+    fontSize: LuxuryFontSize.sm,
+    fontStyle: 'italic',
+    flex: 1,
   },
   subLabel: {
     color: LuxuryColors.textTertiary,
