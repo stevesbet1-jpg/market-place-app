@@ -240,6 +240,7 @@ export default function ApplyCreatorScreen() {
   const [website, setWebsite] = useState('');
   const [countriesVisited, setCountriesVisited] = useState('');
   const [motivation, setMotivation] = useState('');
+  const [travelStyle, setTravelStyle] = useState('');
 
   const validate = useCallback((): boolean => {
     if (!name.trim()) {
@@ -284,6 +285,7 @@ export default function ApplyCreatorScreen() {
         tiktok: tiktok.trim() || undefined,
         website: website.trim() || undefined,
         countriesVisited: countriesVisited.trim() || undefined,
+        travelStyle: travelStyle.trim() || undefined,
         motivation: motivation.trim(),
       });
       setExistingEmail(email.trim());
@@ -294,7 +296,7 @@ export default function ApplyCreatorScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [validate, name, email, bio, instagram, youtube, tiktok, website, countriesVisited, motivation]);
+  }, [validate, name, email, bio, instagram, youtube, tiktok, website, countriesVisited, travelStyle, motivation]);
 
   // ── Loading ────────────────────────────────────────────────────────────
 
@@ -438,6 +440,32 @@ export default function ApplyCreatorScreen() {
             autoCapitalize="words"
             autoCorrect={false}
           />
+
+          {/* Travel Style */}
+          <SectionHeader title="Travel Style" />
+          <Text style={styles.sectionNote}>Select the style that best describes your content.</Text>
+          <View style={styles.styleGrid}>
+            {(['Luxury', 'Adventure', 'Budget', 'Family', 'Solo', 'Romantic', 'Cultural', 'Wellness'] as const).map((style) => (
+              <TouchableOpacity
+                key={style}
+                style={[
+                  styles.styleChip,
+                  travelStyle === style && styles.styleChipActive,
+                ]}
+                onPress={() => setTravelStyle(travelStyle === style ? '' : style)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.styleChipText,
+                    travelStyle === style && styles.styleChipTextActive,
+                  ]}
+                >
+                  {style}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           {/* Social Presence */}
           <SectionHeader title="Social Presence" />
@@ -695,6 +723,33 @@ const styles = StyleSheet.create({
   stepNumText: { color: LuxuryColors.gold, fontSize: 12, fontWeight: '800' },
   stepText: { color: LuxuryColors.textSecondary, fontSize: 13, lineHeight: 18 },
   sectionNote: { color: LuxuryColors.textTertiary, fontSize: 12, marginTop: -6, marginBottom: 12, lineHeight: 18 },
+  styleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.lg,
+  },
+  styleChip: {
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.xs + 2,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: LuxuryColors.surface,
+  },
+  styleChipActive: {
+    borderColor: LuxuryColors.gold,
+    backgroundColor: 'rgba(212,175,55,0.12)',
+  },
+  styleChipText: {
+    color: LuxuryColors.textSecondary,
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '500',
+  },
+  styleChipTextActive: {
+    color: LuxuryColors.gold,
+    fontWeight: '700',
+  },
   input: {
     backgroundColor: LuxuryColors.surface,
     borderRadius: LuxuryBorderRadius.sm,

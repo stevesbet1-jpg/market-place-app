@@ -9,17 +9,49 @@ import { logoutFromFirebase } from '../../lib/firebaseAuth';
 import { getUserProfile, type UserProfile } from '../../lib/userProfile';
 import { getSavedIds } from '../../constants/journeyStore';
 import { JOURNEYS, type ImageKey } from '../../constants/journeys';
-import { CREATORS } from '../../constants/creators';
+import { getCurrentUid, getMyApplicationStatus, getMyApprovedCreatorProfile } from '../../lib/creatorService';
+import type { ApplicationStatus } from '../../lib/creatorService';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [savedJourneys, setSavedJourneys] = useState<(typeof JOURNEYS)[number][]>([]);
+  const [creatorStatus, setCreatorStatus] = useState<ApplicationStatus | 'no-auth' | null>(null);
+  const [creatorName, setCreatorName] = useState<string | null>(null);
+  const [creatorStatusLoading, setCreatorStatusLoading] = useState(true);
 
   useEffect(() => {
     getSavedIds().then((ids) => {
       setSavedJourneys(JOURNEYS.filter((j) => ids.includes(j.id)));
     });
+  }, []);
+
+  // Load creator status
+  useEffect(() => {
+    let cancelled = false;
+    const loadCreatorStatus = async () => {
+      const uid = getCurrentUid();
+      if (!uid) {
+        if (!cancelled) { setCreatorStatus('no-auth'); setCreatorStatusLoading(false); }
+        return;
+      }
+      try {
+        const [status, creatorProfile] = await Promise.all([
+          getMyApplicationStatus(uid),
+          getMyApprovedCreatorProfile(uid),
+        ]);
+        if (!cancelled) {
+          setCreatorStatus(status as ApplicationStatus);
+          setCreatorName(creatorProfile?.name ?? null);
+        }
+      } catch {
+        if (!cancelled) setCreatorStatus('none');
+      } finally {
+        if (!cancelled) setCreatorStatusLoading(false);
+      }
+    };
+    loadCreatorStatus();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -263,62 +295,111 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Explore Creators */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Creators</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/trips')} activeOpacity={0.7}>
-            <Text style={styles.sectionLink}>See All</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.creatorsRow}>
-          {CREATORS.slice(0, 4).map((c) => (
-            <TouchableOpacity
-              key={c.id}
-              style={styles.creatorChip}
-              onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: c.id } })}
-              activeOpacity={0.8}
-            >
-              <View style={styles.creatorChipAvatar}>
-                <Text style={styles.creatorChipInitials}>{c.initials}</Text>
-              </View>
-              <Text style={styles.creatorChipName} numberOfLines={1}>{c.name.split(' ')[0]}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Creator */}
+      {/* Creator — dynamic status section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Creator</Text>
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push('/(tabs)/creator-dashboard')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.menuIcon}>
-            <Ionicons name="briefcase-outline" size={24} color={LuxuryColors.textSecondary} />
+        {creatorStatusLoading ? (
+          <View style={styles.creatorStatusLoading}>
+            <ActivityIndicator size="small" color={LuxuryColors.gold} />
           </View>
-          <View style={styles.menuInfo}>
-            <Text style={styles.menuTitle}>Creator Dashboard</Text>
-            <Text style={styles.menuDesc}>Manage your journeys and analytics</Text>
+        ) : creatorStatus === 'approved' ? (
+          // Approved creator
+          <>
+            <View style={styles.creatorStatusCard}>
+              <View style={[styles.creatorStatusIcon, { backgroundColor: 'rgba(46,213,115,0.12)', borderColor: 'rgba(46,213,115,0.3)' }]}>
+                <Ionicons name="checkmark-circle" size={24} color={LuxuryColors.success} />
+              </View>
+              <View style={styles.creatorStatusBody}>
+                <Text style={styles.creatorStatusTitle}>Approved Creator</Text>
+                <Text style={styles.creatorStatusSub}>
+                  {creatorName ? `Welcome, ${creatorName}` : 'Your creator account is active'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push('/(tabs)/creator-dashboard')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIcon}>
+                <Ionicons name="briefcase-outline" size={24} color={LuxuryColors.gold} />
+              </View>
+              <View style={styles.menuInfo}>
+                <Text style={styles.menuTitle}>Creator Dashboard</Text>
+                <Text style={styles.menuDesc}>Manage experiences and analytics</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push('/(tabs)/create-experience')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIcon}>
+                <Ionicons name="add-circle-outline" size={24} color={LuxuryColors.gold} />
+              </View>
+              <View style={styles.menuInfo}>
+                <Text style={styles.menuTitle}>Create Experience</Text>
+                <Text style={styles.menuDesc}>Publish a new travel experience</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
+            </TouchableOpacity>
+          </>
+        ) : creatorStatus === 'pending' ? (
+          // Pending review
+          <View style={styles.creatorStatusCard}>
+            <View style={[styles.creatorStatusIcon, { backgroundColor: 'rgba(212,175,55,0.12)', borderColor: 'rgba(212,175,55,0.3)' }]}>
+              <Ionicons name="time-outline" size={24} color={LuxuryColors.gold} />
+            </View>
+            <View style={styles.creatorStatusBody}>
+              <Text style={styles.creatorStatusTitle}>Application Pending</Text>
+              <Text style={styles.creatorStatusSub}>Under review — we'll email you within 3–5 days</Text>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push('/(tabs)/apply-creator')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.menuIcon}>
-            <Ionicons name="create-outline" size={24} color={LuxuryColors.textSecondary} />
-          </View>
-          <View style={styles.menuInfo}>
-            <Text style={styles.menuTitle}>Apply as Creator</Text>
-            <Text style={styles.menuDesc}>Join our creator community</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
-        </TouchableOpacity>
+        ) : creatorStatus === 'rejected' ? (
+          // Rejected — offer reapply
+          <>
+            <View style={styles.creatorStatusCard}>
+              <View style={[styles.creatorStatusIcon, { backgroundColor: 'rgba(255,71,87,0.10)', borderColor: 'rgba(255,71,87,0.3)' }]}>
+                <Ionicons name="close-circle-outline" size={24} color={LuxuryColors.error} />
+              </View>
+              <View style={styles.creatorStatusBody}>
+                <Text style={styles.creatorStatusTitle}>Application Not Accepted</Text>
+                <Text style={styles.creatorStatusSub}>You may reapply after 60 days</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push('/(tabs)/apply-creator')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIcon}>
+                <Ionicons name="refresh-outline" size={24} color={LuxuryColors.textSecondary} />
+              </View>
+              <View style={styles.menuInfo}>
+                <Text style={styles.menuTitle}>Reapply as Creator</Text>
+                <Text style={styles.menuDesc}>Submit a new application</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
+            </TouchableOpacity>
+          </>
+        ) : (
+          // none or no-auth — prompt to apply
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push('/(tabs)/apply-creator')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.menuIcon}>
+              <Ionicons name="create-outline" size={24} color={LuxuryColors.textSecondary} />
+            </View>
+            <View style={styles.menuInfo}>
+              <Text style={styles.menuTitle}>Become a Creator</Text>
+              <Text style={styles.menuDesc}>Apply to share travel experiences</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Sign Out */}
@@ -577,7 +658,46 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
 
-  // ── Creators row ─────────────────────────────────────────
+  // ── Creator status card ───────────────────────────────────
+  creatorStatusLoading: {
+    paddingVertical: LuxurySpacing.lg,
+    alignItems: 'center',
+  },
+  creatorStatusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+    backgroundColor: LuxuryColors.glass,
+    borderWidth: 1,
+    borderColor: LuxuryColors.glassBorder,
+    borderRadius: LuxuryBorderRadius.xl,
+    padding: LuxurySpacing.lg,
+    marginBottom: LuxurySpacing.md,
+  },
+  creatorStatusIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorStatusBody: {
+    flex: 1,
+    gap: 3,
+  },
+  creatorStatusTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+  },
+  creatorStatusSub: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 16,
+  },
+
+  // ── Legacy chip styles (kept for reference) ───────────────
   creatorsRow: {
     flexDirection: 'row',
     gap: LuxurySpacing.md,

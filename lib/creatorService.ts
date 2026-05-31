@@ -208,9 +208,11 @@ export interface CreatorApplicationDoc {
   website?: string;
   travelExperience: string;
   countriesVisited?: string;
+  travelStyle?: string;
   motivation: string;
   status: ApplicationStatus;
   createdAt: unknown;
+  reviewedAt?: unknown;
 }
 
 /**

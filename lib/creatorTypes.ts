@@ -109,12 +109,16 @@ export interface CreatorApplication {
   travelExperience: string;
   /** Countries visited — free text or comma-separated list (optional) */
   countriesVisited?: string;
+  /** Preferred travel style(s) — free text or comma-separated (optional) */
+  travelStyle?: string;
   /** Why the applicant wants to join as a creator */
   motivation: string;
   /** Current status of the application */
   status: CreatorStatus;
   /** Firestore server timestamp — when the application was submitted */
   createdAt: unknown;
+  /** Firestore server timestamp — when the application was reviewed (null until reviewed) */
+  reviewedAt?: unknown;
 }
 
 /**
