@@ -117,12 +117,10 @@ export default function LoginScreen() {
 
   const handleAppleSignIn = async () => {
     try {
-      await loginWithApple();
-      router.replace('/(tabs)');
+      const result = await loginWithApple();
+      if (!result.success && result.cancelled) return; // user tapped Cancel — do nothing
+      if (result.success) router.replace('/(tabs)');
     } catch (error: any) {
-      if (error?.code === 'ERR_CANCELED' || error?.code === 'ERR_REQUEST_CANCELED' || error?.code === 'user_cancelled' || error.message?.toLowerCase().includes('cancel')) {
-        return;
-      }
       Alert.alert('Login failed', 'Please try again.');
     }
   };

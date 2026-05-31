@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { socialLogin, loginUser, setCurrentSession, clearSession } from '../app/(auth)/authStorage';
@@ -18,30 +19,47 @@ export const isProduction = (): boolean => {
 };
 
 // Apple Login
-export async function loginWithApple(): Promise<any> {
+export type AppleLoginResult =
+  | { success: true }
+  | { success: false; cancelled: true }
+  | { success: false; cancelled: false };
+
+function isAppleCancellation(error: any): boolean {
+  const code: string = error?.code ?? '';
+  const message: string = (error?.message ?? '').toLowerCase();
+  return (
+    code === 'ERR_REQUEST_CANCELED' ||
+    code === 'ERR_CANCELED' ||
+    message.includes('cancel') ||
+    message.includes('user canceled') ||
+    message.includes('user cancelled')
+  );
+}
+
+export async function loginWithApple(): Promise<AppleLoginResult> {
   try {
     const isAvailable = await AppleAuthentication.isAvailableAsync();
-    
+
     if (!isAvailable) {
       // Fallback for Expo Go or devices without Apple Sign-In
       if (isExpoGo()) {
         console.log('APPLE_AUTH: Expo Go detected - using mock login');
-        
+
         const mockEmail = 'apple_user@example.com';
         const mockProviderId = `apple_mock_${Date.now()}`;
-        
+
         const user = await socialLogin('apple', mockEmail, mockProviderId);
         setCurrentSession(user);
         console.log('APPLE_AUTH: Mock login successful', user);
-        return user;
+        return { success: true };
       }
-      
+
       throw new Error('Apple Sign-In is not available on this device');
     }
 
     // Real Apple Sign-In
     console.log('APPLE_AUTH: Using real Apple Sign-In');
-    
+
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
@@ -49,19 +67,31 @@ export async function loginWithApple(): Promise<any> {
       ],
     });
 
-    const mockEmail = credential.email || 'apple_user@example.com';
+    const appleEmail = credential.email || 'apple_user@example.com';
     const providerId = credential.user || `apple_${Date.now()}`;
-    
-    const user = await socialLogin('apple', mockEmail.toLowerCase(), providerId);
+
+    const user = await socialLogin('apple', appleEmail.toLowerCase(), providerId);
     setCurrentSession(user);
     console.log('APPLE_AUTH: Real login successful', user);
-    return user;
+    return { success: true };
   } catch (error: any) {
-    console.error('APPLE_AUTH_ERROR:', {
-      code: error.code,
-      message: error.message,
-      stack: error.stack,
-    });
+    // User cancelled — normal action, no log, no throw
+    if (isAppleCancellation(error)) {
+      return { success: false, cancelled: true };
+    }
+
+    // Incomplete/unknown Apple auth — warn only, show friendly message
+    if (error?.code === 'ERR_REQUEST_UNKNOWN') {
+      console.warn('APPLE_AUTH: Sign in not completed (ERR_REQUEST_UNKNOWN)');
+      Alert.alert(
+        'Sign In Incomplete',
+        'Apple Sign In was not completed. Please try again.',
+      );
+      return { success: false, cancelled: false };
+    }
+
+    // Unexpected errors — warn (not error) to avoid red dev screen
+    console.warn('APPLE_AUTH_ERROR:', { code: error?.code, message: error?.message });
     throw error;
   }
 }
