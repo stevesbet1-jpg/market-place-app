@@ -110,6 +110,16 @@ const statStyles = StyleSheet.create({
 
 // ─── Experience row ──────────────────────────────────────────────────────────
 
+function formatRelativeDate(ts: number | null): string | null {
+  if (!ts) return null;
+  const diff = Date.now() - ts;
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return 'Updated today';
+  if (days === 1) return 'Updated yesterday';
+  if (days < 30) return `Updated ${days}d ago`;
+  return `Updated ${new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+}
+
 function ExperienceRow({
   experience,
   onDelete,
@@ -145,6 +155,9 @@ function ExperienceRow({
         <View style={[rowStyles.badge, { borderColor: `${color}40`, backgroundColor: `${color}12` }]}>
           <Text style={[rowStyles.badgeText, { color }]}>{label}</Text>
         </View>
+        {experience.updatedAt ? (
+          <Text style={rowStyles.updatedAt}>{formatRelativeDate(experience.updatedAt)}</Text>
+        ) : null}
       </View>
 
       {/* Actions */}
@@ -255,6 +268,11 @@ const rowStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  updatedAt: {
+    fontSize: 11,
+    color: LuxuryColors.textTertiary,
+    marginTop: 2,
   },
   actions: {
     flexDirection: 'column',

@@ -38,6 +38,7 @@ export interface DailyPlanEntry {
 export interface Hotel {
   name: string;
   address: string;
+  notes?: string;
 }
 
 export interface Restaurant {
@@ -73,8 +74,8 @@ export interface CreatorExperience {
   coverImage: string | null;
 
   // ── Content ─────────────────────────────────────────────────────────
-  description: string;
-  /** Creator's personal tips for this experience */
+  description: string;  /** Creator's private notes — separate from public description */
+  creatorNotes: string;  /** Creator's personal tips for this experience */
   tips: string[];
   /** Off-the-beaten-path spots */
   hiddenGems: HiddenGem[];

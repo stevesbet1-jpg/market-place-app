@@ -34,7 +34,6 @@ import {
 } from '../../constants/luxuryTheme';
 import {
   saveExperienceDraft,
-  submitExperienceForReview,
   updateExperience,
   getExperienceById,
   publishExperience,
@@ -61,7 +60,7 @@ interface DayDraft {
   description: string;
 }
 
-interface HotelDraft { name: string; address: string; }
+interface HotelDraft { name: string; address: string; notes: string; }
 interface RestaurantDraft { name: string; description: string; }
 interface HiddenGemDraft { name: string; description: string; }
 
@@ -199,6 +198,7 @@ export default function CreateExperienceScreen() {
   const [budget, setBudget] = useState<BudgetRange>('$$');
   const [coverImage, setCoverImage] = useState('');
   const [description, setDescription] = useState('');
+  const [creatorNotes, setCreatorNotes] = useState('');
   const [tipsText, setTipsText] = useState('');
   const [dailyPlan, setDailyPlan] = useState<DayDraft[]>([{ day: 1, title: '', description: '' }]);
   const [hotels, setHotels] = useState<HotelDraft[]>([]);
@@ -207,7 +207,6 @@ export default function CreateExperienceScreen() {
 
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
   // ── Load existing experience in edit mode ────────────────────────────
@@ -227,13 +226,14 @@ export default function CreateExperienceScreen() {
           setBudget(exp.budget);
           setCoverImage(exp.coverImage ?? '');
           setDescription(exp.description);
+          setCreatorNotes(exp.creatorNotes ?? '');
           setTipsText(exp.tips.join(', '));
           setDailyPlan(
             exp.dailyPlan.length > 0
               ? exp.dailyPlan.map((d) => ({ day: d.day, title: d.title, description: d.description }))
               : [{ day: 1, title: '', description: '' }]
           );
-          setHotels(exp.hotels.map((h) => ({ name: h.name, address: h.address })));
+          setHotels(exp.hotels.map((h) => ({ name: h.name, address: h.address, notes: h.notes ?? '' })));
           setRestaurants(exp.restaurants.map((r) => ({ name: r.name, description: r.description })));
           setHiddenGems(exp.hiddenGems.map((g) => ({ name: g.name, description: g.description })));
         }
@@ -263,9 +263,9 @@ export default function CreateExperienceScreen() {
   }, []);
 
   // ── Hotel helpers ────────────────────────────────────────────────────────
-  const addHotel = useCallback(() => setHotels((p) => [...p, { name: '', address: '' }]), []);
+  const addHotel = useCallback(() => setHotels((p) => [...p, { name: '', address: '', notes: '' }]), []);
   const removeHotel = useCallback((i: number) => setHotels((p) => p.filter((_, idx) => idx !== i)), []);
-  const updateHotel = useCallback((i: number, f: 'name' | 'address', v: string) =>
+  const updateHotel = useCallback((i: number, f: 'name' | 'address' | 'notes', v: string) =>
     setHotels((p) => p.map((h, idx) => idx === i ? { ...h, [f]: v } : h)), []);
 
   // ── Restaurant helpers ────────────────────────────────────────────────────
@@ -304,10 +304,15 @@ export default function CreateExperienceScreen() {
       budget,
       coverImage: coverImage.trim() || null,
       description: description.trim(),
+      creatorNotes: creatorNotes.trim(),
       tips: tipsText.split(',').map((s) => s.trim()).filter(Boolean),
       hiddenGems: hiddenGems.filter((g) => g.name.trim()),
       restaurants: restaurants.filter((r) => r.name.trim()),
-      hotels: hotels.filter((h) => h.name.trim()),
+      hotels: hotels.filter((h) => h.name.trim()).map((h) => ({
+        name: h.name,
+        address: h.address,
+        ...(h.notes.trim() ? { notes: h.notes.trim() } : {}),
+      })),
       dailyPlan: dailyPlan.map((d) => ({
         day: d.day,
         title: d.title.trim(),
@@ -340,43 +345,7 @@ export default function CreateExperienceScreen() {
     } finally {
       setSaving(false);
     }
-  }, [title, country, city, travelStyle, duration, budget, coverImage, description, tipsText, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
-
-  // ── Submit For Review ─────────────────────────────────────────────────
-  const handleSubmitForReview = useCallback(async () => {
-    const err = validate();
-    if (err) { Alert.alert('Missing Information', err); return; }
-
-    Alert.alert(
-      'Submit for Review',
-      'Your experience will be reviewed before being published. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Submit',
-          onPress: async () => {
-            setSubmitting(true);
-            try {
-              if (isEditMode && editId) {
-                await updateExperience(editId, { ...buildPayload(), status: 'pending_review' });
-              } else {
-                await submitExperienceForReview(buildPayload());
-              }
-              Alert.alert(
-                'Submitted',
-                'Your experience is now under review. You will be notified when it is approved.',
-                [{ text: 'OK', onPress: () => router.back() }]
-              );
-            } catch (e: unknown) {
-              Alert.alert('Submission Failed', e instanceof Error ? e.message : 'Unknown error');
-            } finally {
-              setSubmitting(false);
-            }
-          },
-        },
-      ]
-    );
-  }, [title, country, city, travelStyle, duration, budget, coverImage, description, tipsText, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
+  }, [title, country, city, travelStyle, duration, budget, coverImage, description, creatorNotes, tipsText, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
 
   // ── Publish ──────────────────────────────────────────────────────────
   const handlePublish = useCallback(async () => {
@@ -414,7 +383,7 @@ export default function CreateExperienceScreen() {
         },
       ]
     );
-  }, [title, country, city, travelStyle, duration, budget, coverImage, description, tipsText, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
+  }, [title, country, city, travelStyle, duration, budget, coverImage, description, creatorNotes, tipsText, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking || loadingExisting) {
@@ -564,7 +533,7 @@ export default function CreateExperienceScreen() {
         {/* ── Description ── */}
         <SectionHeader title="Description" />
 
-        <FieldLabel text="Short Description" required />
+        <FieldLabel text="Overview" required />
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Describe this experience in 2–3 sentences…"
@@ -574,6 +543,19 @@ export default function CreateExperienceScreen() {
           multiline
           numberOfLines={4}
           maxLength={600}
+          textAlignVertical="top"
+        />
+
+        <FieldLabel text="Creator Notes" />
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Personal observations, context, why this experience matters to you…"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={creatorNotes}
+          onChangeText={setCreatorNotes}
+          multiline
+          numberOfLines={3}
+          maxLength={800}
           textAlignVertical="top"
         />
 
@@ -703,6 +685,18 @@ export default function CreateExperienceScreen() {
               onChangeText={(v) => updateHotel(i, 'address', v)}
               maxLength={200}
             />
+            <FieldLabel text="Notes" />
+            <TextInput
+              style={[styles.input, styles.textArea, { marginBottom: 0 }]}
+              placeholder="Check-in tips, best rooms, booking advice…"
+              placeholderTextColor={LuxuryColors.textTertiary}
+              value={h.notes}
+              onChangeText={(v) => updateHotel(i, 'notes', v)}
+              multiline
+              numberOfLines={2}
+              textAlignVertical="top"
+              maxLength={300}
+            />
           </View>
         ))}
         <TouchableOpacity style={styles.addRowBtn} onPress={addHotel} activeOpacity={0.7}>
@@ -761,9 +755,9 @@ export default function CreateExperienceScreen() {
         {/* ── Actions ── */}
         <View style={styles.actionsSection}>
           <TouchableOpacity
-            style={[styles.draftBtn, (saving || submitting || publishing) && styles.btnDisabled]}
+            style={[styles.draftBtn, (saving || publishing) && styles.btnDisabled]}
             onPress={handleSaveDraft}
-            disabled={saving || submitting || publishing}
+            disabled={saving || publishing}
             activeOpacity={0.85}
           >
             {saving ? (
@@ -774,28 +768,15 @@ export default function CreateExperienceScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.submitBtn, (saving || submitting || publishing) && styles.btnDisabled]}
-            onPress={handleSubmitForReview}
-            disabled={saving || submitting || publishing}
-            activeOpacity={0.85}
-          >
-            {submitting ? (
-              <ActivityIndicator color={LuxuryColors.background} size="small" />
-            ) : (
-              <Text style={styles.submitBtnText}>Submit For Review</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.publishBtn, (saving || submitting || publishing) && styles.btnDisabled]}
+            style={[styles.publishBtn, (saving || publishing) && styles.btnDisabled]}
             onPress={handlePublish}
-            disabled={saving || submitting || publishing}
+            disabled={saving || publishing}
             activeOpacity={0.85}
           >
             {publishing ? (
               <ActivityIndicator color={LuxuryColors.background} size="small" />
             ) : (
-              <Text style={styles.publishBtnText}>Publish Now</Text>
+              <Text style={styles.publishBtnText}>Publish Experience</Text>
             )}
           </TouchableOpacity>
         </View>

@@ -578,13 +578,22 @@ export default function ExperienceDetailScreen() {
                   <Text style={creatorStyles.avatarInitials}>{initials}</Text>
                 </View>
                 <View>
-                  <Text style={creatorStyles.byLine}>Tips from {experience.creatorName}</Text>
+                  <Text style={creatorStyles.byLine}>Notes from {experience.creatorName}</Text>
                   <Text style={creatorStyles.byLineSub}>Creator insights</Text>
                 </View>
               </View>
 
-              {experience.tips.length > 0 ? (
-                experience.tips.map((tip, i) => (
+              {experience.creatorNotes ? (
+                <Text style={creatorStyles.tipText}>{experience.creatorNotes}</Text>
+              ) : (
+                <Text style={detailStyles.emptyState}>No creator notes added yet.</Text>
+              )}
+            </View>
+
+            {experience.tips.length > 0 && (
+              <View style={{ marginTop: LuxurySpacing.md }}>
+                <Text style={[creatorStyles.byLine, { marginBottom: LuxurySpacing.sm }]}>Travel Tips</Text>
+                {experience.tips.map((tip, i) => (
                   <View key={i} style={creatorStyles.tipRow}>
                     <Ionicons
                       name="sparkles-outline"
@@ -594,11 +603,9 @@ export default function ExperienceDetailScreen() {
                     />
                     <Text style={creatorStyles.tipText}>{tip}</Text>
                   </View>
-                ))
-              ) : (
-                <Text style={detailStyles.emptyState}>No creator tips added yet.</Text>
-              )}
-            </View>
+                ))}
+              </View>
+            )}
           </View>
 
           {/* ─────────────────────────────────────────────────────────────
@@ -655,6 +662,7 @@ export default function ExperienceDetailScreen() {
                         <View style={placeStyles.cardBody}>
                           <Text style={placeStyles.placeName}>{h.name}</Text>
                           {h.address ? <Text style={placeStyles.placeNote}>{h.address}</Text> : null}
+                          {h.notes ? <Text style={placeStyles.placeNote}>{h.notes}</Text> : null}
                         </View>
                       </View>
                     ))}

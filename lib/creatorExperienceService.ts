@@ -64,6 +64,7 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     budget: (data.budget as CreatorExperience['budget']) ?? '$$',
     coverImage: (data.coverImage as string | null) ?? null,
     description: (data.description as string) ?? '',
+    creatorNotes: (data.creatorNotes as string) ?? '',
     tips: (data.tips as string[]) ?? [],
     hiddenGems: (data.hiddenGems as HiddenGem[]) ?? [],
     restaurants: (data.restaurants as Restaurant[]) ?? [],
