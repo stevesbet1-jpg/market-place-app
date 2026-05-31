@@ -1,13 +1,17 @@
-﻿import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, Pressable, FlatList } from 'react-native';
+﻿import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { View, Text, Image, ActivityIndicator, StyleSheet, ScrollView, Pressable, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
-import { JOURNEYS, Journey, ImageKey, BudgetLevel } from '../../constants/journeys';
-import { getCreatorById, formatSaves } from '../../constants/creators';
+import type { BudgetLevel } from '../../constants/journeys';
+import type { CreatorJourney } from '../../constants/creatorJourneyModel';
+import { getPublishedJourneys } from '../../lib/creatorJourneyService';
+import { formatSaves } from '../../constants/creators';
 import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
+
+type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple' | 'bali' | 'seychelles' | 'zanzibar' | 'lakecomo' | 'alps';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   islands:    require('../../assets/collections/private-islands.jpg'),
@@ -24,6 +28,17 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   alps:       require('../../assets/collections/swiss-alps-day.jpg'),
 };
 
+function journeyImageSource(journey: CreatorJourney) {
+  if (journey.imageUri) return { uri: journey.imageUri };
+  const key = journey.imageKey as ImageKey | undefined;
+  if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
+  return null;
+}
+
+function deriveInitials(name: string): string {
+  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
+}
+
 const BUDGET_FILTERS: Array<BudgetLevel | null> = [null, '$', '$$', '$$$', '$$$$'];
 
 export default function TripsScreen() {
@@ -32,33 +47,37 @@ export default function TripsScreen() {
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
-
-  const [sessionOrder] = useState<Journey[]>(() =>
-    [...JOURNEYS].sort(() => Math.random() - 0.5)
-  );
+  const [allJourneys, setAllJourneys] = useState<CreatorJourney[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
-      Promise.all([getFreeRemaining(), getSavedIds(), getBudgetPref()]).then(
-        ([remaining, saved, pref]) => {
-          setFreeRemaining(remaining);
-          setSavedIds(saved);
-          setBudgetPrefState(pref);
+      let cancelled = false;
+      setLoading(true);
+      Promise.all([getFreeRemaining(), getSavedIds(), getBudgetPref(), getPublishedJourneys()]).then(
+        ([remaining, saved, pref, journeys]) => {
+          if (cancelled) return;
+          setFreeRemaining(remaining as number);
+          setSavedIds(saved as string[]);
+          setBudgetPrefState(pref as BudgetLevel | null);
+          setAllJourneys([...(journeys as CreatorJourney[])].sort(() => Math.random() - 0.5));
+          setLoading(false);
         }
-      );
+      ).catch(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
     }, [])
   );
 
-  const featuredJourneys = useMemo<Journey[]>(() => {
-    if (!budgetPref) return sessionOrder.slice(0, 5);
-    const matching = sessionOrder.filter((j) => j.budget === budgetPref);
-    const others = sessionOrder.filter((j) => j.budget !== budgetPref);
+  const featuredJourneys = useMemo<CreatorJourney[]>(() => {
+    if (!budgetPref) return allJourneys.slice(0, 5);
+    const matching = allJourneys.filter((j) => j.budget === budgetPref);
+    const others = allJourneys.filter((j) => j.budget !== budgetPref);
     return [...matching, ...others].slice(0, 5);
-  }, [budgetPref, sessionOrder]);
+  }, [budgetPref, allJourneys]);
 
-  const savedJourneys = useMemo<Journey[]>(
-    () => savedIds.map((id) => JOURNEYS.find((j) => j.id === id)).filter(Boolean) as Journey[],
-    [savedIds]
+  const savedJourneys = useMemo<CreatorJourney[]>(
+    () => savedIds.map((id) => allJourneys.find((j) => j.id === id)).filter(Boolean) as CreatorJourney[],
+    [savedIds, allJourneys]
   );
 
   const handleBudgetFilter = async (b: BudgetLevel | null) => {
@@ -66,7 +85,7 @@ export default function TripsScreen() {
     await setBudgetPref(b);
   };
 
-  const handleCardPress = (journey: Journey) => {
+  const handleCardPress = (journey: CreatorJourney) => {
     if (freeRemaining === 0) {
       router.push('/(tabs)/paywall');
     } else {
@@ -75,6 +94,14 @@ export default function TripsScreen() {
   };
 
   const isLocked = freeRemaining === 0;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={LuxuryColors.gold} />
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -177,18 +204,22 @@ export default function TripsScreen() {
                 style={({ pressed }) => [styles.savedCard, pressed && { opacity: 0.85 }]}
                 onPress={() => handleCardPress(journey)}
               >
-                <Image
-                  source={JOURNEY_IMAGES[journey.imageKey]}
-                  style={styles.savedCardImg}
-                  resizeMode="cover"
-                />
+                {journeyImageSource(journey) ? (
+                  <Image
+                    source={journeyImageSource(journey)!}
+                    style={styles.savedCardImg}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.savedCardImg, { backgroundColor: LuxuryColors.surface }]} />
+                )}
                 <LinearGradient
                   colors={['transparent', 'rgba(7,17,32,0.88)'] as const}
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={styles.savedCardOverlay}>
                   <Text style={styles.savedCardRegion}>{journey.region}</Text>
-                  <Text style={styles.savedCardName} numberOfLines={1}>{journey.name}</Text>
+                  <Text style={styles.savedCardName} numberOfLines={1}>{journey.title}</Text>
                   <View style={styles.savedCardBudgeBadge}>
                     <Text style={styles.savedCardBudgeText}>{journey.budget}</Text>
                   </View>
@@ -215,6 +246,15 @@ export default function TripsScreen() {
       )}
 
       {/* ── Journey cards ── */}
+      {featuredJourneys.length === 0 ? (
+        <View style={styles.emptyJourneys}>
+          <Ionicons name="map-outline" size={36} color={LuxuryColors.textTertiary} />
+          <Text style={styles.emptyJourneysTitle}>No creator journeys published yet.</Text>
+          <Text style={styles.emptyJourneysSub}>
+            Approved creators will publish their first journeys here soon.
+          </Text>
+        </View>
+      ) : null}
       <View style={[styles.padH, styles.cardList]}>
         {featuredJourneys.map((journey) => (
           <Pressable
@@ -227,11 +267,15 @@ export default function TripsScreen() {
           >
             {/* Hero image */}
             <View style={styles.imageWrap}>
-              <Image
-                source={JOURNEY_IMAGES[journey.imageKey]}
-                style={styles.heroImg}
-                resizeMode="cover"
-              />
+              {journeyImageSource(journey) ? (
+                <Image
+                  source={journeyImageSource(journey)!}
+                  style={styles.heroImg}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.heroImg, { backgroundColor: LuxuryColors.surface }]} />
+              )}
               <LinearGradient
                 colors={['transparent', 'rgba(7,17,32,0.80)'] as const}
                 style={StyleSheet.absoluteFill}
@@ -261,24 +305,23 @@ export default function TripsScreen() {
                   router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } });
                 }}
               >
-                {(() => {
-                  const creator = getCreatorById(journey.creatorId);
-                  return (
-                    <>
-                      <View style={styles.creatorAvatar}>
-                        <Text style={styles.creatorAvatarText}>{creator?.initials ?? '??'}</Text>
-                      </View>
-                      <Text style={styles.creatorName} numberOfLines={1}>{creator?.name ?? 'Creator'}</Text>
-                      <View style={styles.creatorRatingPill}>
-                        <Ionicons name="star" size={9} color={LuxuryColors.gold} />
-                        <Text style={styles.creatorRatingText}>{creator?.rating.toFixed(1) ?? '—'}</Text>
-                      </View>
-                    </>
-                  );
-                })()}
+                <View style={styles.creatorAvatar}>
+                  <Text style={styles.creatorAvatarText}>
+                    {deriveInitials(journey.creatorName || 'Creator')}
+                  </Text>
+                </View>
+                <Text style={styles.creatorName} numberOfLines={1}>
+                  {journey.creatorName || 'Creator'}
+                </Text>
+                {journey.rating > 0 && (
+                  <View style={styles.creatorRatingPill}>
+                    <Ionicons name="star" size={9} color={LuxuryColors.gold} />
+                    <Text style={styles.creatorRatingText}>{journey.rating.toFixed(1)}</Text>
+                  </View>
+                )}
               </Pressable>
 
-              <Text style={styles.journeyName}>{journey.name}</Text>
+              <Text style={styles.journeyName}>{journey.title}</Text>
 
               {/* Duration + season row */}
               <View style={styles.metaRow}>
@@ -321,6 +364,26 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: LuxuryColors.background,
+  },
+  emptyJourneys: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: LuxurySpacing.xxl,
+    paddingHorizontal: LuxurySpacing.xl,
+    gap: LuxurySpacing.sm,
+  },
+  emptyJourneysTitle: {
+    fontSize: LuxuryFontSize.lg,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+    textAlign: 'center',
+    marginTop: LuxurySpacing.sm,
+  },
+  emptyJourneysSub: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   header: {
     paddingHorizontal: LuxurySpacing.xl,

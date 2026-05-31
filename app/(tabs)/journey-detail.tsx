@@ -3,6 +3,7 @@ import {
   View,
   Text,
   Image,
+  ActivityIndicator,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -23,9 +24,10 @@ import {
   LuxuryFontSize,
   LuxuryShadow,
 } from '../../constants/luxuryTheme';
-import { JOURNEYS, ImageKey, Journey } from '../../constants/journeys';
-import { getCreatorById, formatFollowers, formatSaves } from '../../constants/creators';
-import { getReviewsForJourney } from '../../constants/reviews';
+import type { ImageKey } from '../../constants/journeys';
+import type { CreatorJourney } from '../../constants/creatorJourneyModel';
+import { formatSaves } from '../../constants/creators';
+import { getJourneyById } from '../../lib/creatorJourneyService';
 import {
   consumeFreeJourney,
   getSavedIds,
@@ -51,15 +53,21 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   alps:       require('../../assets/collections/swiss-alps-day.jpg'),
 };
 
-const ALL_IMAGE_KEYS: readonly ImageKey[] = [
-  'islands', 'villas', 'yacht', 'desert', 'mountain', 'city', 'temple',
-  'bali', 'seychelles', 'zanzibar', 'lakecomo', 'alps',
-];
+function journeyImageSource(journey: CreatorJourney) {
+  if (journey.imageUri) return { uri: journey.imageUri };
+  const key = journey.imageKey as ImageKey | undefined;
+  if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
+  return null;
+}
+
+function deriveInitials(name: string): string {
+  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
+}
 
 // ─── Derived presentation helpers ───────────────────────────────────────────
 type DifficultyInfo = { label: string; color: string; icon: keyof typeof Ionicons.glyphMap };
 
-function getDifficulty(journey: Journey): DifficultyInfo {
+function getDifficulty(journey: CreatorJourney): DifficultyInfo {
   const days = parseInt(journey.duration, 10);
   if (!isNaN(days) && days >= 12) {
     return { label: 'Advanced', color: '#FF6B6B', icon: 'trending-up-outline' };
@@ -70,37 +78,14 @@ function getDifficulty(journey: Journey): DifficultyInfo {
   return { label: 'Easy', color: '#4CAF80', icon: 'leaf-outline' };
 }
 
-function getTravelStyles(journey: Journey): string[] {
-  const haystack = (journey.name + ' ' + journey.region + ' ' + journey.destination).toLowerCase();
+function getTravelStyles(journey: CreatorJourney): string[] {
+  const haystack = (journey.title + ' ' + journey.region + ' ' + journey.destination).toLowerCase();
   const tags: string[] = ['Luxury'];
   if (/ocean|sea|island|coast|beach|maldiv|seychell|zanzibar/.test(haystack)) tags.push('Beach');
   if (/mountain|alps|trek|safari|desert/.test(haystack)) tags.push('Adventure');
   if (/japan|bali|tokyo|kyoto|africa|temple|heritage/.test(haystack)) tags.push('Culture');
   if (journey.restaurants.length >= 4) tags.push('Food');
   return [...new Set(tags)].slice(0, 4);
-}
-
-// ─── Mock premium content generators ──────────────────────────────────────
-function getMockHotels(journey: Journey) {
-  const d = journey.destination;
-  return [
-    { name: `${d} Grand Resort & Spa`,    stars: 5, price: '$450–750/night',    type: 'Resort',   note: 'Creator recommended' },
-    { name: `${d} Boutique Collection`,   stars: 4, price: '$180–280/night',    type: 'Boutique', note: 'Best value pick'     },
-    { name: `Private Villa ${d}`,         stars: 5, price: '$600–1,200/night',  type: 'Villa',    note: 'Ultimate privacy'   },
-  ];
-}
-
-function getInsiderTips(journey: Journey): string[] {
-  const r0 = journey.restaurants[0] ?? 'top restaurants';
-  const e0 = journey.experiences[0] ?? 'local experiences';
-  const p0 = journey.places[0] ?? journey.destination;
-  return [
-    `Reserve ${r0} at least 3 weeks ahead — tables fill fast in peak season.`,
-    `Visit ${p0} before 8 am to avoid crowds and catch the best natural light.`,
-    `${e0} sells out quickly — book immediately on arrival.`,
-    `Creator's tip: pack one versatile layer for ${journey.destination}'s microclimate shifts.`,
-    `Use local SIM cards from the airport — saves 80 % on roaming costs.`,
-  ];
 }
 
 // ─── Paywall gate ────────────────────────────────────────────────────────────
@@ -162,7 +147,8 @@ const EXP_ICONS: ReadonlyArray<keyof typeof Ionicons.glyphMap> = [
 export default function JourneyDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const journey = JOURNEYS.find((j) => j.id === id);
+  const [journey, setJourney] = useState<CreatorJourney | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [saved, setSaved] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -189,6 +175,15 @@ export default function JourneyDetailScreen() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    if (!id) { setLoading(false); return; }
+    getJourneyById(id).then((j) => {
+      if (!cancelled) { setJourney(j); setLoading(false); }
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  useEffect(() => {
     if (!id) return;
     consumeFreeJourney(id).then(setFreeRemaining);
     getSavedIds().then((ids) => setSaved(ids.includes(id)));
@@ -198,8 +193,8 @@ export default function JourneyDetailScreen() {
     if (!journey) return;
     try {
       await Share.share({
-        title: journey.name,
-        message: `${journey.name} — ${journey.destination}\n\nDiscover this ${journey.duration} journey curated by a top travel creator. ${journey.overview.slice(0, 120)}…`,
+        title: journey.title,
+        message: `${journey.title} — ${journey.destination}\n\nDiscover this ${journey.duration} journey curated by a top travel creator. ${journey.overview.slice(0, 120)}…`,
       });
     } catch (_) { /* user dismissed */ }
   }, [journey]);
@@ -225,10 +220,22 @@ export default function JourneyDetailScreen() {
     setSaveLoading(false);
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.notFoundWrap]}>
+        <ActivityIndicator color={LuxuryColors.gold} />
+      </View>
+    );
+  }
+
   if (!journey) {
     return (
       <View style={[styles.container, styles.notFoundWrap]}>
-        <Text style={styles.notFoundText}>Journey not found</Text>
+        <Ionicons name="map-outline" size={36} color={LuxuryColors.textTertiary} />
+        <Text style={styles.notFoundText}>Journey not available</Text>
+        <Text style={styles.notFoundSub}>
+          This journey may still be under review or has not been published yet.
+        </Text>
         <TouchableOpacity onPress={() => router.back()} activeOpacity={0.8}>
           <Text style={styles.backFallback}>← Back to Journeys</Text>
         </TouchableOpacity>
@@ -236,15 +243,14 @@ export default function JourneyDetailScreen() {
     );
   }
 
-  const galleryKeys: ImageKey[] = [
-    journey.imageKey,
-    ...ALL_IMAGE_KEYS.filter((k) => k !== journey.imageKey).slice(0, 3),
-  ];
+  const galleryImageSrc = journeyImageSource(journey);
+  const galleryKeys: ImageKey[] = journey.imageKey
+    ? ([journey.imageKey] as ImageKey[])
+    : [];
 
   const difficulty = getDifficulty(journey);
   const travelStyles = getTravelStyles(journey);
-  const creator = getCreatorById(journey.creatorId);
-  const reviews = getReviewsForJourney(journey.id);
+  const creatorInitials = deriveInitials(journey.creatorName || 'Creator');
 
   return (
     <>
@@ -257,11 +263,15 @@ export default function JourneyDetailScreen() {
       >
         {/* ── Hero ─────────────────────────────────────────── */}
         <View style={styles.heroWrap}>
-          <Image
-            source={JOURNEY_IMAGES[journey.imageKey]}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
+          {galleryImageSrc ? (
+            <Image
+              source={galleryImageSrc}
+              style={styles.heroImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.heroImage, { backgroundColor: LuxuryColors.surface }]} />
+          )}
           <LinearGradient
             colors={['rgba(7,17,32,0.40)', 'transparent', 'rgba(7,17,32,0.97)'] as const}
             style={StyleSheet.absoluteFill}
@@ -301,7 +311,7 @@ export default function JourneyDetailScreen() {
           {/* Hero text */}
           <View style={styles.heroOverlay}>
             <Text style={styles.heroRegion}>{journey.region}</Text>
-            <Text style={styles.heroTitle}>{journey.name}</Text>
+            <Text style={styles.heroTitle}>{journey.title}</Text>
 
             <View style={styles.heroMetaRow}>
               <View style={styles.heroMetaItem}>
@@ -346,35 +356,37 @@ export default function JourneyDetailScreen() {
         </View>
 
         {/* ── Creator strip ───────────────────────────────── */}
-        {creator && (
+        {journey.creatorName ? (
           <View style={styles.creatorStrip}>
             {/* Top row: avatar + info + follow */}
             <View style={styles.creatorTopRow}>
               <TouchableOpacity
-                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })}
+                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } })}
                 activeOpacity={0.8}
               >
                 <View style={styles.creatorAvatar}>
-                  <Text style={styles.creatorAvatarText}>{creator.initials}</Text>
+                  <Text style={styles.creatorAvatarText}>{creatorInitials}</Text>
                 </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.creatorInfo}
-                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })}
+                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } })}
                 activeOpacity={0.8}
               >
-                <Text style={styles.creatorNameText}>{creator.name}</Text>
-                <View style={styles.creatorRatingRow}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Ionicons
-                      key={s}
-                      name={s <= Math.round(creator.rating) ? 'star' : 'star-outline'}
-                      size={10}
-                      color={LuxuryColors.gold}
-                    />
-                  ))}
-                  <Text style={styles.creatorRatingVal}> {creator.rating.toFixed(1)}</Text>
-                </View>
+                <Text style={styles.creatorNameText}>{journey.creatorName}</Text>
+                {journey.rating > 0 && (
+                  <View style={styles.creatorRatingRow}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Ionicons
+                        key={s}
+                        name={s <= Math.round(journey.rating) ? 'star' : 'star-outline'}
+                        size={10}
+                        color={LuxuryColors.gold}
+                      />
+                    ))}
+                    <Text style={styles.creatorRatingVal}> {journey.rating.toFixed(1)}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.followBtn, followed && styles.followBtnActive]}
@@ -393,24 +405,25 @@ export default function JourneyDetailScreen() {
             </View>
             {/* Bottom row: stats + view profile */}
             <View style={styles.creatorBottomRow}>
-              <View style={styles.creatorStat}>
-                <Ionicons name="people-outline" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.creatorStatText}>{formatFollowers(creator.followers)} followers</Text>
-              </View>
-              <View style={styles.creatorStatDot} />
-              <View style={styles.creatorStat}>
-                <Ionicons name="heart-outline" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.creatorStatText}>{formatSaves(journey.savedCount)} saves</Text>
-              </View>
-              <View style={styles.creatorStatDot} />
-              <View style={styles.creatorStat}>
-                <Ionicons name="star" size={11} color={LuxuryColors.gold} />
-                <Text style={[styles.creatorStatText, { color: LuxuryColors.gold }]}>{journey.rating.toFixed(1)}</Text>
-              </View>
+              {journey.savedCount > 0 && (
+                <>
+                  <View style={styles.creatorStat}>
+                    <Ionicons name="heart-outline" size={11} color={LuxuryColors.textTertiary} />
+                    <Text style={styles.creatorStatText}>{formatSaves(journey.savedCount)} saves</Text>
+                  </View>
+                  <View style={styles.creatorStatDot} />
+                </>
+              )}
+              {journey.rating > 0 && (
+                <View style={styles.creatorStat}>
+                  <Ionicons name="star" size={11} color={LuxuryColors.gold} />
+                  <Text style={[styles.creatorStatText, { color: LuxuryColors.gold }]}>{journey.rating.toFixed(1)}</Text>
+                </View>
+              )}
               <View style={{ flex: 1 }} />
               <TouchableOpacity
                 onPress={() =>
-                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })
+                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } })
                 }
                 activeOpacity={0.7}
               >
@@ -418,7 +431,7 @@ export default function JourneyDetailScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        )}
+        ) : null}
 
         {/* ── Content ──────────────────────────────────────── */}
         <View style={styles.content}>
@@ -507,28 +520,9 @@ export default function JourneyDetailScreen() {
             {sections.hotels && (
               <View style={styles.sectionBody}>
                 {isPremium ? (
-                  getMockHotels(journey).map((hotel) => (
-                    <View key={hotel.name} style={styles.hotelCard}>
-                      <View style={styles.hotelCardLeft}>
-                        <View style={styles.hotelIconWrap}>
-                          <Ionicons name="bed-outline" size={16} color={LuxuryColors.gold} />
-                        </View>
-                        <View style={styles.hotelInfo}>
-                          <Text style={styles.hotelName} numberOfLines={1}>{hotel.name}</Text>
-                          <View style={styles.hotelStars}>
-                            {Array.from({ length: hotel.stars }).map((_, i) => (
-                              <Ionicons key={i} name="star" size={9} color={LuxuryColors.gold} />
-                            ))}
-                            <Text style={styles.hotelType}> · {hotel.type}</Text>
-                          </View>
-                          <Text style={styles.hotelPrice}>{hotel.price}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.hotelNoteBadge}>
-                        <Text style={styles.hotelNoteText}>{hotel.note}</Text>
-                      </View>
-                    </View>
-                  ))
+                  <Text style={styles.bodyText}>
+                    Hotel recommendations will be added by the creator.
+                  </Text>
                 ) : (
                   <PaywallBanner sectionName="hotel recommendations" />
                 )}
@@ -674,14 +668,14 @@ export default function JourneyDetailScreen() {
               isOpen={sections.gallery}
               onToggle={() => toggleSection('gallery')}
             />
-            {sections.gallery && (
+            {sections.gallery && galleryImageSrc && (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.galleryScroll}
                 style={styles.galleryScrollWrap}
               >
-                {galleryKeys.map((key, i) => (
+                {galleryKeys.length > 0 ? galleryKeys.map((key, i) => (
                   <TouchableOpacity
                     key={`${key}-${i}`}
                     style={styles.galleryCard}
@@ -701,7 +695,26 @@ export default function JourneyDetailScreen() {
                       <Ionicons name="expand-outline" size={14} color="rgba(255,255,255,0.85)" />
                     </View>
                   </TouchableOpacity>
-                ))}
+                )) : (
+                  <TouchableOpacity
+                    style={styles.galleryCard}
+                    onPress={() => setGalleryIndex(0)}
+                    activeOpacity={0.88}
+                  >
+                    <Image
+                      source={galleryImageSrc}
+                      style={styles.galleryImage}
+                      resizeMode="cover"
+                    />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(7,17,32,0.50)'] as const}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <View style={styles.galleryExpandIcon}>
+                      <Ionicons name="expand-outline" size={14} color="rgba(255,255,255,0.85)" />
+                    </View>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
             )}
           </View>
@@ -711,48 +724,13 @@ export default function JourneyDetailScreen() {
           {/* Traveler Reviews */}
           <View style={styles.sectionOuter}>
             <SectionHeader
-              label={`Traveler Reviews  (${reviews.length})`}
+              label="Traveler Reviews"
               isOpen={sections.reviews}
               onToggle={() => toggleSection('reviews')}
             />
             {sections.reviews && (
               <View style={styles.sectionBody}>
-                {/* Summary bar */}
-                <View style={styles.reviewSummary}>
-                  <Text style={styles.reviewAvgScore}>{journey.rating.toFixed(1)}</Text>
-                  <View style={styles.reviewAvgStars}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Ionicons
-                        key={s}
-                        name={s <= Math.round(journey.rating) ? 'star' : 'star-outline'}
-                        size={14}
-                        color={LuxuryColors.gold}
-                      />
-                    ))}
-                  </View>
-                  <Text style={styles.reviewAvgLabel}>{reviews.length} reviews</Text>
-                </View>
-                {/* Review cards */}
-                {reviews.map((review) => (
-                  <View key={review.id} style={styles.reviewCard}>
-                    <View style={styles.reviewCardHeader}>
-                      <View style={styles.reviewAvatar}>
-                        <Text style={styles.reviewAvatarText}>{review.initials}</Text>
-                      </View>
-                      <View style={styles.reviewMeta}>
-                        <Text style={styles.reviewAuthor}>{review.author}</Text>
-                        <Text style={styles.reviewLocation}>{review.location}</Text>
-                      </View>
-                      <View style={styles.reviewRating}>
-                        {Array.from({ length: review.rating }).map((_, i) => (
-                          <Ionicons key={i} name="star" size={10} color={LuxuryColors.gold} />
-                        ))}
-                      </View>
-                    </View>
-                    <Text style={styles.reviewText}>{review.text}</Text>
-                    <Text style={styles.reviewDate}>{review.date}</Text>
-                  </View>
-                ))}
+                <Text style={styles.bodyText}>No reviews yet.</Text>
               </View>
             )}
           </View>
@@ -767,65 +745,13 @@ export default function JourneyDetailScreen() {
             {sections.insiderTips && (
               <View style={styles.sectionBody}>
                 {isPremium ? (
-                  getInsiderTips(journey).map((tip, i) => (
-                    <View key={i} style={styles.tipCard}>
-                      <View style={styles.tipNumBadge}>
-                        <Text style={styles.tipNum}>{i + 1}</Text>
-                      </View>
-                      <Text style={styles.tipText}>{tip}</Text>
-                    </View>
-                  ))
+                  <Text style={styles.bodyText}>Insider tips will appear here once the creator adds them.</Text>
                 ) : (
                   <PaywallBanner sectionName="insider tips" />
                 )}
               </View>
             )}
           </View>
-
-          <View style={styles.divider} />
-
-          {/* Similar Journeys */}
-          {(() => {
-            const similar = JOURNEYS.filter(
-              (j) => j.id !== journey.id && j.region === journey.region,
-            ).slice(0, 3);
-            if (similar.length === 0) return null;
-            return (
-              <View style={styles.sectionOuter}>
-                <Text style={styles.sectionLabel}>Similar Journeys</Text>
-                <View style={styles.sectionBody}>
-                  {similar.map((sj) => (
-                    <TouchableOpacity
-                      key={sj.id}
-                      style={styles.similarCard}
-                      onPress={() =>
-                        router.push({ pathname: '/(tabs)/journey-detail', params: { id: sj.id } })
-                      }
-                      activeOpacity={0.85}
-                    >
-                      <Image
-                        source={JOURNEY_IMAGES[sj.imageKey]}
-                        style={styles.similarCardThumb}
-                        resizeMode="cover"
-                      />
-                      <View style={styles.similarCardInfo}>
-                        <Text style={styles.similarCardName} numberOfLines={1}>{sj.name}</Text>
-                        <Text style={styles.similarCardDest} numberOfLines={1}>
-                          {sj.destination} · {sj.duration}
-                        </Text>
-                        <View style={styles.similarCardMeta}>
-                          <Ionicons name="star" size={10} color={LuxuryColors.gold} />
-                          <Text style={styles.similarCardRating}>{sj.rating.toFixed(1)}</Text>
-                          <Text style={styles.similarCardBudget}>{sj.dailyBudget}</Text>
-                        </View>
-                      </View>
-                      <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            );
-          })()}
 
           <View style={styles.divider} />
 
@@ -893,7 +819,7 @@ export default function JourneyDetailScreen() {
 
           {galleryIndex !== null && (
             <Image
-              source={JOURNEY_IMAGES[galleryKeys[galleryIndex]]}
+              source={galleryKeys.length > 0 ? JOURNEY_IMAGES[galleryKeys[galleryIndex]] : galleryImageSrc!}
               style={styles.modalImage}
               resizeMode="contain"
             />
@@ -959,6 +885,13 @@ const styles = StyleSheet.create({
   notFoundText: {
     fontSize: LuxuryFontSize.lg,
     color: LuxuryColors.textSecondary,
+  },
+  notFoundSub: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: LuxurySpacing.xl,
   },
   backFallback: {
     fontSize: LuxuryFontSize.sm,

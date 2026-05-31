@@ -23,7 +23,9 @@ import {
 } from '../../constants/luxuryTheme';
 import { formatFollowers, formatSaves } from '../../constants/creators';
 import { getCreatorById } from '../../lib/creatorService';
-import { JOURNEYS, ImageKey } from '../../constants/journeys';
+import { getCreatorJourneys } from '../../lib/creatorJourneyService';
+import type { ImageKey } from '../../constants/journeys';
+import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   islands:    require('../../assets/collections/private-islands.jpg'),
@@ -40,22 +42,32 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   alps:       require('../../assets/collections/swiss-alps-day.jpg'),
 };
 
+function journeyImageSource(journey: CreatorJourney) {
+  if (journey.imageUri) return { uri: journey.imageUri };
+  const key = journey.imageKey as ImageKey | undefined;
+  if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
+  return null;
+}
+
 export default function CreatorProfileScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [creator, setCreator] = useState<Awaited<ReturnType<typeof getCreatorById>>>(null);
   const [loadingCreator, setLoadingCreator] = useState(true);
   const [followed, setFollowed] = useState(false);
+  const [creatorJourneys, setCreatorJourneys] = useState<CreatorJourney[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    getCreatorById(id ?? '').then((c) => {
+    const creatorId = id ?? '';
+    getCreatorById(creatorId).then((c) => {
       if (!cancelled) { setCreator(c); setLoadingCreator(false); }
+    });
+    getCreatorJourneys(creatorId).then((journeys) => {
+      if (!cancelled) setCreatorJourneys(journeys.filter((j) => j.status === 'published'));
     });
     return () => { cancelled = true; };
   }, [id]);
-
-  const creatorJourneys = JOURNEYS.filter((j) => j.creatorId === id);
 
   if (loadingCreator) {
     return (
@@ -229,11 +241,15 @@ export default function CreatorProfileScreen() {
                   router.push({ pathname: '/(tabs)/journey-detail', params: { id: journey.id } })
                 }
               >
-                <Image
-                  source={JOURNEY_IMAGES[journey.imageKey]}
-                  style={styles.journeyCardImg}
-                  resizeMode="cover"
-                />
+                {journeyImageSource(journey) ? (
+                  <Image
+                    source={journeyImageSource(journey)!}
+                    style={styles.journeyCardImg}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.journeyCardImg, { backgroundColor: LuxuryColors.surface }]} />
+                )}
                 <LinearGradient
                   colors={['transparent', 'rgba(7,17,32,0.90)'] as const}
                   style={StyleSheet.absoluteFill}
@@ -245,7 +261,7 @@ export default function CreatorProfileScreen() {
                 </View>
                 <View style={styles.journeyCardInfo}>
                   <Text style={styles.journeyRegion}>{journey.region}</Text>
-                  <Text style={styles.journeyTitle} numberOfLines={1}>{journey.name}</Text>
+                  <Text style={styles.journeyTitle} numberOfLines={1}>{journey.title}</Text>
                   <View style={styles.journeyMeta}>
                     <View style={styles.journeyMetaItem}>
                       <Ionicons name="time-outline" size={9} color="rgba(255,255,255,0.60)" />
