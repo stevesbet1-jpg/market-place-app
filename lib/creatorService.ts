@@ -1,13 +1,14 @@
-/**
+﻿/**
  * creatorService.ts
  *
- * All reads / writes for creator profiles go through this module.
+ * All reads / writes for creator profiles and applications go through this module.
  *
- * When Firebase is not configured (local dev without .env), every read falls
- * back to the seed data in constants/creators.ts so the app stays functional.
+ * Firestore collections:
+ *   creatorApplications — submitted applications (status: pending/approved/rejected)
+ *   creators            — approved creator profiles (having a doc here = approved)
  *
- * "Real" creators are documents in the `creators` Firestore collection,
- * created during creator onboarding (apply-creator flow + admin approval).
+ * When Firebase is not configured, every read falls back to the seed data in
+ * constants/creators.ts so the app stays functional during local development.
  *
  * Key rule: seed creators are NEVER presented as verified platform members.
  * The `isDemo` flag on every Creator record gates the UI disclaimer.
@@ -29,41 +30,106 @@ import { getAuth } from 'firebase/auth';
 import { getFirestoreDb, isFirebaseConfigured, getFirebaseApp } from './firebase';
 import { CREATORS } from '../constants/creators';
 import type { Creator } from '../constants/creators';
+import type {
+  CreatorApplicationPayload,
+  CreatorSubscription,
+} from './creatorTypes';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// Re-export canonical types so screens only need to import from this module
+export type {
+  CreatorType,
+  CreatorStatus,
+  CreatorSubscriptionPlan,
+  CreatorSubscription,
+  CreatorApplication,
+  CreatorApplicationPayload,
+  FirestoreCreator,
+  FirestoreCreatorPayload,
+} from './creatorTypes';
+export {
+  CREATOR_SUBSCRIPTION_LIMITS,
+  DEFAULT_CREATOR_SUBSCRIPTION,
+} from './creatorTypes';
 
-const COLLECTION = 'creators';
+// ─── Collection names ─────────────────────────────────────────────────────────
 
-// ─── Application payload ─────────────────────────────────────────────────────
+/** Firestore collection for creator applications */
+const APPLICATIONS_COLLECTION = 'creatorApplications';
 
-export interface CreatorApplicationPayload {
-  /** Applicant's full name */
-  name: string;
-  /** Short bio (max ~300 chars) */
-  bio: string;
-  instagram?: string;
-  youtube?: string;
-  website?: string;
-  /** Why the applicant wants to be a creator on this platform */
-  motivation: string;
-  /** User's Firebase Auth UID (set by the service, not the form) */
-  applicantUid: string;
-  /** Applicant's email, for follow-up */
-  email: string;
+/** Firestore collection for approved creator profiles */
+const CREATORS_COLLECTION = 'creators';
+
+// ─── ApplicationStatus ────────────────────────────────────────────────────────
+
+/**
+ * Convenience alias that adds 'none' (no application found) to CreatorStatus.
+ * Used only at the service boundary — not stored in Firestore.
+ */
+export type ApplicationStatus = 'none' | 'pending' | 'approved' | 'rejected';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the Firebase Auth UID of the currently signed-in user, or null.
+ */
+export function getCurrentUid(): string | null {
+  if (!isFirebaseConfigured()) return null;
+  try {
+    const auth = getAuth(getFirebaseApp());
+    return auth.currentUser?.uid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derives two-letter initials from a display name.
+ * "Sophia Chen" → "SC", "Marco" → "MA"
+ */
+export function deriveInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '??';
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * Maps a raw Firestore creator document to the UI Creator type.
+ * Handles the displayName → name mapping and fills computed fields.
+ */
+function mapFirestoreCreator(docId: string, data: Record<string, unknown>): Creator {
+  const displayName = (data.displayName as string | undefined) ?? (data.name as string | undefined) ?? '';
+  return {
+    id: docId,
+    name: displayName,
+    initials: (data.initials as string | undefined) ?? deriveInitials(displayName),
+    bio: (data.bio as string | undefined) ?? '',
+    avatar: data.avatar as string | undefined,
+    instagram: data.instagram as string | undefined,
+    youtube: data.youtube as string | undefined,
+    tiktok: data.tiktok as string | undefined,
+    website: data.website as string | undefined,
+    rating: (data.rating as number | undefined) ?? 0,
+    followers: (data.followers as number | undefined) ?? 0,
+    totalJourneys: (data.totalJourneys as number | undefined) ?? 0,
+    creatorType: (data.creatorType as Creator['creatorType']) ?? 'community',
+    creatorSubscription: data.creatorSubscription as CreatorSubscription | undefined,
+    userId: data.userId as string | undefined,
+    isDemo: false,
+  };
 }
 
 // ─── Creator reads ────────────────────────────────────────────────────────────
 
 /**
- * Returns all approved real creators from Firestore.
+ * Returns all approved creators from Firestore.
  *
  * Strategy:
- *  1. Firebase not configured → return seed creators (all isDemo: true)
- *  2. Firestore has 0 approved creators → return seed creators as fallback
- *  3. Otherwise → return only real creators (seed data suppressed)
+ *  1. Firebase not configured → seed creators (all isDemo: true)
+ *  2. Firestore `creators` collection is empty → seed fallback
+ *  3. Otherwise → Firestore creators only (seed suppressed)
  *
- * This means the Discover screen always has content, even before
- * any real creator has been approved.
+ * The `creators` collection stores ONLY approved creators — no status filter needed.
  */
 export async function getApprovedCreators(): Promise<Creator[]> {
   if (!isFirebaseConfigured()) {
@@ -73,28 +139,21 @@ export async function getApprovedCreators(): Promise<Creator[]> {
   try {
     const db = getFirestoreDb();
     const q = query(
-      collection(db, COLLECTION),
-      where('status', '==', 'approved'),
-      orderBy('approvedAt', 'desc')
+      collection(db, CREATORS_COLLECTION),
+      orderBy('createdAt', 'desc')
     );
     const snap = await getDocs(q);
-    const live: Creator[] = snap.docs.map(
-      (d) => ({ id: d.id, ...d.data(), isDemo: false } as Creator)
-    );
-
-    if (live.length === 0) {
-      // No real creators yet — show seed data
-      return [...CREATORS];
+    if (snap.empty) {
+      return [...CREATORS]; // fallback to seed data
     }
-
-    return live;
+    return snap.docs.map((d) => mapFirestoreCreator(d.id, d.data() as Record<string, unknown>));
   } catch {
     return [...CREATORS];
   }
 }
 
 /**
- * Returns a single creator by ID.
+ * Returns a single creator by Firestore document ID.
  * Checks Firestore first, falls back to seed data.
  */
 export async function getCreatorById(id: string): Promise<Creator | null> {
@@ -104,9 +163,9 @@ export async function getCreatorById(id: string): Promise<Creator | null> {
 
   try {
     const db = getFirestoreDb();
-    const snap = await getDoc(doc(db, COLLECTION, id));
+    const snap = await getDoc(doc(db, CREATORS_COLLECTION, id));
     if (snap.exists()) {
-      return { id: snap.id, ...snap.data(), isDemo: false } as Creator;
+      return mapFirestoreCreator(snap.id, snap.data() as Record<string, unknown>);
     }
   } catch {
     // fall through to seed lookup
@@ -124,10 +183,7 @@ export async function hasRealCreators(): Promise<boolean> {
 
   try {
     const db = getFirestoreDb();
-    const q = query(
-      collection(db, COLLECTION),
-      where('status', '==', 'approved')
-    );
+    const q = query(collection(db, CREATORS_COLLECTION), limit(1));
     const snap = await getDocs(q);
     return !snap.empty;
   } catch {
@@ -135,62 +191,47 @@ export async function hasRealCreators(): Promise<boolean> {
   }
 }
 
-// ─── Application status ───────────────────────────────────────────────────────
-
-export type ApplicationStatus = 'none' | 'pending' | 'approved' | 'rejected';
-
-export interface CreatorApplication {
-  id: string;
-  applicantUid: string;
-  name: string;
-  email: string;
-  bio: string;
-  instagram?: string;
-  youtube?: string;
-  website?: string;
-  motivation: string;
-  status: ApplicationStatus;
-  /** ISO string — set by the service when the doc is created */
-  submittedAt: unknown;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Application reads ────────────────────────────────────────────────────────
 
 /**
- * Returns the Firebase Auth UID of the currently signed-in user, or null.
- * Used by screens that need to personalise Firestore reads/writes.
+ * Application document as returned by the service layer.
+ * `applicationId` is the Firestore document ID.
  */
-export function getCurrentUid(): string | null {
-  if (!isFirebaseConfigured()) return null;
-  try {
-    const auth = getAuth(getFirebaseApp());
-    return auth.currentUser?.uid ?? null;
-  } catch {
-    return null;
-  }
+export interface CreatorApplicationDoc {
+  applicationId: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  instagram?: string;
+  youtube?: string;
+  tiktok?: string;
+  website?: string;
+  travelExperience: string;
+  countriesVisited?: string;
+  motivation: string;
+  status: ApplicationStatus;
+  createdAt: unknown;
 }
-
-// ─── Application reads ────────────────────────────────────────────────────────
 
 /**
  * Returns the most recent creator application for this UID.
  * Returns null if the user has never applied or Firebase is not configured.
  */
-export async function getMyApplication(uid: string): Promise<CreatorApplication | null> {
+export async function getMyApplication(uid: string): Promise<CreatorApplicationDoc | null> {
   if (!isFirebaseConfigured() || !uid) return null;
 
   try {
     const db = getFirestoreDb();
     const q = query(
-      collection(db, 'creator_applications'),
-      where('applicantUid', '==', uid),
-      orderBy('submittedAt', 'desc'),
+      collection(db, APPLICATIONS_COLLECTION),
+      where('userId', '==', uid),
+      orderBy('createdAt', 'desc'),
       limit(1)
     );
     const snap = await getDocs(q);
     if (snap.empty) return null;
     const d = snap.docs[0];
-    return { id: d.id, ...d.data() } as CreatorApplication;
+    return { applicationId: d.id, ...d.data() } as CreatorApplicationDoc;
   } catch {
     return null;
   }
@@ -200,20 +241,19 @@ export async function getMyApplication(uid: string): Promise<CreatorApplication 
  * Returns the application status for this UID:
  *   'none'     — no application found
  *   'pending'  — submitted, awaiting review
- *   'approved' — approved; creator can publish
+ *   'approved' — approved (creator doc also exists in creators collection)
  *   'rejected' — not accepted
  */
 export async function getMyApplicationStatus(uid: string): Promise<ApplicationStatus> {
   const app = await getMyApplication(uid);
-  return app?.status ?? 'none';
+  return (app?.status as ApplicationStatus) ?? 'none';
 }
 
 /**
- * Returns the approved Creator doc for this UID, or null.
- * Used by upload-journey to gate access.
+ * Returns the approved Creator profile for this UID, or null.
  *
- * Approved creators have a document in the `creators` collection
- * with their uid stored as `applicantUid`.
+ * The `creators` collection stores only approved creators.
+ * A document existing here is the authoritative gate for journey uploads.
  */
 export async function getMyApprovedCreatorProfile(uid: string): Promise<Creator | null> {
   if (!isFirebaseConfigured() || !uid) return null;
@@ -221,28 +261,44 @@ export async function getMyApprovedCreatorProfile(uid: string): Promise<Creator 
   try {
     const db = getFirestoreDb();
     const q = query(
-      collection(db, COLLECTION),
-      where('applicantUid', '==', uid),
-      where('status', '==', 'approved'),
+      collection(db, CREATORS_COLLECTION),
+      where('userId', '==', uid),
       limit(1)
     );
     const snap = await getDocs(q);
     if (snap.empty) return null;
     const d = snap.docs[0];
-    return { id: d.id, ...d.data(), isDemo: false } as Creator;
+    return mapFirestoreCreator(d.id, d.data() as Record<string, unknown>);
   } catch {
     return null;
   }
+}
+
+/**
+ * Returns true if the given UID belongs to an approved creator who can
+ * publish journeys, and has not exceeded their plan's journey limit.
+ */
+export async function canPublishJourney(uid: string): Promise<boolean> {
+  const profile = await getMyApprovedCreatorProfile(uid);
+  if (!profile) return false;
+
+  const sub = profile.creatorSubscription;
+  if (!sub) return true; // no subscription info — assume allowed
+
+  const { journeyLimit, journeysUsed } = sub;
+  if (journeyLimit === null) return true; // pro plan — unlimited
+  return journeysUsed < journeyLimit;
 }
 
 // ─── Creator application write ────────────────────────────────────────────────
 
 /**
  * Submits a creator application to Firestore.
- * Idempotent: if the user already has a pending application, returns its ID
- * without creating a duplicate.
  *
- * Applications start with status='pending' and require manual approval.
+ * Idempotency: if the user already has any application on file (regardless of
+ * status), returns the existing document ID without creating a duplicate.
+ *
+ * Rejects anonymous submissions (userId must be a real Firebase Auth UID).
  *
  * @returns The Firestore document ID (new or existing).
  */
@@ -250,30 +306,24 @@ export async function submitCreatorApplication(
   payload: CreatorApplicationPayload
 ): Promise<string> {
   if (!isFirebaseConfigured()) {
-    throw new Error(
-      'Firebase is not configured. Cannot submit application.'
-    );
+    throw new Error('Firebase is not configured. Cannot submit application.');
   }
 
-  if (!payload.applicantUid || payload.applicantUid === 'pending-auth') {
-    throw new Error(
-      'You must be signed in to apply as a creator.'
-    );
+  if (!payload.userId || payload.userId === 'pending-auth') {
+    throw new Error('You must be signed in to apply as a creator.');
   }
 
-  // Idempotency: prevent duplicate submissions
-  const existing = await getMyApplication(payload.applicantUid);
+  // Idempotency guard — prevent duplicate submissions
+  const existing = await getMyApplication(payload.userId);
   if (existing) {
-    // Already applied — return existing doc ID; status may be pending/approved/rejected
-    return existing.id;
+    return existing.applicationId;
   }
 
   const db = getFirestoreDb();
-  const ref = await addDoc(collection(db, 'creator_applications'), {
+  const ref = await addDoc(collection(db, APPLICATIONS_COLLECTION), {
     ...payload,
-    status: 'pending' as ApplicationStatus,
-    isDemo: false,
-    submittedAt: serverTimestamp(),
+    status: 'pending' as const,
+    createdAt: serverTimestamp(),
   });
   return ref.id;
 }

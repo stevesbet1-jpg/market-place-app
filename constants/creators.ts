@@ -1,17 +1,39 @@
+import type { CreatorType, CreatorSubscription } from '../lib/creatorTypes';
+
 export interface Creator {
+  /** Firestore document ID (or seed slug for demo creators) */
   id: string;
+  /** Public display name — maps to `displayName` in Firestore */
   name: string;
-  /** Two-letter initials displayed inside the avatar circle */
+  /** Two-letter initials displayed when no avatar is available */
   initials: string;
   bio: string;
   instagram?: string;
   youtube?: string;
+  tiktok?: string;
   website?: string;
+  /** URL to the creator's profile avatar image */
+  avatar?: string;
   rating: number;
   /** Total platform followers */
   followers: number;
   /** Number of published journeys */
   totalJourneys: number;
+  /**
+   * Verification tier — 'verified' | 'community'.
+   * Defaults to 'community' for new creators and demo data.
+   */
+  creatorType?: CreatorType;
+  /**
+   * Subscription plan details. Present on real creators; absent on seed data.
+   * See lib/creatorTypes.ts — CreatorSubscription.
+   */
+  creatorSubscription?: CreatorSubscription;
+  /**
+   * Firebase Auth UID of the creator's user account.
+   * Empty string for demo/seed creators (no real user).
+   */
+  userId?: string;
   /**
    * true  — populated from hardcoded seed data; not a real person on the platform.
    * false — a real creator who signed up via creator onboarding.

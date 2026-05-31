@@ -236,7 +236,9 @@ export default function ApplyCreatorScreen() {
   const [bio, setBio] = useState('');
   const [instagram, setInstagram] = useState('');
   const [youtube, setYoutube] = useState('');
+  const [tiktok, setTiktok] = useState('');
   const [website, setWebsite] = useState('');
+  const [countriesVisited, setCountriesVisited] = useState('');
   const [motivation, setMotivation] = useState('');
 
   const validate = useCallback((): boolean => {
@@ -258,6 +260,7 @@ export default function ApplyCreatorScreen() {
     }
     return true;
   }, [name, email, bio, motivation]);
+  // nb: tiktok, countriesVisited, website are optional — not validated
 
   const handleSubmit = useCallback(async () => {
     if (!validate()) return;
@@ -272,14 +275,16 @@ export default function ApplyCreatorScreen() {
     setSubmitting(true);
     try {
       await submitCreatorApplication({
-        name: name.trim(),
+        userId: currentUid,
+        fullName: name.trim(),
         email: email.trim(),
-        bio: bio.trim(),
+        travelExperience: bio.trim(),
         instagram: instagram.trim() || undefined,
         youtube: youtube.trim() || undefined,
+        tiktok: tiktok.trim() || undefined,
         website: website.trim() || undefined,
+        countriesVisited: countriesVisited.trim() || undefined,
         motivation: motivation.trim(),
-        applicantUid: currentUid,
       });
       setExistingEmail(email.trim());
       setSubmitted(true);
@@ -289,7 +294,7 @@ export default function ApplyCreatorScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [validate, name, email, bio, instagram, youtube, website, motivation]);
+  }, [validate, name, email, bio, instagram, youtube, tiktok, website, countriesVisited, motivation]);
 
   // ── Loading ────────────────────────────────────────────────────────────
 
@@ -409,7 +414,7 @@ export default function ApplyCreatorScreen() {
             autoCorrect={false}
           />
 
-          <FieldLabel text="Short Bio" required />
+          <FieldLabel text="Travel Experience" required />
           <TextInput
             style={[styles.input, styles.textArea]}
             value={bio}
@@ -422,6 +427,17 @@ export default function ApplyCreatorScreen() {
             maxLength={400}
           />
           <Text style={styles.hint}>{bio.length}/400</Text>
+
+          <FieldLabel text="Countries Visited" />
+          <TextInput
+            style={styles.input}
+            value={countriesVisited}
+            onChangeText={setCountriesVisited}
+            placeholder="e.g. Japan, Morocco, Peru, Iceland"
+            placeholderTextColor={LuxuryColors.textTertiary}
+            autoCapitalize="words"
+            autoCorrect={false}
+          />
 
           {/* Social Presence */}
           <SectionHeader title="Social Presence" />
@@ -446,6 +462,17 @@ export default function ApplyCreatorScreen() {
             value={youtube}
             onChangeText={setYoutube}
             placeholder="YourChannelName or full URL"
+            placeholderTextColor={LuxuryColors.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <FieldLabel text="TikTok Handle" />
+          <TextInput
+            style={styles.input}
+            value={tiktok}
+            onChangeText={setTiktok}
+            placeholder="@yourhandle"
             placeholderTextColor={LuxuryColors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
