@@ -69,10 +69,12 @@ export interface CreatorJourney {
 
   // ── Lifecycle ───────────────────────────────────────────────────────
   /**
-   * 'draft'     — saved by creator but not submitted
-   * 'published' — live and visible to users
+   * 'draft'          — saved by creator but not submitted
+   * 'pending_review' — submitted for editorial review
+   * 'published'      — live and visible to users
+   * 'rejected'       — declined by editorial team
    */
-  status: 'draft' | 'published';
+  status: 'draft' | 'pending_review' | 'published' | 'rejected';
   /**
    * true  — populated from hardcoded seed data (constants/journeys.ts)
    * false — real creator upload stored in Firestore

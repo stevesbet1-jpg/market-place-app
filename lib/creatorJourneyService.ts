@@ -83,6 +83,32 @@ export async function saveDraftJourney(
 }
 
 /**
+ * Submits a new journey for editorial review (status: pending_review).
+ * Not visible to users until approved and status set to 'published'.
+ *
+ * @returns The new Firestore document ID.
+ */
+export async function submitJourneyForReview(
+  payload: JourneyUploadPayload
+): Promise<string> {
+  if (!isFirebaseConfigured()) {
+    throw new Error(
+      'Firebase is not configured. Cannot submit journey for review.'
+    );
+  }
+  const db = getFirestoreDb();
+  const ref = await addDoc(collection(db, COLLECTION), {
+    ...payload,
+    rating: 0,
+    savedCount: 0,
+    status: 'pending_review',
+    isDemo: false,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+/**
  * Updates an existing journey document (e.g. to publish a draft).
  */
 export async function updateCreatorJourney(

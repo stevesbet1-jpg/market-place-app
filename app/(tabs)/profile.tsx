@@ -288,6 +288,39 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* Creator */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Creator</Text>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push('/(tabs)/creator-dashboard')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.menuIcon}>
+            <Ionicons name="briefcase-outline" size={24} color={LuxuryColors.textSecondary} />
+          </View>
+          <View style={styles.menuInfo}>
+            <Text style={styles.menuTitle}>Creator Dashboard</Text>
+            <Text style={styles.menuDesc}>Manage your journeys and analytics</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push('/(tabs)/apply-creator')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.menuIcon}>
+            <Ionicons name="create-outline" size={24} color={LuxuryColors.textSecondary} />
+          </View>
+          <View style={styles.menuInfo}>
+            <Text style={styles.menuTitle}>Apply as Creator</Text>
+            <Text style={styles.menuDesc}>Join our creator community</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+
       {/* Sign Out */}
       <TouchableOpacity
         style={styles.signOutButton}

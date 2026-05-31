@@ -101,9 +101,9 @@ function StatusView({
       icon: 'checkmark-circle' as const,
       iconColor: LuxuryColors.success,
       title: "You're Approved",
-      body: 'Your creator application was approved. Subscribe to the Creator plan and start publishing journeys.',
-      cta: 'Upload a Journey',
-      ctaAction: () => router.push('/(tabs)/upload-journey'),
+      body: 'Your creator application was approved. Open your Creator Dashboard to manage journeys and start publishing.',
+      cta: 'Open Creator Dashboard',
+      ctaAction: () => router.push('/(tabs)/creator-dashboard'),
       ctaStyle: 'gold' as const,
     },
     rejected: {
