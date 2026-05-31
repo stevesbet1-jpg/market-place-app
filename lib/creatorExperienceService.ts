@@ -64,16 +64,24 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     budget: (data.budget as CreatorExperience['budget']) ?? '$$',
     coverImage: (data.coverImage as string | null) ?? null,
     description: (data.description as string) ?? '',
+    whoIsItFor: (data.whoIsItFor as string) ?? '',
+    highlights: (data.highlights as string[]) ?? [],
     creatorNotes: (data.creatorNotes as string) ?? '',
     tips: (data.tips as string[]) ?? [],
+    bestTimeToVisit: (data.bestTimeToVisit as string) ?? '',
+    warnings: (data.warnings as string) ?? '',
     hiddenGems: (data.hiddenGems as HiddenGem[]) ?? [],
     restaurants: (data.restaurants as Restaurant[]) ?? [],
     hotels: (data.hotels as Hotel[]) ?? [],
     dailyPlan: (data.dailyPlan as DailyPlanEntry[]) ?? [],
+    freePreview: Boolean(data.freePreview),
     status: (data.status as CreatorExperience['status']) ?? 'draft',
     published: Boolean(data.published),
+    views: (data.views as number) ?? 0,
+    unlocks: (data.unlocks as number) ?? 0,
     createdAt: null,
     updatedAt: null,
+    publishedAt: null,
   };
 }
 
@@ -144,6 +152,7 @@ export async function publishExperience(experienceId: string): Promise<void> {
   await updateDoc(doc(db, COLLECTION, experienceId), {
     status: 'published',
     published: true,
+    publishedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 }

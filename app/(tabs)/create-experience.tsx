@@ -60,9 +60,9 @@ interface DayDraft {
   description: string;
 }
 
-interface HotelDraft { name: string; address: string; notes: string; }
-interface RestaurantDraft { name: string; description: string; }
-interface HiddenGemDraft { name: string; description: string; }
+interface HotelDraft { name: string; address: string; notes: string; mapsLink: string; }
+interface RestaurantDraft { name: string; description: string; mapsLink: string; }
+interface HiddenGemDraft { name: string; description: string; mapsLink: string; }
 
 type AccessStatus = 'no-auth' | 'none' | 'pending' | 'rejected' | 'approved';
 
@@ -198,8 +198,13 @@ export default function CreateExperienceScreen() {
   const [budget, setBudget] = useState<BudgetRange>('$$');
   const [coverImage, setCoverImage] = useState('');
   const [description, setDescription] = useState('');
+  const [whoIsItFor, setWhoIsItFor] = useState('');
+  const [highlights, setHighlights] = useState<string[]>([]);
   const [creatorNotes, setCreatorNotes] = useState('');
   const [tipsText, setTipsText] = useState('');
+  const [bestTimeToVisit, setBestTimeToVisit] = useState('');
+  const [warnings, setWarnings] = useState('');
+  const [freePreview, setFreePreview] = useState(false);
   const [dailyPlan, setDailyPlan] = useState<DayDraft[]>([{ day: 1, title: '', description: '' }]);
   const [hotels, setHotels] = useState<HotelDraft[]>([]);
   const [restaurants, setRestaurants] = useState<RestaurantDraft[]>([]);
@@ -226,16 +231,21 @@ export default function CreateExperienceScreen() {
           setBudget(exp.budget);
           setCoverImage(exp.coverImage ?? '');
           setDescription(exp.description);
+          setWhoIsItFor(exp.whoIsItFor ?? '');
+          setHighlights(exp.highlights ?? []);
           setCreatorNotes(exp.creatorNotes ?? '');
           setTipsText(exp.tips.join(', '));
+          setBestTimeToVisit(exp.bestTimeToVisit ?? '');
+          setWarnings(exp.warnings ?? '');
+          setFreePreview(exp.freePreview ?? false);
           setDailyPlan(
             exp.dailyPlan.length > 0
               ? exp.dailyPlan.map((d) => ({ day: d.day, title: d.title, description: d.description }))
               : [{ day: 1, title: '', description: '' }]
           );
-          setHotels(exp.hotels.map((h) => ({ name: h.name, address: h.address, notes: h.notes ?? '' })));
-          setRestaurants(exp.restaurants.map((r) => ({ name: r.name, description: r.description })));
-          setHiddenGems(exp.hiddenGems.map((g) => ({ name: g.name, description: g.description })));
+          setHotels(exp.hotels.map((h) => ({ name: h.name, address: h.address, notes: h.notes ?? '', mapsLink: h.mapsLink ?? '' })));
+          setRestaurants(exp.restaurants.map((r) => ({ name: r.name, description: r.description, mapsLink: r.mapsLink ?? '' })));
+          setHiddenGems(exp.hiddenGems.map((g) => ({ name: g.name, description: g.description, mapsLink: g.mapsLink ?? '' })));
         }
       } finally {
         if (!cancelled) setLoadingExisting(false);
@@ -262,22 +272,27 @@ export default function CreateExperienceScreen() {
     );
   }, []);
 
+  // ── Highlight helpers ────────────────────────────────────────────────────
+  const addHighlight = useCallback(() => setHighlights((p) => [...p, '']), []);
+  const removeHighlight = useCallback((i: number) => setHighlights((p) => p.filter((_, idx) => idx !== i)), []);
+  const updateHighlight = useCallback((i: number, v: string) => setHighlights((p) => p.map((h, idx) => idx === i ? v : h)), []);
+
   // ── Hotel helpers ────────────────────────────────────────────────────────
-  const addHotel = useCallback(() => setHotels((p) => [...p, { name: '', address: '', notes: '' }]), []);
+  const addHotel = useCallback(() => setHotels((p) => [...p, { name: '', address: '', notes: '', mapsLink: '' }]), []);
   const removeHotel = useCallback((i: number) => setHotels((p) => p.filter((_, idx) => idx !== i)), []);
-  const updateHotel = useCallback((i: number, f: 'name' | 'address' | 'notes', v: string) =>
+  const updateHotel = useCallback((i: number, f: 'name' | 'address' | 'notes' | 'mapsLink', v: string) =>
     setHotels((p) => p.map((h, idx) => idx === i ? { ...h, [f]: v } : h)), []);
 
   // ── Restaurant helpers ────────────────────────────────────────────────────
-  const addRestaurant = useCallback(() => setRestaurants((p) => [...p, { name: '', description: '' }]), []);
+  const addRestaurant = useCallback(() => setRestaurants((p) => [...p, { name: '', description: '', mapsLink: '' }]), []);
   const removeRestaurant = useCallback((i: number) => setRestaurants((p) => p.filter((_, idx) => idx !== i)), []);
-  const updateRestaurant = useCallback((i: number, f: 'name' | 'description', v: string) =>
+  const updateRestaurant = useCallback((i: number, f: 'name' | 'description' | 'mapsLink', v: string) =>
     setRestaurants((p) => p.map((r, idx) => idx === i ? { ...r, [f]: v } : r)), []);
 
   // ── Hidden Gem helpers ────────────────────────────────────────────────────
-  const addHiddenGem = useCallback(() => setHiddenGems((p) => [...p, { name: '', description: '' }]), []);
+  const addHiddenGem = useCallback(() => setHiddenGems((p) => [...p, { name: '', description: '', mapsLink: '' }]), []);
   const removeHiddenGem = useCallback((i: number) => setHiddenGems((p) => p.filter((_, idx) => idx !== i)), []);
-  const updateHiddenGem = useCallback((i: number, f: 'name' | 'description', v: string) =>
+  const updateHiddenGem = useCallback((i: number, f: 'name' | 'description' | 'mapsLink', v: string) =>
     setHiddenGems((p) => p.map((g, idx) => idx === i ? { ...g, [f]: v } : g)), []);
 
   // ── Validation ────────────────────────────────────────────────────────
@@ -304,20 +319,34 @@ export default function CreateExperienceScreen() {
       budget,
       coverImage: coverImage.trim() || null,
       description: description.trim(),
+      whoIsItFor: whoIsItFor.trim(),
+      highlights: highlights.map((h) => h.trim()).filter(Boolean),
       creatorNotes: creatorNotes.trim(),
       tips: tipsText.split(',').map((s) => s.trim()).filter(Boolean),
-      hiddenGems: hiddenGems.filter((g) => g.name.trim()),
-      restaurants: restaurants.filter((r) => r.name.trim()),
+      bestTimeToVisit: bestTimeToVisit.trim(),
+      warnings: warnings.trim(),
+      hiddenGems: hiddenGems.filter((g) => g.name.trim()).map((g) => ({
+        name: g.name,
+        description: g.description,
+        ...(g.mapsLink.trim() ? { mapsLink: g.mapsLink.trim() } : {}),
+      })),
+      restaurants: restaurants.filter((r) => r.name.trim()).map((r) => ({
+        name: r.name,
+        description: r.description,
+        ...(r.mapsLink.trim() ? { mapsLink: r.mapsLink.trim() } : {}),
+      })),
       hotels: hotels.filter((h) => h.name.trim()).map((h) => ({
         name: h.name,
         address: h.address,
         ...(h.notes.trim() ? { notes: h.notes.trim() } : {}),
+        ...(h.mapsLink.trim() ? { mapsLink: h.mapsLink.trim() } : {}),
       })),
       dailyPlan: dailyPlan.map((d) => ({
         day: d.day,
         title: d.title.trim(),
         description: d.description.trim(),
       })),
+      freePreview,
       published: false,
     };
   }
@@ -345,7 +374,7 @@ export default function CreateExperienceScreen() {
     } finally {
       setSaving(false);
     }
-  }, [title, country, city, travelStyle, duration, budget, coverImage, description, creatorNotes, tipsText, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
+  }, [title, country, city, travelStyle, duration, budget, coverImage, description, whoIsItFor, highlights, creatorNotes, tipsText, bestTimeToVisit, warnings, freePreview, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
 
   // ── Publish ──────────────────────────────────────────────────────────
   const handlePublish = useCallback(async () => {
@@ -383,7 +412,7 @@ export default function CreateExperienceScreen() {
         },
       ]
     );
-  }, [title, country, city, travelStyle, duration, budget, coverImage, description, creatorNotes, tipsText, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
+  }, [title, country, city, travelStyle, duration, budget, coverImage, description, whoIsItFor, highlights, creatorNotes, tipsText, bestTimeToVisit, warnings, freePreview, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking || loadingExisting) {
@@ -546,6 +575,41 @@ export default function CreateExperienceScreen() {
           textAlignVertical="top"
         />
 
+        <FieldLabel text="Who Is It For" />
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Solo adventurers, couples seeking romance, families with teens…"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={whoIsItFor}
+          onChangeText={setWhoIsItFor}
+          multiline
+          numberOfLines={2}
+          maxLength={300}
+          textAlignVertical="top"
+        />
+
+        <FieldLabel text="Highlights" />
+        <Text style={styles.hint}>Key selling points — one per item.</Text>
+        {highlights.map((hl, i) => (
+          <View key={i} style={styles.inlineRow}>
+            <TextInput
+              style={[styles.input, styles.flex1, { marginBottom: 0 }]}
+              placeholder={`Highlight ${i + 1}`}
+              placeholderTextColor={LuxuryColors.textTertiary}
+              value={hl}
+              onChangeText={(v) => updateHighlight(i, v)}
+              maxLength={120}
+            />
+            <TouchableOpacity onPress={() => removeHighlight(i)} style={styles.removeInlineBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle-outline" size={18} color={LuxuryColors.error} />
+            </TouchableOpacity>
+          </View>
+        ))}
+        <TouchableOpacity style={styles.addRowBtn} onPress={addHighlight} activeOpacity={0.7}>
+          <Ionicons name="add-circle-outline" size={18} color={LuxuryColors.gold} />
+          <Text style={styles.addRowText}>Add Highlight</Text>
+        </TouchableOpacity>
+
         <FieldLabel text="Creator Notes" />
         <TextInput
           style={[styles.input, styles.textArea]}
@@ -559,10 +623,10 @@ export default function CreateExperienceScreen() {
           textAlignVertical="top"
         />
 
-        {/* ── Creator Tips ── */}
-        <SectionHeader title="Creator Tips" />
+        {/* ── Creator Notes ── */}
+        <SectionHeader title="Creator Notes" />
 
-        <FieldLabel text="Personal Tips" />
+        <FieldLabel text="Local Tips" />
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Best time to visit, local etiquette, must-know tips… (comma-separated)"
@@ -573,6 +637,32 @@ export default function CreateExperienceScreen() {
           numberOfLines={3}
           textAlignVertical="top"
           maxLength={800}
+        />
+
+        <FieldLabel text="Best Time To Visit" />
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="April–May for cherry blossoms, avoid August humidity…"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={bestTimeToVisit}
+          onChangeText={setBestTimeToVisit}
+          multiline
+          numberOfLines={2}
+          textAlignVertical="top"
+          maxLength={400}
+        />
+
+        <FieldLabel text="Warnings" />
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Tourist traps to avoid, safety notes, seasonal closures…"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={warnings}
+          onChangeText={setWarnings}
+          multiline
+          numberOfLines={2}
+          textAlignVertical="top"
+          maxLength={400}
         />
 
         {/* ── Hidden Gems ── */}
@@ -607,6 +697,18 @@ export default function CreateExperienceScreen() {
               numberOfLines={2}
               textAlignVertical="top"
               maxLength={300}
+            />
+            <FieldLabel text="Google Maps Link" />
+            <TextInput
+              style={[styles.input, { marginBottom: 0 }]}
+              placeholder="https://maps.google.com/…"
+              placeholderTextColor={LuxuryColors.textTertiary}
+              value={gem.mapsLink}
+              onChangeText={(v) => updateHiddenGem(i, 'mapsLink', v)}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={500}
             />
           </View>
         ))}
@@ -647,6 +749,18 @@ export default function CreateExperienceScreen() {
               numberOfLines={2}
               textAlignVertical="top"
               maxLength={300}
+            />
+            <FieldLabel text="Google Maps Link" />
+            <TextInput
+              style={[styles.input, { marginBottom: 0 }]}
+              placeholder="https://maps.google.com/…"
+              placeholderTextColor={LuxuryColors.textTertiary}
+              value={r.mapsLink}
+              onChangeText={(v) => updateRestaurant(i, 'mapsLink', v)}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={500}
             />
           </View>
         ))}
@@ -696,6 +810,18 @@ export default function CreateExperienceScreen() {
               numberOfLines={2}
               textAlignVertical="top"
               maxLength={300}
+            />
+            <FieldLabel text="Google Maps Link" />
+            <TextInput
+              style={[styles.input, { marginBottom: 0 }]}
+              placeholder="https://maps.google.com/…"
+              placeholderTextColor={LuxuryColors.textTertiary}
+              value={h.mapsLink}
+              onChangeText={(v) => updateHotel(i, 'mapsLink', v)}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={500}
             />
           </View>
         ))}
@@ -751,6 +877,50 @@ export default function CreateExperienceScreen() {
           <Ionicons name="add-circle-outline" size={20} color={LuxuryColors.gold} />
           <Text style={styles.addDayText}>Add Another Day</Text>
         </TouchableOpacity>
+
+        {/* ── Pricing ── */}
+        <SectionHeader title="Pricing" />
+        <Text style={styles.hint}>Control what travelers can access before subscribing.</Text>
+
+        <TouchableOpacity
+          style={[styles.toggleRow, freePreview && styles.toggleRowActive]}
+          onPress={() => setFreePreview((v) => !v)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.toggleInfo}>
+            <Text style={[styles.toggleLabel, freePreview && styles.toggleLabelActive]}>
+              Free Preview Enabled
+            </Text>
+            <Text style={styles.toggleSub}>
+              First section visible to non-subscribers
+            </Text>
+          </View>
+          <View style={[styles.toggleSwitch, freePreview && styles.toggleSwitchActive]}>
+            <Ionicons
+              name={freePreview ? 'checkmark-circle' : 'ellipse-outline'}
+              size={22}
+              color={freePreview ? LuxuryColors.success : LuxuryColors.textTertiary}
+            />
+          </View>
+        </TouchableOpacity>
+
+        <View style={[styles.toggleRow, !freePreview && styles.toggleRowActive]}>
+          <View style={styles.toggleInfo}>
+            <Text style={[styles.toggleLabel, !freePreview && styles.toggleLabelActive]}>
+              Premium Content Locked
+            </Text>
+            <Text style={styles.toggleSub}>
+              Full experience requires subscription
+            </Text>
+          </View>
+          <View style={styles.toggleSwitch}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color={!freePreview ? LuxuryColors.gold : LuxuryColors.textTertiary}
+            />
+          </View>
+        </View>
 
         {/* ── Actions ── */}
         <View style={styles.actionsSection}>
@@ -967,6 +1137,51 @@ const styles = StyleSheet.create({
     color: LuxuryColors.gold,
     fontWeight: '500',
   },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.sm,
+  },
+  removeInlineBtn: {
+    padding: LuxurySpacing.xs,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: LuxuryColors.divider,
+    borderRadius: LuxuryBorderRadius.md,
+    padding: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.sm,
+    gap: LuxurySpacing.md,
+  },
+  toggleRowActive: {
+    borderColor: `${LuxuryColors.gold}60`,
+    backgroundColor: `${LuxuryColors.gold}08`,
+  },
+  toggleInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  toggleLabel: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+  },
+  toggleLabelActive: {
+    color: LuxuryColors.textPrimary,
+  },
+  toggleSub: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+  },
+  toggleSwitch: {
+    width: 32,
+    alignItems: 'center',
+  },
+  toggleSwitchActive: {},
   actionsSection: {
     gap: LuxurySpacing.sm,
     marginTop: LuxurySpacing.sm,

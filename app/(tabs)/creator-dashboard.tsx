@@ -61,6 +61,7 @@ import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 // ─── Section types ────────────────────────────────────────────────────────────
 
 type Section = 'overview' | 'experiences' | 'subscription' | 'analytics';
+type ExpFilter = 'all' | 'drafts' | 'published';
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'overview', label: 'Overview' },
@@ -429,6 +430,7 @@ export default function CreatorDashboardScreen() {
 
   // ── Active section ───────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<Section>('overview');
+  const [activeExpFilter, setActiveExpFilter] = useState<ExpFilter>('all');
 
   // ── Load creator profile ─────────────────────────────────────────────
   const loadCreatorProfile = useCallback(async () => {
@@ -482,6 +484,8 @@ export default function CreatorDashboardScreen() {
   const publishedCount = experiences.filter((e) => e.status === 'published').length;
   const pendingCount = experiences.filter((e) => e.status === 'pending_review').length;
   const draftCount = experiences.filter((e) => e.status === 'draft').length;
+  const totalViews = experiences.reduce((sum, e) => sum + (e.views ?? 0), 0);
+  const totalUnlocks = experiences.reduce((sum, e) => sum + (e.unlocks ?? 0), 0);
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking) {
@@ -526,9 +530,14 @@ export default function CreatorDashboardScreen() {
             <StatCard label="Published" value={publishedCount} icon="checkmark-circle-outline" />
           </View>
           <View style={[sectionStyles.statRow, { marginTop: LuxurySpacing.sm }]}>
-            <StatCard label="Pending Review" value={pendingCount} icon="time-outline" />
-            <View style={{ width: LuxurySpacing.sm }} />
             <StatCard label="Drafts" value={draftCount} icon="document-text-outline" />
+            <View style={{ width: LuxurySpacing.sm }} />
+            <StatCard label="Pending Review" value={pendingCount} icon="time-outline" />
+          </View>
+          <View style={[sectionStyles.statRow, { marginTop: LuxurySpacing.sm }]}>
+            <StatCard label="Total Views" value={totalViews} icon="eye-outline" />
+            <View style={{ width: LuxurySpacing.sm }} />
+            <StatCard label="Total Unlocks" value={totalUnlocks} icon="lock-open-outline" />
           </View>
         </View>
 
@@ -588,9 +597,23 @@ export default function CreatorDashboardScreen() {
       );
     }
 
+    const expFilter = activeExpFilter;
+    const filtered =
+      expFilter === 'drafts'
+        ? experiences.filter((e) => e.status === 'draft')
+        : expFilter === 'published'
+        ? experiences.filter((e) => e.status === 'published')
+        : experiences;
+
+    const EXP_FILTERS: { key: ExpFilter; label: string }[] = [
+      { key: 'all', label: `All (${experiences.length})` },
+      { key: 'drafts', label: `Drafts (${draftCount})` },
+      { key: 'published', label: `Published (${publishedCount})` },
+    ];
+
     return (
       <FlatList
-        data={experiences}
+        data={filtered}
         keyExtractor={(e) => e.id}
         contentContainerStyle={sectionStyles.listContent}
         showsVerticalScrollIndicator={false}
@@ -602,21 +625,44 @@ export default function CreatorDashboardScreen() {
           />
         }
         ListHeaderComponent={
-          <TouchableOpacity
-            style={sectionStyles.createBtn}
-            onPress={() => router.push('/(tabs)/create-experience')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="add-circle-outline" size={22} color={LuxuryColors.background} />
-            <Text style={sectionStyles.createBtnText}>Create Your First Experience</Text>
-          </TouchableOpacity>
+          <View>
+            <TouchableOpacity
+              style={sectionStyles.createBtn}
+              onPress={() => router.push('/(tabs)/create-experience')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add-circle-outline" size={22} color={LuxuryColors.background} />
+              <Text style={sectionStyles.createBtnText}>+ Create Experience</Text>
+            </TouchableOpacity>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={sectionStyles.expFilterBar}
+              contentContainerStyle={sectionStyles.expFilterContent}
+            >
+              {EXP_FILTERS.map((f) => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[sectionStyles.expFilterChip, activeExpFilter === f.key && sectionStyles.expFilterChipActive]}
+                  onPress={() => setActiveExpFilter(f.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[sectionStyles.expFilterText, activeExpFilter === f.key && sectionStyles.expFilterTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
         }
         ListEmptyComponent={
           <View style={sectionStyles.emptyState}>
             <Ionicons name="globe-outline" size={40} color={LuxuryColors.textTertiary} />
-            <Text style={sectionStyles.emptyTitle}>No experiences yet</Text>
+            <Text style={sectionStyles.emptyTitle}>No experiences</Text>
             <Text style={sectionStyles.emptyBody}>
-              Tap "Create Your First Experience" above to get started.
+              {expFilter === 'all'
+                ? 'Tap "+ Create Experience" above to get started.'
+                : `No ${expFilter} experiences yet.`}
             </Text>
           </View>
         }
@@ -695,17 +741,17 @@ export default function CreatorDashboardScreen() {
     return (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sectionStyles.content}>
         <Text style={sectionStyles.sectionIntro}>
-          Analytics will track engagement once your experiences are published.
+          Engagement stats across all your published experiences.
         </Text>
 
         <View style={sectionStyles.statGrid}>
           <View style={sectionStyles.statRow}>
-            <StatCard label="Total Views" value={0} icon="eye-outline" />
+            <StatCard label="Total Views" value={totalViews} icon="eye-outline" />
             <View style={{ width: LuxurySpacing.sm }} />
-            <StatCard label="Saves" value={0} icon="bookmark-outline" />
+            <StatCard label="Total Unlocks" value={totalUnlocks} icon="lock-open-outline" />
           </View>
           <View style={[sectionStyles.statRow, { marginTop: LuxurySpacing.sm }]}>
-            <StatCard label="Unlocks" value={0} icon="lock-open-outline" />
+            <StatCard label="Published" value={publishedCount} icon="checkmark-circle-outline" />
             <View style={{ width: LuxurySpacing.sm }} />
             <View style={{ flex: 1 }} />
           </View>
@@ -713,7 +759,7 @@ export default function CreatorDashboardScreen() {
 
         <View style={planStyles.comingSoonBanner}>
           <Ionicons name="bar-chart-outline" size={20} color={LuxuryColors.gold} />
-          <Text style={planStyles.comingSoonText}>Full analytics dashboard coming soon</Text>
+          <Text style={planStyles.comingSoonText}>Detailed per-experience analytics coming soon</Text>
         </View>
       </ScrollView>
     );
@@ -998,6 +1044,33 @@ const sectionStyles = StyleSheet.create({
     textAlign: 'center',
     marginTop: LuxurySpacing.xs,
     fontWeight: '500',
+  },
+  expFilterBar: {
+    marginBottom: LuxurySpacing.sm,
+  },
+  expFilterContent: {
+    gap: LuxurySpacing.sm,
+    paddingBottom: 2,
+  },
+  expFilterChip: {
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.xs,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: LuxuryColors.divider,
+    backgroundColor: LuxuryColors.surface,
+  },
+  expFilterChipActive: {
+    borderColor: `${LuxuryColors.gold}60`,
+    backgroundColor: `${LuxuryColors.gold}14`,
+  },
+  expFilterText: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textTertiary,
+    fontWeight: '500',
+  },
+  expFilterTextActive: {
+    color: LuxuryColors.gold,
   },
   emptyState: {
     alignItems: 'center',

@@ -39,16 +39,19 @@ export interface Hotel {
   name: string;
   address: string;
   notes?: string;
+  mapsLink?: string;
 }
 
 export interface Restaurant {
   name: string;
   description: string;
+  mapsLink?: string;
 }
 
 export interface HiddenGem {
   name: string;
   description: string;
+  mapsLink?: string;
 }
 
 // ─── Main model ───────────────────────────────────────────────────────────────
@@ -74,9 +77,19 @@ export interface CreatorExperience {
   coverImage: string | null;
 
   // ── Content ─────────────────────────────────────────────────────────
-  description: string;  /** Creator's private notes — separate from public description */
-  creatorNotes: string;  /** Creator's personal tips for this experience */
+  description: string;
+  /** Who this experience is suited for */
+  whoIsItFor: string;
+  /** Bullet-point highlights of this experience */
+  highlights: string[];
+  /** Creator's private notes — separate from public description */
+  creatorNotes: string;
+  /** Creator's personal tips for this experience */
   tips: string[];
+  /** Best season / time of year */
+  bestTimeToVisit: string;
+  /** Warnings, cautions, or things to avoid */
+  warnings: string;
   /** Off-the-beaten-path spots */
   hiddenGems: HiddenGem[];
   restaurants: Restaurant[];
@@ -84,16 +97,28 @@ export interface CreatorExperience {
   /** Day-by-day plan */
   dailyPlan: DailyPlanEntry[];
 
+  // ── Pricing ─────────────────────────────────────────────────────────
+  /** When true the first section is accessible without subscription */
+  freePreview: boolean;
+
   // ── Lifecycle ───────────────────────────────────────────────────────
   status: ExperienceStatus;
   /** true once the creator publishes — drives Discover / Trips queries */
   published: boolean;
+
+  // ── Stats ────────────────────────────────────────────────────────────
+  /** Total profile / card views */
+  views: number;
+  /** Total subscription unlocks of this experience */
+  unlocks: number;
 
   // ── Timestamps ──────────────────────────────────────────────────────
   /** Unix-ms at creation. Null until server writes createdAt. */
   createdAt: number | null;
   /** Unix-ms of last update. Null until first update. */
   updatedAt: number | null;
+  /** Unix-ms when published. Null until published. */
+  publishedAt: number | null;
 }
 
 // ─── Firestore document shape ─────────────────────────────────────────────────
@@ -115,7 +140,7 @@ export interface CreatorExperienceDoc
  */
 export type ExperienceUploadPayload = Omit<
   CreatorExperience,
-  'id' | 'status' | 'createdAt' | 'updatedAt'
+  'id' | 'status' | 'createdAt' | 'updatedAt' | 'publishedAt' | 'views' | 'unlocks'
 >;
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
