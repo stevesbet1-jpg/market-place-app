@@ -94,13 +94,17 @@ export default function TabLayout() {
         <Tabs.Screen name="profile"      options={{ title: 'Profile' }} />
 
         {/* Hidden screens */}
-        <Tabs.Screen name="journey-detail"  options={{ tabBarButton: () => null }} />
-        <Tabs.Screen name="creator-profile" options={{ tabBarButton: () => null }} />
-        <Tabs.Screen name="paywall"         options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="journey-detail"       options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="experience-detail"    options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="creator-profile"      options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="paywall"              options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="add-product"          options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="upload-journey"       options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="creator-subscription" options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="apply-creator"        options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="creator-dashboard"    options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="create-experience"    options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="create-journey"       options={{ tabBarButton: () => null }} />
       </Tabs>
     </View>
   );

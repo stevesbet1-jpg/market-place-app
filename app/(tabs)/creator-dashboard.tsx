@@ -146,6 +146,19 @@ function ExperienceRow({
 
       {/* Actions */}
       <View style={rowStyles.actions}>
+        {experience.status === 'published' && (
+          <TouchableOpacity
+            style={rowStyles.actionBtn}
+            onPress={() =>
+              router.push({ pathname: '/(tabs)/experience-detail', params: { id: experience.id } })
+            }
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="eye-outline" size={18} color={LuxuryColors.textSecondary} />
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={rowStyles.actionBtn}
           onPress={() =>
