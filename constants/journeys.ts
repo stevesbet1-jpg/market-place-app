@@ -551,3 +551,49 @@ export const JOURNEYS: readonly Journey[] = [
     experiences: ['W Trek Multi-Day Hike', 'Glacier Ice Walk', 'Condor Observation', 'Gaucho Estancia Day', 'Stargazing in the Pampa'],
   },
 ];
+
+// ─── Seed-data note ───────────────────────────────────────────────────────────
+//
+// JOURNEYS above are DEMO / SEED data only.
+// They populate the app while the Firestore creator_journeys collection is empty.
+// Real content is uploaded by creators via the upload-journey screen and stored
+// in Firestore. The service layer (lib/creatorJourneyService.ts) merges live
+// Firestore journeys with this seed data at runtime.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { CreatorJourney } from './creatorJourneyModel';
+
+/**
+ * Maps a hardcoded seed Journey to the canonical CreatorJourney model.
+ * Used by creatorJourneyService as a fallback when Firestore has no data.
+ */
+export function mapSeedToCreatorJourney(j: Journey): CreatorJourney {
+  return {
+    id: j.id,
+    creatorId: j.creatorId,
+    creatorName: '',          // resolved at display time via creators.ts
+    title: j.name,
+    destination: j.destination,
+    region: j.region,
+    duration: j.duration,
+    bestTime: j.bestTime,
+    overview: j.overview,
+    budget: j.budget,
+    dailyBudget: j.dailyBudget,
+    imageUri: null,
+    imageKey: j.imageKey,
+    places: [...j.places],
+    restaurants: [...j.restaurants],
+    experiences: [...j.experiences],
+    itinerary: j.itinerary.map((d) => ({
+      day: d.day,
+      activities: [...d.activities],
+    })),
+    rating: j.rating,
+    savedCount: j.savedCount,
+    status: 'published',
+    isDemo: true,
+    createdAt: null,
+  };
+}
