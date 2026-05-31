@@ -2,14 +2,15 @@
  * creator-dashboard.tsx
  *
  * Creator workspace — only accessible to approved creators.
+ * Part of the Creator Experiences Marketplace.
  *
  * Sections (tab switcher):
- *   Overview     — stat cards (total, published, pending, drafts)
- *   My Journeys  — list with cover, title, country, status badge
- *   Subscription — display-only plan cards (no payments)
- *   Analytics    — placeholder with 0 values
+ *   Overview        — stat cards (total, published, pending, drafts)
+ *   My Experiences  — list with cover, title, country, status + actions
+ *   Subscription    — display-only plan cards (no payments yet)
+ *   Analytics       — placeholder with 0 values
  *
- * "Create Journey" is a prominent CTA that navigates to create-journey.tsx.
+ * "Create Experience" navigates to create-experience.tsx.
  *
  * Navigation entry points:
  *   apply-creator.tsx (approved state) → this screen
@@ -27,6 +28,7 @@ import {
   Image,
   FlatList,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -43,44 +45,28 @@ import {
   getMyApplicationStatus,
   deriveInitials,
 } from '../../lib/creatorService';
-import { getCreatorJourneys } from '../../lib/creatorJourneyService';
+import {
+  getCreatorExperiences,
+  updateExperience,
+  deleteExperience,
+} from '../../lib/creatorExperienceService';
+import {
+  statusLabel,
+  statusColor,
+} from '../../constants/creatorExperienceModel';
 import type { Creator } from '../../constants/creators';
-import type { CreatorJourney } from '../../constants/creatorJourneyModel';
+import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
 // ─── Section types ────────────────────────────────────────────────────────────
 
-type Section = 'overview' | 'journeys' | 'subscription' | 'analytics';
+type Section = 'overview' | 'experiences' | 'subscription' | 'analytics';
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'overview', label: 'Overview' },
-  { key: 'journeys', label: 'My Journeys' },
+  { key: 'experiences', label: 'My Experiences' },
   { key: 'subscription', label: 'Subscription' },
   { key: 'analytics', label: 'Analytics' },
 ];
-
-// ─── Status badge ─────────────────────────────────────────────────────────────
-
-type JourneyStatus = CreatorJourney['status'];
-
-function statusLabel(s: JourneyStatus): string {
-  switch (s) {
-    case 'draft': return 'Draft';
-    case 'pending_review': return 'Pending Review';
-    case 'published': return 'Published';
-    case 'rejected': return 'Rejected';
-    default: return s;
-  }
-}
-
-function statusColor(s: JourneyStatus): string {
-  switch (s) {
-    case 'draft': return LuxuryColors.textTertiary;
-    case 'pending_review': return LuxuryColors.gold;
-    case 'published': return LuxuryColors.success;
-    case 'rejected': return LuxuryColors.error;
-    default: return LuxuryColors.textTertiary;
-  }
-}
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
@@ -121,16 +107,24 @@ const statStyles = StyleSheet.create({
   },
 });
 
-// ─── Journey row ──────────────────────────────────────────────────────────────
+// ─── Experience row ──────────────────────────────────────────────────────────
 
-function JourneyRow({ journey }: { journey: CreatorJourney }) {
-  const imgSrc = journey.imageUri ? { uri: journey.imageUri } : null;
-  const country = journey.region || journey.destination || '—';
-  const color = statusColor(journey.status);
-  const label = statusLabel(journey.status);
+function ExperienceRow({
+  experience,
+  onDelete,
+  onSubmitForReview,
+}: {
+  experience: CreatorExperience;
+  onDelete: () => void;
+  onSubmitForReview: () => void;
+}) {
+  const imgSrc = experience.coverImage ? { uri: experience.coverImage } : null;
+  const color = statusColor(experience.status);
+  const label = statusLabel(experience.status);
 
   return (
     <View style={rowStyles.container}>
+      {/* Cover thumbnail */}
       {imgSrc ? (
         <Image source={imgSrc} style={rowStyles.thumb} />
       ) : (
@@ -138,12 +132,50 @@ function JourneyRow({ journey }: { journey: CreatorJourney }) {
           <Ionicons name="image-outline" size={22} color={LuxuryColors.textTertiary} />
         </View>
       )}
+
+      {/* Info */}
       <View style={rowStyles.info}>
-        <Text style={rowStyles.title} numberOfLines={2}>{journey.title}</Text>
-        <Text style={rowStyles.country} numberOfLines={1}>{country}</Text>
+        <Text style={rowStyles.title} numberOfLines={2}>{experience.title}</Text>
+        <Text style={rowStyles.country} numberOfLines={1}>
+          {experience.city ? `${experience.city}, ` : ''}{experience.country || '—'}
+        </Text>
+        <View style={[rowStyles.badge, { borderColor: `${color}40`, backgroundColor: `${color}12` }]}>
+          <Text style={[rowStyles.badgeText, { color }]}>{label}</Text>
+        </View>
       </View>
-      <View style={[rowStyles.badge, { borderColor: `${color}40`, backgroundColor: `${color}12` }]}>
-        <Text style={[rowStyles.badgeText, { color }]}>{label}</Text>
+
+      {/* Actions */}
+      <View style={rowStyles.actions}>
+        <TouchableOpacity
+          style={rowStyles.actionBtn}
+          onPress={() =>
+            router.push({ pathname: '/(tabs)/create-experience', params: { id: experience.id } })
+          }
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="create-outline" size={18} color={LuxuryColors.textSecondary} />
+        </TouchableOpacity>
+
+        {experience.status === 'draft' && (
+          <TouchableOpacity
+            style={rowStyles.actionBtn}
+            onPress={onSubmitForReview}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="paper-plane-outline" size={18} color={LuxuryColors.gold} />
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={rowStyles.actionBtn}
+          onPress={onDelete}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="trash-outline" size={18} color={LuxuryColors.error} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -186,6 +218,7 @@ const rowStyles = StyleSheet.create({
     color: LuxuryColors.textTertiary,
   },
   badge: {
+    alignSelf: 'flex-start',
     borderWidth: 1,
     borderRadius: LuxuryBorderRadius.full,
     paddingHorizontal: LuxurySpacing.sm,
@@ -195,6 +228,14 @@ const rowStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  actions: {
+    flexDirection: 'column',
+    gap: LuxurySpacing.xs,
+    alignItems: 'center',
+  },
+  actionBtn: {
+    padding: LuxurySpacing.xs,
   },
 });
 
@@ -336,9 +377,9 @@ export default function CreatorDashboardScreen() {
   const [creator, setCreator] = useState<Creator | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
 
-  // ── Journeys data ────────────────────────────────────────────────────
-  const [journeys, setJourneys] = useState<CreatorJourney[]>([]);
-  const [loadingJourneys, setLoadingJourneys] = useState(false);
+  // ── Experiences data ───────────────────────────────────────
+  const [experiences, setExperiences] = useState<CreatorExperience[]>([]);
+  const [loadingExperiences, setLoadingExperiences] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // ── Active section ───────────────────────────────────────────────────
@@ -363,17 +404,17 @@ export default function CreatorDashboardScreen() {
     setChecking(false);
   }, []);
 
-  // ── Load journeys ─────────────────────────────────────────────────────
-  const loadJourneys = useCallback(async (creatorId: string, isRefresh = false) => {
+  // ── Load experiences ─────────────────────────────────────────
+  const loadExperiences = useCallback(async (creatorId: string, isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoadingJourneys(true);
+    else setLoadingExperiences(true);
     try {
-      const data = await getCreatorJourneys(creatorId);
-      setJourneys(data);
+      const data = await getCreatorExperiences(creatorId);
+      setExperiences(data);
     } catch {
-      setJourneys([]);
+      setExperiences([]);
     } finally {
-      setLoadingJourneys(false);
+      setLoadingExperiences(false);
       setRefreshing(false);
     }
   }, []);
@@ -387,15 +428,15 @@ export default function CreatorDashboardScreen() {
 
   useEffect(() => {
     if (creator?.id) {
-      loadJourneys(creator.id);
+      loadExperiences(creator.id);
     }
-  }, [creator?.id, loadJourneys]);
+  }, [creator?.id, loadExperiences]);
 
-  // ── Stats ────────────────────────────────────────────────────────────
-  const totalJourneys = journeys.length;
-  const publishedCount = journeys.filter((j) => j.status === 'published').length;
-  const pendingCount = journeys.filter((j) => j.status === 'pending_review').length;
-  const draftCount = journeys.filter((j) => j.status === 'draft').length;
+  // ── Stats ──────────────────────────────────────────────
+  const totalExperiences = experiences.length;
+  const publishedCount = experiences.filter((e) => e.status === 'published').length;
+  const pendingCount = experiences.filter((e) => e.status === 'pending_review').length;
+  const draftCount = experiences.filter((e) => e.status === 'draft').length;
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking) {
@@ -427,7 +468,7 @@ export default function CreatorDashboardScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => creator?.id && loadJourneys(creator.id, true)}
+            onRefresh={() => creator?.id && loadExperiences(creator.id, true)}
             tintColor={LuxuryColors.gold}
           />
         }
@@ -435,7 +476,7 @@ export default function CreatorDashboardScreen() {
         {/* Stat grid */}
         <View style={sectionStyles.statGrid}>
           <View style={sectionStyles.statRow}>
-            <StatCard label="Total Journeys" value={totalJourneys} icon="map-outline" />
+            <StatCard label="Total Experiences" value={totalExperiences} icon="globe-outline" />
             <View style={{ width: LuxurySpacing.sm }} />
             <StatCard label="Published" value={publishedCount} icon="checkmark-circle-outline" />
           </View>
@@ -446,45 +487,54 @@ export default function CreatorDashboardScreen() {
           </View>
         </View>
 
-        {/* Create journey CTA */}
+        {/* Create experience CTA */}
         <TouchableOpacity
           style={sectionStyles.createBtn}
-          onPress={() => router.push('/(tabs)/create-journey')}
+          onPress={() => router.push('/(tabs)/create-experience')}
           activeOpacity={0.85}
         >
           <Ionicons name="add-circle-outline" size={22} color={LuxuryColors.background} />
-          <Text style={sectionStyles.createBtnText}>Create New Journey</Text>
+          <Text style={sectionStyles.createBtnText}>Create New Experience</Text>
         </TouchableOpacity>
 
-        {/* Recent journeys preview */}
-        {journeys.length > 0 && (
+        {/* Recent experiences preview */}
+        {experiences.length > 0 && (
           <View style={sectionStyles.recentSection}>
-            <Text style={sectionStyles.recentTitle}>Recent Journeys</Text>
-            {journeys.slice(0, 3).map((j) => (
-              <JourneyRow key={j.id} journey={j} />
+            <Text style={sectionStyles.recentTitle}>Recent Experiences</Text>
+            {experiences.slice(0, 3).map((exp) => (
+              <ExperienceRow
+                key={exp.id}
+                experience={exp}
+                onDelete={() => handleDelete(exp.id, exp.title)}
+                onSubmitForReview={() => handleSubmitForReview(exp.id, exp.title)}
+              />
             ))}
-            {journeys.length > 3 && (
-              <TouchableOpacity onPress={() => setActiveSection('journeys')} activeOpacity={0.7}>
-                <Text style={sectionStyles.viewAllText}>View all {journeys.length} journeys →</Text>
+            {experiences.length > 3 && (
+              <TouchableOpacity onPress={() => setActiveSection('experiences')} activeOpacity={0.7}>
+                <Text style={sectionStyles.viewAllText}>
+                  View all {experiences.length} experiences →
+                </Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        {journeys.length === 0 && !loadingJourneys && (
+        {experiences.length === 0 && !loadingExperiences && (
           <View style={sectionStyles.emptyState}>
-            <Ionicons name="map-outline" size={40} color={LuxuryColors.textTertiary} />
-            <Text style={sectionStyles.emptyTitle}>No journeys yet</Text>
-            <Text style={sectionStyles.emptyBody}>Create your first journey to get started.</Text>
+            <Ionicons name="globe-outline" size={40} color={LuxuryColors.textTertiary} />
+            <Text style={sectionStyles.emptyTitle}>No experiences yet</Text>
+            <Text style={sectionStyles.emptyBody}>
+              Create your first travel experience to get started.
+            </Text>
           </View>
         )}
       </ScrollView>
     );
   }
 
-  // ─── Section: My Journeys ─────────────────────────────────────────────
-  function renderJourneys() {
-    if (loadingJourneys) {
+  // ─── Section: My Experiences ──────────────────────────────────────────
+  function renderExperiences() {
+    if (loadingExperiences) {
       return (
         <View style={sectionStyles.centeredLoader}>
           <ActivityIndicator color={LuxuryColors.gold} size="large" />
@@ -494,37 +544,43 @@ export default function CreatorDashboardScreen() {
 
     return (
       <FlatList
-        data={journeys}
-        keyExtractor={(j) => j.id}
+        data={experiences}
+        keyExtractor={(e) => e.id}
         contentContainerStyle={sectionStyles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => creator?.id && loadJourneys(creator.id, true)}
+            onRefresh={() => creator?.id && loadExperiences(creator.id, true)}
             tintColor={LuxuryColors.gold}
           />
         }
         ListHeaderComponent={
           <TouchableOpacity
             style={sectionStyles.createBtn}
-            onPress={() => router.push('/(tabs)/create-journey')}
+            onPress={() => router.push('/(tabs)/create-experience')}
             activeOpacity={0.85}
           >
             <Ionicons name="add-circle-outline" size={22} color={LuxuryColors.background} />
-            <Text style={sectionStyles.createBtnText}>Create Your First Journey</Text>
+            <Text style={sectionStyles.createBtnText}>Create Your First Experience</Text>
           </TouchableOpacity>
         }
         ListEmptyComponent={
           <View style={sectionStyles.emptyState}>
-            <Ionicons name="map-outline" size={40} color={LuxuryColors.textTertiary} />
-            <Text style={sectionStyles.emptyTitle}>No journeys yet</Text>
+            <Ionicons name="globe-outline" size={40} color={LuxuryColors.textTertiary} />
+            <Text style={sectionStyles.emptyTitle}>No experiences yet</Text>
             <Text style={sectionStyles.emptyBody}>
-              Tap "Create Your First Journey" above to get started.
+              Tap "Create Your First Experience" above to get started.
             </Text>
           </View>
         }
-        renderItem={({ item }) => <JourneyRow journey={item} />}
+        renderItem={({ item }) => (
+          <ExperienceRow
+            experience={item}
+            onDelete={() => handleDelete(item.id, item.title)}
+            onSubmitForReview={() => handleSubmitForReview(item.id, item.title)}
+          />
+        )}
       />
     );
   }
@@ -547,7 +603,7 @@ export default function CreatorDashboardScreen() {
           <Text style={planStyles.planPriceNote}>Pricing coming soon</Text>
           <View style={planStyles.divider} />
           {[
-            'Unlimited journey publications',
+            'Unlimited experience publications',
             'Priority editorial review',
             'Advanced analytics dashboard',
             'Featured placement on Explore',
@@ -560,14 +616,14 @@ export default function CreatorDashboardScreen() {
           ))}
         </View>
 
-        {/* Local Creator card */}
+        {/* Creator Free card */}
         <View style={planStyles.card}>
-          <Text style={planStyles.planName}>Local Creator</Text>
-          <Text style={planStyles.planPrice}>$—/month</Text>
-          <Text style={planStyles.planPriceNote}>Pricing coming soon</Text>
+          <Text style={planStyles.planName}>Creator Free</Text>
+          <Text style={planStyles.planPrice}>Free</Text>
+          <Text style={planStyles.planPriceNote}>Get started at no cost</Text>
           <View style={planStyles.divider} />
           {[
-            'Up to 5 journey publications',
+            'Up to 3 experience publications',
             'Standard editorial review',
             'Basic analytics',
             'Creator profile page',
@@ -592,17 +648,17 @@ export default function CreatorDashboardScreen() {
     return (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sectionStyles.content}>
         <Text style={sectionStyles.sectionIntro}>
-          Analytics will track engagement once your journeys are published.
+          Analytics will track engagement once your experiences are published.
         </Text>
 
         <View style={sectionStyles.statGrid}>
           <View style={sectionStyles.statRow}>
             <StatCard label="Total Views" value={0} icon="eye-outline" />
             <View style={{ width: LuxurySpacing.sm }} />
-            <StatCard label="Saved Journeys" value={0} icon="bookmark-outline" />
+            <StatCard label="Saves" value={0} icon="bookmark-outline" />
           </View>
           <View style={[sectionStyles.statRow, { marginTop: LuxurySpacing.sm }]}>
-            <StatCard label="Subscribers" value={0} icon="people-outline" />
+            <StatCard label="Unlocks" value={0} icon="lock-open-outline" />
             <View style={{ width: LuxurySpacing.sm }} />
             <View style={{ flex: 1 }} />
           </View>
@@ -613,6 +669,50 @@ export default function CreatorDashboardScreen() {
           <Text style={planStyles.comingSoonText}>Full analytics dashboard coming soon</Text>
         </View>
       </ScrollView>
+    );
+  }
+
+  // ── Action handlers ──────────────────────────────────────────
+  function handleDelete(experienceId: string, title: string) {
+    Alert.alert(
+      'Delete Experience',
+      `Delete "${title}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteExperience(experienceId);
+              if (creator?.id) loadExperiences(creator.id);
+            } catch (e: unknown) {
+              Alert.alert('Delete Failed', e instanceof Error ? e.message : 'Unknown error');
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleSubmitForReview(experienceId: string, title: string) {
+    Alert.alert(
+      'Submit for Review',
+      `Submit "${title}" for editorial review? It will not be visible until approved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Submit',
+          onPress: async () => {
+            try {
+              await updateExperience(experienceId, { status: 'pending_review' });
+              if (creator?.id) loadExperiences(creator.id);
+            } catch (e: unknown) {
+              Alert.alert('Submit Failed', e instanceof Error ? e.message : 'Unknown error');
+            }
+          },
+        },
+      ]
     );
   }
 
@@ -668,7 +768,7 @@ export default function CreatorDashboardScreen() {
       {/* ── Section Body ── */}
       <View style={[styles.body, { paddingBottom: insets.bottom }]}>
         {activeSection === 'overview' && renderOverview()}
-        {activeSection === 'journeys' && renderJourneys()}
+        {activeSection === 'experiences' && renderExperiences()}
         {activeSection === 'subscription' && renderSubscription()}
         {activeSection === 'analytics' && renderAnalytics()}
       </View>
