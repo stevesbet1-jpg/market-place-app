@@ -62,6 +62,8 @@ export interface CreatorExperience {
 
   // ── Creator attribution ─────────────────────────────────────────────
   creatorId: string;
+  /** 'verified' or 'community' — mirrors the creator's tier */
+  creatorType: 'verified' | 'community';
   creatorName: string;
 
   // ── Core fields ─────────────────────────────────────────────────────
@@ -96,6 +98,12 @@ export interface CreatorExperience {
   hotels: Hotel[];
   /** Day-by-day plan */
   dailyPlan: DailyPlanEntry[];
+
+  // ── Map links (experience-level) ────────────────────────────────────
+  /** Top-level Google Maps URL for the primary location */
+  googleMapsUrl: string;
+  /** Top-level Apple Maps URL for the primary location */
+  appleMapsUrl: string;
 
   // ── Pricing ─────────────────────────────────────────────────────────
   /** When true the first section is accessible without subscription */

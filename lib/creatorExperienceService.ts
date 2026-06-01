@@ -55,6 +55,7 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
   return {
     id,
     creatorId: (data.creatorId as string) ?? '',
+    creatorType: (data.creatorType as CreatorExperience['creatorType']) ?? 'community',
     creatorName: (data.creatorName as string) ?? '',
     title: (data.title as string) ?? '',
     country: (data.country as string) ?? '',
@@ -74,6 +75,8 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     restaurants: (data.restaurants as Restaurant[]) ?? [],
     hotels: (data.hotels as Hotel[]) ?? [],
     dailyPlan: (data.dailyPlan as DailyPlanEntry[]) ?? [],
+    googleMapsUrl: (data.googleMapsUrl as string) ?? '',
+    appleMapsUrl: (data.appleMapsUrl as string) ?? '',
     freePreview: Boolean(data.freePreview),
     status: (data.status as CreatorExperience['status']) ?? 'draft',
     published: Boolean(data.published),

@@ -204,6 +204,8 @@ export default function CreateExperienceScreen() {
   const [tipsText, setTipsText] = useState('');
   const [bestTimeToVisit, setBestTimeToVisit] = useState('');
   const [warnings, setWarnings] = useState('');
+  const [googleMapsUrl, setGoogleMapsUrl] = useState('');
+  const [appleMapsUrl, setAppleMapsUrl] = useState('');
   const [freePreview, setFreePreview] = useState(false);
   const [dailyPlan, setDailyPlan] = useState<DayDraft[]>([{ day: 1, title: '', description: '' }]);
   const [hotels, setHotels] = useState<HotelDraft[]>([]);
@@ -237,6 +239,8 @@ export default function CreateExperienceScreen() {
           setTipsText(exp.tips.join(', '));
           setBestTimeToVisit(exp.bestTimeToVisit ?? '');
           setWarnings(exp.warnings ?? '');
+          setGoogleMapsUrl(exp.googleMapsUrl ?? '');
+          setAppleMapsUrl(exp.appleMapsUrl ?? '');
           setFreePreview(exp.freePreview ?? false);
           setDailyPlan(
             exp.dailyPlan.length > 0
@@ -310,6 +314,7 @@ export default function CreateExperienceScreen() {
     const uid = getCurrentUid();
     return {
       creatorId: uid ?? '',
+      creatorType: creatorProfile?.creatorType ?? 'community',
       creatorName: creatorProfile?.name ?? '',
       title: title.trim(),
       country: country.trim(),
@@ -325,6 +330,8 @@ export default function CreateExperienceScreen() {
       tips: tipsText.split(',').map((s) => s.trim()).filter(Boolean),
       bestTimeToVisit: bestTimeToVisit.trim(),
       warnings: warnings.trim(),
+      googleMapsUrl: googleMapsUrl.trim(),
+      appleMapsUrl: appleMapsUrl.trim(),
       hiddenGems: hiddenGems.filter((g) => g.name.trim()).map((g) => ({
         name: g.name,
         description: g.description,
@@ -374,7 +381,7 @@ export default function CreateExperienceScreen() {
     } finally {
       setSaving(false);
     }
-  }, [title, country, city, travelStyle, duration, budget, coverImage, description, whoIsItFor, highlights, creatorNotes, tipsText, bestTimeToVisit, warnings, freePreview, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
+  }, [title, country, city, travelStyle, duration, budget, coverImage, description, whoIsItFor, highlights, creatorNotes, tipsText, bestTimeToVisit, warnings, googleMapsUrl, appleMapsUrl, freePreview, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
 
   // ── Publish ──────────────────────────────────────────────────────────
   const handlePublish = useCallback(async () => {
@@ -412,7 +419,7 @@ export default function CreateExperienceScreen() {
         },
       ]
     );
-  }, [title, country, city, travelStyle, duration, budget, coverImage, description, whoIsItFor, highlights, creatorNotes, tipsText, bestTimeToVisit, warnings, freePreview, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
+  }, [title, country, city, travelStyle, duration, budget, coverImage, description, whoIsItFor, highlights, creatorNotes, tipsText, bestTimeToVisit, warnings, googleMapsUrl, appleMapsUrl, freePreview, hiddenGems, restaurants, hotels, dailyPlan, creatorProfile, isEditMode, editId]);
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking || loadingExisting) {
@@ -877,6 +884,36 @@ export default function CreateExperienceScreen() {
           <Ionicons name="add-circle-outline" size={20} color={LuxuryColors.gold} />
           <Text style={styles.addDayText}>Add Another Day</Text>
         </TouchableOpacity>
+
+        {/* ── Map Links ── */}
+        <SectionHeader title="Map Links" />
+        <Text style={styles.hint}>Primary location links for the experience destination.</Text>
+
+        <FieldLabel text="Google Maps URL" />
+        <TextInput
+          style={styles.input}
+          placeholder="https://maps.google.com/?q=Kyoto+Japan"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={googleMapsUrl}
+          onChangeText={setGoogleMapsUrl}
+          keyboardType="url"
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={500}
+        />
+
+        <FieldLabel text="Apple Maps URL" />
+        <TextInput
+          style={styles.input}
+          placeholder="https://maps.apple.com/?q=Kyoto"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={appleMapsUrl}
+          onChangeText={setAppleMapsUrl}
+          keyboardType="url"
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={500}
+        />
 
         {/* ── Pricing ── */}
         <SectionHeader title="Pricing" />
