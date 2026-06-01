@@ -20,6 +20,7 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -252,28 +253,100 @@ export async function getMyApplicationStatus(uid: string): Promise<ApplicationSt
 }
 
 /**
+ * Private helper — auto-provisions a `creators` doc from an approved application.
+ *
+ * Called by getMyApprovedCreatorProfile when no creators doc exists for the UID.
+ * Uses the auth UID as the Firestore doc ID so that creator.id === auth UID,
+ * which matches the `creatorId` field stored on experience documents.
+ */
+async function provisionCreatorFromApplication(uid: string): Promise<Creator | null> {
+  try {
+    const db = getFirestoreDb();
+
+    console.log('[CreatorAuth] no creators doc found for uid:', uid, '— checking applications');
+
+    const appQ = query(
+      collection(db, APPLICATIONS_COLLECTION),
+      where('userId', '==', uid),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    const appSnap = await getDocs(appQ);
+
+    if (appSnap.empty) {
+      console.log('[CreatorAuth] no application found for uid:', uid);
+      return null;
+    }
+
+    const appDoc = appSnap.docs[0];
+    const appData = appDoc.data() as Record<string, unknown>;
+    console.log('[CreatorAuth] application found:', appDoc.id, '| status:', appData.status);
+
+    if (appData.status !== 'approved') {
+      console.log('[CreatorAuth] application not approved — access denied');
+      return null;
+    }
+
+    // Provision using auth UID as doc ID so creator.id === creatorId in experiences
+    console.log('[CreatorAuth] provisioning creators doc for uid:', uid);
+    const creatorDocRef = doc(db, CREATORS_COLLECTION, uid);
+    const payload = {
+      userId: uid,
+      displayName: (appData.fullName as string) ?? '',
+      bio: '',
+      instagram: (appData.instagram as string | undefined) ?? null,
+      youtube: (appData.youtube as string | undefined) ?? null,
+      tiktok: (appData.tiktok as string | undefined) ?? null,
+      website: (appData.website as string | undefined) ?? null,
+      rating: 0,
+      followers: 0,
+      totalJourneys: 0,
+      creatorType: 'community' as const,
+      createdAt: serverTimestamp(),
+    };
+    await setDoc(creatorDocRef, payload);
+    console.log('[CreatorAuth] creators doc provisioned at id:', uid);
+
+    return mapFirestoreCreator(uid, { ...payload, createdAt: null });
+  } catch (e) {
+    console.warn('[CreatorAuth] provision error:', e);
+    return null;
+  }
+}
+
+/**
  * Returns the approved Creator profile for this UID, or null.
  *
  * The `creators` collection stores only approved creators.
  * A document existing here is the authoritative gate for journey uploads.
+ *
+ * If no creators doc is found, checks creatorApplications for an approved
+ * status and auto-provisions a creators doc so the user can immediately
+ * access their dashboard without a manual Firestore step.
  */
 export async function getMyApprovedCreatorProfile(uid: string): Promise<Creator | null> {
   if (!isFirebaseConfigured() || !uid) return null;
 
   try {
     const db = getFirestoreDb();
+    console.log('[CreatorAuth] checking creators collection for uid:', uid);
     const q = query(
       collection(db, CREATORS_COLLECTION),
       where('userId', '==', uid),
       limit(1)
     );
     const snap = await getDocs(q);
-    if (snap.empty) return null;
-    const d = snap.docs[0];
-    return mapFirestoreCreator(d.id, d.data() as Record<string, unknown>);
+    if (!snap.empty) {
+      const d = snap.docs[0];
+      console.log('[CreatorAuth] creator profile found:', d.id, '→ dashboard access: granted');
+      return mapFirestoreCreator(d.id, d.data() as Record<string, unknown>);
+    }
   } catch {
-    return null;
+    // fall through to provision attempt
   }
+
+  // Not in creators collection — try to provision from an approved application
+  return provisionCreatorFromApplication(uid);
 }
 
 /**

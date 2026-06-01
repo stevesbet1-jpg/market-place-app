@@ -17,7 +17,8 @@ import {
   LuxuryBorderRadius,
   LuxuryFontSize,
 } from '../../constants/luxuryTheme';
-import { getApprovedCreators, hasRealCreators } from '../../lib/creatorService';
+import { getApprovedCreators, hasRealCreators, getCurrentUid, getMyApplicationStatus } from '../../lib/creatorService';
+import type { ApplicationStatus } from '../../lib/creatorService';
 import { getPublishedExperiences } from '../../lib/creatorExperienceService';
 import type { Creator } from '../../constants/creators';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
@@ -144,14 +145,22 @@ export default function DiscoverScreen() {
   const [loading, setLoading] = useState(true);
   // true only when Firebase is configured but returned 0 approved creators
   const [reallyEmpty, setReallyEmpty] = useState(false);
+  // current user's creator application status (for CTA routing)
+  const [myCreatorStatus, setMyCreatorStatus] = useState<ApplicationStatus | 'no-auth' | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       setLoading(true);
 
-      Promise.all([getApprovedCreators(), hasRealCreators(), getPublishedExperiences()]).then(
-        ([list, anyReal, exps]) => {
+      const uid = getCurrentUid();
+      Promise.all([
+        getApprovedCreators(),
+        hasRealCreators(),
+        getPublishedExperiences(),
+        uid ? getMyApplicationStatus(uid) : Promise.resolve('none' as const),
+      ]).then(
+        ([list, anyReal, exps, myStatus]) => {
           if (cancelled) return;
           const allDemo = (list as Creator[]).every((c) => c.isDemo);
           setCreators(list as Creator[]);
@@ -159,6 +168,7 @@ export default function DiscoverScreen() {
           setShowingDemo(allDemo);
           // Empty state: Firebase configured but zero real creators found
           setReallyEmpty(anyReal === false && (list as Creator[]).length === 0);
+          setMyCreatorStatus(uid ? (myStatus as ApplicationStatus) : 'no-auth');
           setLoading(false);
         }
       ).catch(() => {
@@ -221,16 +231,39 @@ export default function DiscoverScreen() {
               ))}
             </View>
 
-            {/* Apply CTA — always visible */}
-            <TouchableOpacity
-              style={styles.applyCtaRow}
-              onPress={() => router.push('/(tabs)/apply-creator')}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.gold} />
-              <Text style={styles.applyCtaText}>Apply as Creator</Text>
-              <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
-            </TouchableOpacity>
+            {/* Creator CTA — routes to dashboard for approved creators, apply form otherwise */}
+            {myCreatorStatus === 'approved' ? (
+              <>
+                <TouchableOpacity
+                  style={styles.applyCtaRow}
+                  onPress={() => router.push('/(tabs)/creator-dashboard')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="briefcase-outline" size={16} color={LuxuryColors.gold} />
+                  <Text style={styles.applyCtaText}>Creator Dashboard</Text>
+                  <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.applyCtaRow}
+                  onPress={() => router.push('/(tabs)/create-experience')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.gold} />
+                  <Text style={styles.applyCtaText}>Create Experience</Text>
+                  <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.applyCtaRow}
+                onPress={() => router.push('/(tabs)/apply-creator')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.gold} />
+                <Text style={styles.applyCtaText}>Apply as Creator</Text>
+                <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
+              </TouchableOpacity>
+            )}
 
             {/* Published Experiences section */}
             {experiences.length > 0 && (

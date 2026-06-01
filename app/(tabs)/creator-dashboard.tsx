@@ -435,17 +435,21 @@ export default function CreatorDashboardScreen() {
   // ── Load creator profile ─────────────────────────────────────────────
   const loadCreatorProfile = useCallback(async () => {
     const uid = getCurrentUid();
+    console.log('[Dashboard] current uid:', uid);
     if (!uid) {
       setAccessStatus('no-auth');
       setChecking(false);
       return;
     }
     const profile = await getMyApprovedCreatorProfile(uid);
+    console.log('[Dashboard] creator profile:', profile ? `id=${profile.id} name=${profile.name}` : 'null');
     if (profile) {
       setCreator(profile);
       setAccessStatus('approved');
+      console.log('[Dashboard] access: granted');
     } else {
       const status = await getMyApplicationStatus(uid);
+      console.log('[Dashboard] application status:', status, '→ access denied');
       setAccessStatus(status === 'none' ? 'none' : (status as AccessStatus));
     }
     setChecking(false);

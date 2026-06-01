@@ -169,17 +169,21 @@ export default function CreateExperienceScreen() {
     let cancelled = false;
     const checkAccess = async () => {
       const uid = getCurrentUid();
+      console.log('[CreateExp] current uid:', uid);
       if (!uid) {
         if (!cancelled) { setAccessStatus('no-auth'); setChecking(false); }
         return;
       }
       const profile = await getMyApprovedCreatorProfile(uid);
+      console.log('[CreateExp] creator profile:', profile ? `id=${profile.id} name=${profile.name}` : 'null');
       if (!cancelled) {
         if (profile) {
           setCreatorProfile(profile);
           setAccessStatus('approved');
+          console.log('[CreateExp] access: granted');
         } else {
           const status = await getMyApplicationStatus(uid);
+          console.log('[CreateExp] application status:', status, '→ access denied');
           setAccessStatus(status === 'none' ? 'none' : (status as AccessStatus));
         }
         setChecking(false);
