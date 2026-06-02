@@ -23,7 +23,6 @@ import { publishCreatorJourney, saveDraftJourney } from '../../lib/creatorJourne
 import {
   getCurrentUid,
   getMyApprovedCreatorProfile,
-  getMyApplicationStatus,
 } from '../../lib/creatorService';
 import type { BudgetLevel, JourneyUploadPayload } from '../../constants/creatorJourneyModel';
 import type { Creator } from '../../constants/creators';
@@ -70,7 +69,7 @@ export default function UploadJourneyScreen() {
   // ── Auth + approval gate ─────────────────────────────────────────────
   const [checking, setChecking] = useState(true);
   const [creatorProfile, setCreatorProfile] = useState<Creator | null>(null);
-  const [accessStatus, setAccessStatus] = useState<'no-auth' | 'none' | 'pending' | 'rejected' | 'approved' | null>(null);
+  const [accessStatus, setAccessStatus] = useState<'no-auth' | 'not-creator' | 'approved' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,8 +85,7 @@ export default function UploadJourneyScreen() {
           setCreatorProfile(profile);
           setAccessStatus('approved');
         } else {
-          const status = await getMyApplicationStatus(uid);
-          setAccessStatus(status === 'none' ? 'none' : status);
+          setAccessStatus('not-creator');
         }
         setChecking(false);
       }
@@ -254,39 +252,21 @@ export default function UploadJourneyScreen() {
 
   if (accessStatus !== 'approved') {
     const isNoAuth = accessStatus === 'no-auth';
-    const isPending = accessStatus === 'pending';
-    const isRejected = accessStatus === 'rejected';
 
-    const icon = isNoAuth
+    const icon: keyof typeof Ionicons.glyphMap = isNoAuth
       ? 'person-circle-outline'
-      : isPending
-      ? 'time-outline'
-      : isRejected
-      ? 'close-circle-outline'
-      : 'add-circle-outline'; // 'none'
+      : 'create-outline';
 
-    const title = isNoAuth
-      ? 'Sign In Required'
-      : isPending
-      ? 'Application Under Review'
-      : isRejected
-      ? 'Application Not Accepted'
-      : 'Creators Only';
+    const title = isNoAuth ? 'Sign In Required' : 'Become a Creator First';
 
     const body = isNoAuth
       ? 'You need a Voya account to upload journeys.'
-      : isPending
-      ? 'Your creator application is being reviewed. You will receive an email when approved.'
-      : isRejected
-      ? 'Your creator application was not accepted at this time. You may reapply in 60 days.'
-      : 'Only approved creators can publish journeys. Apply as a creator to get started.';
+      : 'Go to your Profile to activate your free creator account instantly — no approval needed.';
 
-    const ctaLabel = isNoAuth ? 'Sign In' : isPending ? 'Back to Discover' : 'Apply as Creator';
+    const ctaLabel = isNoAuth ? 'Sign In' : 'Go to Profile';
     const ctaAction = isNoAuth
       ? () => router.replace('/(auth)/login')
-      : isPending
-      ? () => router.back()
-      : () => router.push('/(tabs)/apply-creator');
+      : () => router.push('/(tabs)/profile');
 
     return (
       <View
@@ -302,7 +282,7 @@ export default function UploadJourneyScreen() {
           <Ionicons
             name={icon}
             size={52}
-            color={isPending ? LuxuryColors.gold : isRejected ? LuxuryColors.error : LuxuryColors.textTertiary}
+            color={isNoAuth ? LuxuryColors.textTertiary : LuxuryColors.gold}
           />
           <Text style={gateStyles.title}>{title}</Text>
           <Text style={gateStyles.body2}>{body}</Text>

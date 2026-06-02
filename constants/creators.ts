@@ -1,4 +1,4 @@
-import type { CreatorType, CreatorSubscription } from '../lib/creatorTypes';
+import type { CreatorType, CreatorSubscription, CreatorSubscriptionPlan } from '../lib/creatorTypes';
 
 export interface Creator {
   /** Firestore document ID (or seed slug for demo creators) */
@@ -39,6 +39,15 @@ export interface Creator {
    * false — a real creator who signed up via creator onboarding.
    */
   isDemo: boolean;
+  /**
+   * Whether the creator account is active.
+   * Defaults to true if not present (legacy creators provisioned before this field).
+   */
+  creatorEnabled?: boolean;
+  /** Creator plan tier: 'free' | 'pro' | 'elite'. Defaults to 'free'. */
+  creatorPlan?: CreatorSubscriptionPlan;
+  /** Published experiences count — used to enforce free plan limit. */
+  publishedExperiencesCount?: number;
 }
 
 // Real creators are stored in Firestore (creators collection) and

@@ -17,8 +17,7 @@ import {
   LuxuryBorderRadius,
   LuxuryFontSize,
 } from '../../constants/luxuryTheme';
-import { getApprovedCreators, hasRealCreators, getCurrentUid, getMyApplicationStatus } from '../../lib/creatorService';
-import type { ApplicationStatus } from '../../lib/creatorService';
+import { getApprovedCreators, hasRealCreators, getCurrentUid, getMyApprovedCreatorProfile } from '../../lib/creatorService';
 import { getPublishedExperiences } from '../../lib/creatorExperienceService';
 import type { Creator } from '../../constants/creators';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
@@ -124,11 +123,11 @@ function EmptyCreatorsState() {
       </Text>
       <TouchableOpacity
         style={styles.applyBtn}
-        onPress={() => router.push('/(tabs)/apply-creator')}
+        onPress={() => router.push('/(tabs)/profile')}
         activeOpacity={0.85}
       >
-        <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.background} />
-        <Text style={styles.applyBtnText}>Apply as Creator</Text>
+        <Ionicons name="create-outline" size={16} color={LuxuryColors.background} />
+        <Text style={styles.applyBtnText}>Become a Creator</Text>
       </TouchableOpacity>
     </View>
   );
@@ -145,8 +144,8 @@ export default function DiscoverScreen() {
   const [loading, setLoading] = useState(true);
   // true only when Firebase is configured but returned 0 approved creators
   const [reallyEmpty, setReallyEmpty] = useState(false);
-  // current user's creator application status (for CTA routing)
-  const [myCreatorStatus, setMyCreatorStatus] = useState<ApplicationStatus | 'no-auth' | null>(null);
+  // whether the current user has an active creator account
+  const [isCreator, setIsCreator] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -158,9 +157,9 @@ export default function DiscoverScreen() {
         getApprovedCreators(),
         hasRealCreators(),
         getPublishedExperiences(),
-        uid ? getMyApplicationStatus(uid) : Promise.resolve('none' as const),
+        uid ? getMyApprovedCreatorProfile(uid) : Promise.resolve(null),
       ]).then(
-        ([list, anyReal, exps, myStatus]) => {
+        ([list, anyReal, exps, creatorProfile]) => {
           if (cancelled) return;
           const allDemo = (list as Creator[]).every((c) => c.isDemo);
           setCreators(list as Creator[]);
@@ -168,7 +167,7 @@ export default function DiscoverScreen() {
           setShowingDemo(allDemo);
           // Empty state: Firebase configured but zero real creators found
           setReallyEmpty(anyReal === false && (list as Creator[]).length === 0);
-          setMyCreatorStatus(uid ? (myStatus as ApplicationStatus) : 'no-auth');
+          setIsCreator(creatorProfile !== null);
           setLoading(false);
         }
       ).catch(() => {
@@ -231,8 +230,8 @@ export default function DiscoverScreen() {
               ))}
             </View>
 
-            {/* Creator CTA — routes to dashboard for approved creators, apply form otherwise */}
-            {myCreatorStatus === 'approved' ? (
+            {/* Creator CTA — routes to dashboard for active creators, profile otherwise */}
+            {isCreator ? (
               <>
                 <TouchableOpacity
                   style={styles.applyCtaRow}
@@ -256,11 +255,11 @@ export default function DiscoverScreen() {
             ) : (
               <TouchableOpacity
                 style={styles.applyCtaRow}
-                onPress={() => router.push('/(tabs)/apply-creator')}
+                onPress={() => router.push('/(tabs)/profile')}
                 activeOpacity={0.8}
               >
-                <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.gold} />
-                <Text style={styles.applyCtaText}>Apply as Creator</Text>
+                <Ionicons name="create-outline" size={16} color={LuxuryColors.gold} />
+                <Text style={styles.applyCtaText}>Become a Creator</Text>
                 <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
               </TouchableOpacity>
             )}

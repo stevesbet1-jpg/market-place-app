@@ -36,7 +36,6 @@ import { saveDraftJourney, submitJourneyForReview } from '../../lib/creatorJourn
 import {
   getCurrentUid,
   getMyApprovedCreatorProfile,
-  getMyApplicationStatus,
 } from '../../lib/creatorService';
 import type { BudgetLevel } from '../../constants/creatorJourneyModel';
 import type { Creator } from '../../constants/creators';
@@ -81,7 +80,7 @@ const BUDGET_LEVELS: BudgetLevel[] = ['$', '$$', '$$$', '$$$$'];
 
 // ─── Access gate ──────────────────────────────────────────────────────────────
 
-type AccessStatus = 'no-auth' | 'none' | 'pending' | 'rejected' | 'approved';
+type AccessStatus = 'no-auth' | 'not-creator' | 'approved';
 
 function AccessGateView({
   status,
@@ -99,23 +98,11 @@ function AccessGateView({
       title: 'Sign In Required',
       body: 'You need a Voya account to create journeys.',
     },
-    none: {
+    'not-creator': {
       icon: 'create-outline',
       color: LuxuryColors.gold,
-      title: 'Apply as Creator First',
-      body: 'Submit a creator application before you can create journeys.',
-    },
-    pending: {
-      icon: 'time-outline',
-      color: LuxuryColors.gold,
-      title: 'Application Under Review',
-      body: 'Your application is being reviewed. You will be notified by email when approved.',
-    },
-    rejected: {
-      icon: 'close-circle-outline',
-      color: LuxuryColors.error,
-      title: 'Application Not Accepted',
-      body: 'Your creator application was not accepted. You may reapply in 60 days.',
+      title: 'Become a Creator First',
+      body: 'Go to your Profile to activate your free creator account instantly — no approval needed.',
     },
     approved: {
       icon: 'checkmark-circle',
@@ -170,8 +157,7 @@ export default function CreateJourneyScreen() {
           setCreatorProfile(profile);
           setAccessStatus('approved');
         } else {
-          const status = await getMyApplicationStatus(uid);
-          setAccessStatus(status === 'none' ? 'none' : (status as AccessStatus));
+          setAccessStatus('not-creator');
         }
         setChecking(false);
       }

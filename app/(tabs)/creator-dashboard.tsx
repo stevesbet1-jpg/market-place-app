@@ -42,7 +42,6 @@ import {
 import {
   getCurrentUid,
   getMyApprovedCreatorProfile,
-  getMyApplicationStatus,
   deriveInitials,
 } from '../../lib/creatorService';
 import {
@@ -287,7 +286,7 @@ const rowStyles = StyleSheet.create({
 
 // ─── Access gate ──────────────────────────────────────────────────────────────
 
-type AccessStatus = 'no-auth' | 'none' | 'pending' | 'rejected' | 'approved';
+type AccessStatus = 'no-auth' | 'not-creator' | 'approved';
 
 function AccessGateView({ status, onBack }: { status: AccessStatus; onBack: () => void }) {
   const insets = useSafeAreaInsets();
@@ -301,29 +300,13 @@ function AccessGateView({ status, onBack }: { status: AccessStatus; onBack: () =
       cta: 'Sign In',
       ctaAction: () => router.replace('/(auth)/login'),
     },
-    none: {
-      icon: 'briefcase-outline',
+    'not-creator': {
+      icon: 'create-outline',
       color: LuxuryColors.gold,
-      title: 'Apply as Creator',
-      body: 'Submit a creator application to unlock your dashboard.',
-      cta: 'Apply Now',
-      ctaAction: () => router.push('/(tabs)/apply-creator'),
-    },
-    pending: {
-      icon: 'time-outline',
-      color: LuxuryColors.gold,
-      title: 'Application Under Review',
-      body: 'Your application is being reviewed by our team. You will be notified by email.',
-      cta: 'Back',
-      ctaAction: onBack,
-    },
-    rejected: {
-      icon: 'close-circle-outline',
-      color: LuxuryColors.error,
-      title: 'Application Not Accepted',
-      body: 'Your creator application was not accepted at this time. You may reapply in 60 days.',
-      cta: 'Back',
-      ctaAction: onBack,
+      title: 'Become a Creator',
+      body: 'Go to your Profile to activate your free creator account instantly — no approval needed.',
+      cta: 'Go to Profile',
+      ctaAction: () => router.push('/(tabs)/profile'),
     },
     approved: {
       icon: 'checkmark-circle',
@@ -448,9 +431,8 @@ export default function CreatorDashboardScreen() {
       setAccessStatus('approved');
       console.log('[Dashboard] access: granted');
     } else {
-      const status = await getMyApplicationStatus(uid);
-      console.log('[Dashboard] application status:', status, '→ access denied');
-      setAccessStatus(status === 'none' ? 'none' : (status as AccessStatus));
+      console.log('[Dashboard] no creator profile → not-creator');
+      setAccessStatus('not-creator');
     }
     setChecking(false);
   }, []);

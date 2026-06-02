@@ -28,12 +28,13 @@ export type CreatorStatus = 'pending' | 'approved' | 'rejected';
 
 /**
  * Creator subscription plan.
- *   free — up to CREATOR_FREE_JOURNEY_LIMIT published journeys
- *   pro  — unlimited published journeys
+ *   free  — up to FREE_PUBLISH_LIMIT published experiences (default for all new creators)
+ *   pro   — unlimited published experiences
+ *   elite — unlimited published experiences + future priority features
  *
  * NOTE: Payments are NOT connected yet. This is the model only.
  */
-export type CreatorSubscriptionPlan = 'free' | 'pro';
+export type CreatorSubscriptionPlan = 'free' | 'pro' | 'elite';
 
 // ─── Subscription constants ───────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ export type CreatorSubscriptionPlan = 'free' | 'pro';
 export const CREATOR_SUBSCRIPTION_LIMITS: Record<CreatorSubscriptionPlan, number | null> = {
   free: 3,
   pro: null,
+  elite: null,
 };
 
 // ─── CreatorSubscription ──────────────────────────────────────────────────────
@@ -168,7 +170,13 @@ export interface FirestoreCreator {
   followers: number;
   /** Number of published journeys */
   totalJourneys: number;
-  /** Firestore server timestamp — when the creator was approved */
+  /** Whether the creator account is active. false = disabled/suspended. */
+  creatorEnabled: boolean;
+  /** Current plan tier */
+  creatorPlan: CreatorSubscriptionPlan;
+  /** Number of currently published experiences (used to enforce free plan limit) */
+  publishedExperiencesCount: number;
+  /** Firestore server timestamp — when the creator account was activated */
   createdAt: unknown;
 }
 

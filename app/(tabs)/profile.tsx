@@ -9,16 +9,16 @@ import { logoutFromFirebase } from '../../lib/firebaseAuth';
 import { getUserProfile, type UserProfile } from '../../lib/userProfile';
 import { getSavedIds } from '../../constants/journeyStore';
 import { JOURNEYS, type ImageKey } from '../../constants/journeys';
-import { getCurrentUid, getMyApplicationStatus, getMyApprovedCreatorProfile } from '../../lib/creatorService';
-import type { ApplicationStatus } from '../../lib/creatorService';
+import { getCurrentUid, getMyApprovedCreatorProfile, activateCreator } from '../../lib/creatorService';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [savedJourneys, setSavedJourneys] = useState<(typeof JOURNEYS)[number][]>([]);
-  const [creatorStatus, setCreatorStatus] = useState<ApplicationStatus | 'no-auth' | null>(null);
+  const [isCreator, setIsCreator] = useState<boolean | null>(null);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [creatorStatusLoading, setCreatorStatusLoading] = useState(true);
+  const [activating, setActivating] = useState(false);
 
   useEffect(() => {
     getSavedIds().then((ids) => {
@@ -32,20 +32,17 @@ export default function ProfileScreen() {
     const loadCreatorStatus = async () => {
       const uid = getCurrentUid();
       if (!uid) {
-        if (!cancelled) { setCreatorStatus('no-auth'); setCreatorStatusLoading(false); }
+        if (!cancelled) { setIsCreator(false); setCreatorStatusLoading(false); }
         return;
       }
       try {
-        const [status, creatorProfile] = await Promise.all([
-          getMyApplicationStatus(uid),
-          getMyApprovedCreatorProfile(uid),
-        ]);
+        const creatorProfile = await getMyApprovedCreatorProfile(uid);
         if (!cancelled) {
-          setCreatorStatus(status as ApplicationStatus);
+          setIsCreator(creatorProfile !== null);
           setCreatorName(creatorProfile?.name ?? null);
         }
       } catch {
-        if (!cancelled) setCreatorStatus('none');
+        if (!cancelled) setIsCreator(false);
       } finally {
         if (!cancelled) setCreatorStatusLoading(false);
       }
@@ -302,15 +299,15 @@ export default function ProfileScreen() {
           <View style={styles.creatorStatusLoading}>
             <ActivityIndicator size="small" color={LuxuryColors.gold} />
           </View>
-        ) : creatorStatus === 'approved' ? (
-          // Approved creator
+        ) : isCreator ? (
+          // Active creator — show dashboard links
           <>
             <View style={styles.creatorStatusCard}>
               <View style={[styles.creatorStatusIcon, { backgroundColor: 'rgba(46,213,115,0.12)', borderColor: 'rgba(46,213,115,0.3)' }]}>
                 <Ionicons name="checkmark-circle" size={24} color={LuxuryColors.success} />
               </View>
               <View style={styles.creatorStatusBody}>
-                <Text style={styles.creatorStatusTitle}>Approved Creator</Text>
+                <Text style={styles.creatorStatusTitle}>Creator Account Active</Text>
                 <Text style={styles.creatorStatusSub}>
                   {creatorName ? `Welcome, ${creatorName}` : 'Your creator account is active'}
                 </Text>
@@ -345,57 +342,35 @@ export default function ProfileScreen() {
               <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
             </TouchableOpacity>
           </>
-        ) : creatorStatus === 'pending' ? (
-          // Pending review
-          <View style={styles.creatorStatusCard}>
-            <View style={[styles.creatorStatusIcon, { backgroundColor: 'rgba(212,175,55,0.12)', borderColor: 'rgba(212,175,55,0.3)' }]}>
-              <Ionicons name="time-outline" size={24} color={LuxuryColors.gold} />
-            </View>
-            <View style={styles.creatorStatusBody}>
-              <Text style={styles.creatorStatusTitle}>Application Pending</Text>
-              <Text style={styles.creatorStatusSub}>Under review — we'll email you within 3–5 days</Text>
-            </View>
-          </View>
-        ) : creatorStatus === 'rejected' ? (
-          // Rejected — offer reapply
-          <>
-            <View style={styles.creatorStatusCard}>
-              <View style={[styles.creatorStatusIcon, { backgroundColor: 'rgba(255,71,87,0.10)', borderColor: 'rgba(255,71,87,0.3)' }]}>
-                <Ionicons name="close-circle-outline" size={24} color={LuxuryColors.error} />
-              </View>
-              <View style={styles.creatorStatusBody}>
-                <Text style={styles.creatorStatusTitle}>Application Not Accepted</Text>
-                <Text style={styles.creatorStatusSub}>You may reapply after 60 days</Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/(tabs)/apply-creator')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuIcon}>
-                <Ionicons name="refresh-outline" size={24} color={LuxuryColors.textSecondary} />
-              </View>
-              <View style={styles.menuInfo}>
-                <Text style={styles.menuTitle}>Reapply as Creator</Text>
-                <Text style={styles.menuDesc}>Submit a new application</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
-            </TouchableOpacity>
-          </>
         ) : (
-          // none or no-auth — prompt to apply
+          // Not yet a creator — show "Become a Creator" activation button
           <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => router.push('/(tabs)/apply-creator')}
+            style={[styles.menuItem, activating && { opacity: 0.6 }]}
+            disabled={activating}
+            onPress={async () => {
+              const uid = getCurrentUid();
+              if (!uid) { router.replace('/(auth)/login'); return; }
+              setActivating(true);
+              try {
+                const creatorProfile = await activateCreator(uid, profile?.fullName ?? '');
+                setIsCreator(true);
+                setCreatorName(creatorProfile.name);
+              } catch (e: any) {
+                Alert.alert('Error', e?.message ?? 'Could not activate creator account. Please try again.');
+              } finally {
+                setActivating(false);
+              }
+            }}
             activeOpacity={0.8}
           >
             <View style={styles.menuIcon}>
-              <Ionicons name="create-outline" size={24} color={LuxuryColors.textSecondary} />
+              {activating
+                ? <ActivityIndicator size="small" color={LuxuryColors.gold} />
+                : <Ionicons name="create-outline" size={24} color={LuxuryColors.gold} />}
             </View>
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>Become a Creator</Text>
-              <Text style={styles.menuDesc}>Apply to share travel experiences</Text>
+              <Text style={styles.menuDesc}>Share your travel experiences — free to start</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
           </TouchableOpacity>

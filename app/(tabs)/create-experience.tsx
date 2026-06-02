@@ -41,7 +41,6 @@ import {
 import {
   getCurrentUid,
   getMyApprovedCreatorProfile,
-  getMyApplicationStatus,
 } from '../../lib/creatorService';
 import {
   TRAVEL_STYLES,
@@ -64,7 +63,7 @@ interface HotelDraft { name: string; address: string; notes: string; mapsLink: s
 interface RestaurantDraft { name: string; description: string; mapsLink: string; }
 interface HiddenGemDraft { name: string; description: string; mapsLink: string; }
 
-type AccessStatus = 'no-auth' | 'none' | 'pending' | 'rejected' | 'approved';
+type AccessStatus = 'no-auth' | 'not-creator' | 'approved';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -101,23 +100,11 @@ function AccessGateView({ status, onBack }: { status: AccessStatus; onBack: () =
       title: 'Sign In Required',
       body: 'You need a Voya account to create experiences.',
     },
-    none: {
+    'not-creator': {
       icon: 'create-outline',
       color: LuxuryColors.gold,
-      title: 'Apply as Creator First',
-      body: 'Submit a creator application before you can create experiences.',
-    },
-    pending: {
-      icon: 'time-outline',
-      color: LuxuryColors.gold,
-      title: 'Application Under Review',
-      body: 'Your application is being reviewed. You will be notified by email when approved.',
-    },
-    rejected: {
-      icon: 'close-circle-outline',
-      color: LuxuryColors.error,
-      title: 'Application Not Accepted',
-      body: 'Your creator application was not accepted at this time.',
+      title: 'Become a Creator First',
+      body: 'Go to your Profile to activate your free creator account instantly — no approval needed.',
     },
     approved: {
       icon: 'checkmark-circle',
@@ -182,9 +169,8 @@ export default function CreateExperienceScreen() {
           setAccessStatus('approved');
           console.log('[CreateExp] access: granted');
         } else {
-          const status = await getMyApplicationStatus(uid);
-          console.log('[CreateExp] application status:', status, '→ access denied');
-          setAccessStatus(status === 'none' ? 'none' : (status as AccessStatus));
+          console.log('[CreateExp] no creator profile → not-creator');
+          setAccessStatus('not-creator');
         }
         setChecking(false);
       }
