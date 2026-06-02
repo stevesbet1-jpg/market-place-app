@@ -8,7 +8,7 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import type { BudgetLevel } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 import { getPublishedJourneys } from '../../lib/creatorJourneyService';
-import { getPublishedExperiences } from '../../lib/creatorExperienceService';
+import { getPublishedExperiences, getExperiencesByIds } from '../../lib/creatorExperienceService';
 import { formatSaves } from '../../constants/creators';
 import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
 import { getSavedExperienceIds } from '../../constants/experienceStore';
@@ -49,7 +49,8 @@ export default function TripsScreen() {
 
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
   const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [savedExperienceIds, setSavedExperienceIds] = useState<string[]>([]);
+  // Saved experience objects fetched directly by ID (not filtered from published list)
+  const [savedExperienceDetails, setSavedExperienceDetails] = useState<CreatorExperience[]>([]);
   const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
   const [allJourneys, setAllJourneys] = useState<CreatorJourney[]>([]);
   const [allExperiences, setAllExperiences] = useState<CreatorExperience[]>([]);
@@ -59,19 +60,42 @@ export default function TripsScreen() {
     useCallback(() => {
       let cancelled = false;
       setLoading(true);
-      Promise.all([getFreeRemaining(), getSavedIds(), getSavedExperienceIds(), getBudgetPref(), getPublishedJourneys(), getPublishedExperiences()]).then(
-        ([remaining, saved, savedExpIds, pref, journeys, exps]) => {
+
+      async function loadAll() {
+        try {
+          const [remaining, saved, savedExpIds, pref, journeys, exps] = await Promise.all([
+            getFreeRemaining(),
+            getSavedIds(),
+            getSavedExperienceIds(),
+            getBudgetPref(),
+            getPublishedJourneys(),
+            getPublishedExperiences(),
+          ]);
           if (cancelled) return;
+
+          console.log('[Trips] loaded saved journey ids:', (saved as string[]).length, saved);
+          console.log('[Trips] loaded saved experience ids:', (savedExpIds as string[]).length, savedExpIds);
+
+          // Fetch saved experience objects directly by ID — works for drafts and published alike
+          const savedExpDetails = await getExperiencesByIds(savedExpIds as string[]);
+          if (cancelled) return;
+
+          console.log('[Trips] loaded saved experience details:', savedExpDetails.length, savedExpDetails.map(e => e.id));
+
           setFreeRemaining(remaining as number);
           setSavedIds(saved as string[]);
-          setSavedExperienceIds(savedExpIds as string[]);
+          setSavedExperienceDetails(savedExpDetails);
           setBudgetPrefState(pref as BudgetLevel | null);
           setAllJourneys([...(journeys as CreatorJourney[])].sort(() => Math.random() - 0.5));
           setAllExperiences(exps as CreatorExperience[]);
-          console.log('[Trips] savedExperienceIds:', savedExpIds);
           setLoading(false);
+        } catch (err) {
+          console.error('[Trips] load error:', err);
+          if (!cancelled) setLoading(false);
         }
-      ).catch(() => { if (!cancelled) setLoading(false); });
+      }
+
+      loadAll();
       return () => { cancelled = true; };
     }, [])
   );
@@ -86,11 +110,6 @@ export default function TripsScreen() {
   const savedJourneys = useMemo<CreatorJourney[]>(
     () => savedIds.map((id) => allJourneys.find((j) => j.id === id)).filter(Boolean) as CreatorJourney[],
     [savedIds, allJourneys]
-  );
-
-  const savedExperiences = useMemo<CreatorExperience[]>(
-    () => savedExperienceIds.map((id) => allExperiences.find((e) => e.id === id)).filter(Boolean) as CreatorExperience[],
-    [savedExperienceIds, allExperiences]
   );
 
   const handleBudgetFilter = async (b: BudgetLevel | null) => {
@@ -259,13 +278,13 @@ export default function TripsScreen() {
       )}
 
       {/* ── Saved Experiences ── */}
-      {savedExperiences.length > 0 ? (
+      {savedExperienceDetails.length > 0 ? (
         <View style={styles.savedSection}>
           <View style={styles.savedHeader}>
             <Text style={styles.savedLabel}>Saved Experiences</Text>
-            <Text style={styles.savedCount}>{savedExperiences.length}</Text>
+            <Text style={styles.savedCount}>{savedExperienceDetails.length}</Text>
           </View>
-          {savedExperiences.map((exp) => (
+          {savedExperienceDetails.map((exp) => (
             <Pressable
               key={exp.id}
               style={styles.expCard}

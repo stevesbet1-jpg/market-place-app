@@ -389,10 +389,14 @@ export default function ExperienceDetailScreen() {
   const handleToggleSave = useCallback(async () => {
     if (!experienceId || savingToggle) return;
     setSavingToggle(true);
+    console.log('[SaveTrip] experience id:', experienceId);
     try {
-      const newSaved = await toggleSavedExperience(experienceId);
-      setIsSaved(newSaved.includes(experienceId));
-    } catch {
+      const newSaved = await toggleSavedExperience(experienceId as string);
+      const nowSaved = newSaved.includes(experienceId as string);
+      setIsSaved(nowSaved);
+      console.log('[SaveTrip] write success — saved:', nowSaved, '— total saved count:', newSaved.length);
+    } catch (err) {
+      console.error('[SaveTrip] write failure:', err);
       Alert.alert('Error', 'Could not update saved state.');
     } finally {
       setSavingToggle(false);

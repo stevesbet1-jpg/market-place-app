@@ -226,6 +226,20 @@ export async function getPublishedExperiences(): Promise<CreatorExperience[]> {
 }
 
 /**
+ * Returns a list of experiences by their Firestore document IDs.
+ * IDs that no longer exist or fail individually are silently omitted.
+ * Used by the Trips screen to load saved experiences directly by ID,
+ * so they appear regardless of their published/draft status.
+ */
+export async function getExperiencesByIds(
+  ids: string[]
+): Promise<CreatorExperience[]> {
+  if (ids.length === 0) return [];
+  const results = await Promise.all(ids.map((id) => getExperienceById(id)));
+  return results.filter(Boolean) as CreatorExperience[];
+}
+
+/**
  * Returns a single experience by Firestore document ID.
  * Returns null if not found or Firebase is not configured.
  */
