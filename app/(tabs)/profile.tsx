@@ -2,19 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import { getFirebaseApp } from '../../lib/firebase';
 import { logoutFromFirebase } from '../../lib/firebaseAuth';
 import { getUserProfile, type UserProfile } from '../../lib/userProfile';
 import { getSavedIds } from '../../constants/journeyStore';
 import { JOURNEYS, type ImageKey } from '../../constants/journeys';
-import { getCurrentUid, getMyApprovedCreatorProfile, activateCreator } from '../../lib/creatorService';
+import { getMyApprovedCreatorProfile, activateCreator } from '../../lib/creatorService';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [savedJourneys, setSavedJourneys] = useState<(typeof JOURNEYS)[number][]>([]);
+  const [authUid, setAuthUid] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [isCreator, setIsCreator] = useState<boolean | null>(null);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [creatorStatusLoading, setCreatorStatusLoading] = useState(true);
@@ -26,22 +28,41 @@ export default function ProfileScreen() {
     });
   }, []);
 
-  // Load creator status
+  // ── Auth state listener ─────────────────────────────────────────────────────
+  // onAuthStateChanged fires once Firebase has restored the persisted session
+  // from AsyncStorage. Using auth.currentUser synchronously at mount time is
+  // unreliable because the session restore is async — this is the correct gate.
   useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    console.log('[Profile:Auth] Subscribing to onAuthStateChanged');
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('[Profile:Auth] onAuthStateChanged fired — uid:', user?.uid ?? 'null (signed out)');
+      setAuthUid(user?.uid ?? null);
+      setAuthReady(true);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Load creator status — runs only after auth state is known
+  useEffect(() => {
+    if (!authReady) return;
     let cancelled = false;
     const loadCreatorStatus = async () => {
-      const uid = getCurrentUid();
-      if (!uid) {
+      if (!authUid) {
+        console.log('[Profile:Creator] authReady but no uid — user is signed out');
         if (!cancelled) { setIsCreator(false); setCreatorStatusLoading(false); }
         return;
       }
+      console.log('[Profile:Creator] Loading creator status for uid:', authUid);
       try {
-        const creatorProfile = await getMyApprovedCreatorProfile(uid);
+        const creatorProfile = await getMyApprovedCreatorProfile(authUid);
+        console.log('[Profile:Creator] Creator profile result:', creatorProfile ? `found (${creatorProfile.name})` : 'null');
         if (!cancelled) {
           setIsCreator(creatorProfile !== null);
           setCreatorName(creatorProfile?.name ?? null);
         }
-      } catch {
+      } catch (err: any) {
+        console.warn('[Profile:Creator] Error loading creator status:', err?.message);
         if (!cancelled) setIsCreator(false);
       } finally {
         if (!cancelled) setCreatorStatusLoading(false);
@@ -49,38 +70,41 @@ export default function ProfileScreen() {
     };
     loadCreatorStatus();
     return () => { cancelled = true; };
-  }, []);
+  }, [authReady, authUid]);
 
+  // Load profile data — runs only after auth state is known
   useEffect(() => {
+    if (!authReady) return;
     let cancelled = false;
     const load = async () => {
+      if (!authUid) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
       try {
         const auth = getAuth(getFirebaseApp());
         const user = auth.currentUser;
-        if (!user) {
-          if (!cancelled) setLoading(false);
-          return;
-        }
-        const data = await getUserProfile(user.uid);
+        console.log('[Profile:Data] Loading profile for uid:', authUid, '| auth.currentUser uid:', user?.uid ?? 'null');
+        const data = await getUserProfile(authUid);
         if (!cancelled) {
           // Merge Auth data as fallback for fields not yet in Firestore
           setProfile(data ?? {
-            uid: user.uid,
-            email: user.email,
-            fullName: user.displayName,
-            photoURL: user.photoURL,
+            uid: authUid,
+            email: user?.email ?? null,
+            fullName: user?.displayName ?? null,
+            photoURL: user?.photoURL ?? null,
             provider: 'email',
           });
         }
       } catch (e: any) {
-        console.warn('[Profile] load error:', e.message);
+        console.warn('[Profile:Data] load error:', e.message);
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [authReady, authUid]);
 
   const handleMenuItemPress = (title: string) => {
     Alert.alert(title, `${title} settings coming soon.`);
@@ -348,14 +372,21 @@ export default function ProfileScreen() {
             style={[styles.menuItem, activating && { opacity: 0.6 }]}
             disabled={activating}
             onPress={async () => {
-              const uid = getCurrentUid();
-              if (!uid) { router.replace('/(auth)/login'); return; }
+              console.log('[Profile:Creator] "Become a Creator" tapped — authUid:', authUid ?? 'null', '| authReady:', authReady);
+              if (!authUid) {
+                console.warn('[Profile:Creator] No authUid — user is not authenticated. Redirecting to login.');
+                router.replace('/(auth)/login');
+                return;
+              }
               setActivating(true);
               try {
-                const creatorProfile = await activateCreator(uid, profile?.fullName ?? '');
+                console.log('[Profile:Creator] Calling activateCreator for uid:', authUid);
+                const creatorProfile = await activateCreator(authUid, profile?.fullName ?? '');
+                console.log('[Profile:Creator] activateCreator succeeded — name:', creatorProfile.name);
                 setIsCreator(true);
                 setCreatorName(creatorProfile.name);
               } catch (e: any) {
+                console.error('[Profile:Creator] activateCreator failed:', e?.message);
                 Alert.alert('Error', e?.message ?? 'Could not activate creator account. Please try again.');
               } finally {
                 setActivating(false);

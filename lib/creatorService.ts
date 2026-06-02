@@ -244,16 +244,24 @@ export async function getMyApprovedCreatorProfile(uid: string): Promise<Creator 
  * Email verification is the only prerequisite (enforced at the UI layer).
  */
 export async function activateCreator(uid: string, displayName: string): Promise<Creator> {
-  if (!isFirebaseConfigured() || !uid) {
+  console.log('[CreatorService:activate] activateCreator called — uid:', uid, '| displayName:', displayName || '(empty)');
+  if (!isFirebaseConfigured()) {
+    console.error('[CreatorService:activate] Firebase is not configured');
+    throw new Error('Firebase is not configured.');
+  }
+  if (!uid) {
+    console.error('[CreatorService:activate] uid is empty');
     throw new Error('Firebase is not configured.');
   }
 
   // Idempotency — if already a creator, return existing profile
+  console.log('[CreatorService:activate] Checking for existing creator profile...');
   const existing = await getMyApprovedCreatorProfile(uid);
   if (existing) {
-    console.log('[CreatorAuth] activateCreator: already a creator, returning existing profile');
+    console.log('[CreatorService:activate] Already a creator — returning existing profile:', existing.name);
     return existing;
   }
+  console.log('[CreatorService:activate] No existing profile found — creating new creator doc...');
 
   const db = getFirestoreDb();
   const creatorDocRef = doc(db, CREATORS_COLLECTION, uid);
@@ -272,7 +280,7 @@ export async function activateCreator(uid: string, displayName: string): Promise
     createdAt: serverTimestamp(),
   };
   await setDoc(creatorDocRef, payload);
-  console.log('[CreatorAuth] activateCreator: creator account created for uid:', uid);
+  console.log('[CreatorService:activate] setDoc succeeded — creator doc written for uid:', uid);
 
   return mapFirestoreCreator(uid, { ...payload, createdAt: null });
 }
