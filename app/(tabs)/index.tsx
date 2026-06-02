@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,9 @@ import {
   LuxuryBorderRadius,
   LuxuryFontSize,
 } from '../../constants/luxuryTheme';
-import { getApprovedCreators, hasRealCreators, getCurrentUid, getMyApprovedCreatorProfile } from '../../lib/creatorService';
+import { getApprovedCreators, hasRealCreators, getMyApprovedCreatorProfile } from '../../lib/creatorService';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseApp } from '../../lib/firebase';
 import { getPublishedExperiences } from '../../lib/creatorExperienceService';
 import type { Creator } from '../../constants/creators';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
@@ -146,36 +148,52 @@ export default function DiscoverScreen() {
   // whether the current user has an active creator account
   const [isCreator, setIsCreator] = useState(false);
 
+  // ── Auth state (avoids race condition where currentUser is null on cold start)
+  const [authUid, setAuthUid] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    return onAuthStateChanged(auth, (user) => {
+      setAuthUid(user?.uid ?? null);
+      setAuthReady(true);
+    });
+  }, []);
+
+  // ── Load public data (no auth required) on focus
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       setLoading(true);
-
-      const uid = getCurrentUid();
       Promise.all([
         getApprovedCreators(),
         hasRealCreators(),
         getPublishedExperiences(),
-        uid ? getMyApprovedCreatorProfile(uid) : Promise.resolve(null),
       ]).then(
-        ([list, anyReal, exps, creatorProfile]) => {
+        ([list, anyReal, exps]) => {
           if (cancelled) return;
           const allDemo = (list as Creator[]).every((c) => c.isDemo);
           setCreators(list as Creator[]);
           setExperiences(exps as CreatorExperience[]);
           setShowingDemo(allDemo);
-          // Empty state: Firebase configured but zero real creators found
           setReallyEmpty(anyReal === false && (list as Creator[]).length === 0);
-          setIsCreator(creatorProfile !== null);
           setLoading(false);
         }
       ).catch(() => {
         if (!cancelled) setLoading(false);
       });
-
       return () => { cancelled = true; };
     }, [])
   );
+
+  // ── Update isCreator once auth state is known
+  useEffect(() => {
+    if (!authReady) return;
+    if (!authUid) { setIsCreator(false); return; }
+    getMyApprovedCreatorProfile(authUid)
+      .then((profile) => setIsCreator(profile !== null))
+      .catch(() => setIsCreator(false));
+  }, [authReady, authUid]);
 
   return (
     <View style={styles.root}>

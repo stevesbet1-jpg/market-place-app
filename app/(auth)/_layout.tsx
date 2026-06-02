@@ -1,11 +1,10 @@
 import { Stack } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { LuxuryColors } from '../../constants/luxuryTheme';
 
 export default function AuthLayout() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <View style={styles.container}>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -16,7 +15,7 @@ export default function AuthLayout() {
         <Stack.Screen name="signup" />
         <Stack.Screen name="reset-password" />
       </Stack>
-    </SafeAreaView>
+    </View>
   );
 }
 

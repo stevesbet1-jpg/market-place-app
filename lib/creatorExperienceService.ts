@@ -82,9 +82,15 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     published: Boolean(data.published),
     views: (data.views as number) ?? 0,
     unlocks: (data.unlocks as number) ?? 0,
-    createdAt: null,
-    updatedAt: null,
-    publishedAt: null,
+    createdAt: data.createdAt
+      ? (data.createdAt as { toMillis(): number }).toMillis?.() ?? null
+      : null,
+    updatedAt: data.updatedAt
+      ? (data.updatedAt as { toMillis(): number }).toMillis?.() ?? null
+      : null,
+    publishedAt: data.publishedAt
+      ? (data.publishedAt as { toMillis(): number }).toMillis?.() ?? null
+      : null,
   };
 }
 
