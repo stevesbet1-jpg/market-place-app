@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, ScrollViewProps, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Spacing } from '../constants';
+import { Spacing } from '../constants';
+import { LuxuryColors } from '../constants/luxuryTheme';
 
 interface ScreenProps {
   children: React.ReactNode;
@@ -47,7 +48,7 @@ export const Screen: React.FC<ScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: LuxuryColors.background,
   },
   scrollContent: {
     flexGrow: 1,

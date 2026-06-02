@@ -5,7 +5,7 @@ import { LuxuryColors } from '../../constants/luxuryTheme';
 
 export default function AuthLayout() {
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack
         screenOptions={{
           headerShown: false,

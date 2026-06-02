@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  StatusBar,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -180,8 +179,6 @@ export default function DiscoverScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[

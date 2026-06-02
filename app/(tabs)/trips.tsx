@@ -11,6 +11,7 @@ import { getPublishedJourneys } from '../../lib/creatorJourneyService';
 import { getPublishedExperiences } from '../../lib/creatorExperienceService';
 import { formatSaves } from '../../constants/creators';
 import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
+import { getSavedExperienceIds } from '../../constants/experienceStore';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
 type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple' | 'bali' | 'seychelles' | 'zanzibar' | 'lakecomo' | 'alps';
@@ -48,6 +49,7 @@ export default function TripsScreen() {
 
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [savedExperienceIds, setSavedExperienceIds] = useState<string[]>([]);
   const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
   const [allJourneys, setAllJourneys] = useState<CreatorJourney[]>([]);
   const [allExperiences, setAllExperiences] = useState<CreatorExperience[]>([]);
@@ -57,14 +59,16 @@ export default function TripsScreen() {
     useCallback(() => {
       let cancelled = false;
       setLoading(true);
-      Promise.all([getFreeRemaining(), getSavedIds(), getBudgetPref(), getPublishedJourneys(), getPublishedExperiences()]).then(
-        ([remaining, saved, pref, journeys, exps]) => {
+      Promise.all([getFreeRemaining(), getSavedIds(), getSavedExperienceIds(), getBudgetPref(), getPublishedJourneys(), getPublishedExperiences()]).then(
+        ([remaining, saved, savedExpIds, pref, journeys, exps]) => {
           if (cancelled) return;
           setFreeRemaining(remaining as number);
           setSavedIds(saved as string[]);
+          setSavedExperienceIds(savedExpIds as string[]);
           setBudgetPrefState(pref as BudgetLevel | null);
           setAllJourneys([...(journeys as CreatorJourney[])].sort(() => Math.random() - 0.5));
           setAllExperiences(exps as CreatorExperience[]);
+          console.log('[Trips] savedExperienceIds:', savedExpIds);
           setLoading(false);
         }
       ).catch(() => { if (!cancelled) setLoading(false); });
@@ -82,6 +86,11 @@ export default function TripsScreen() {
   const savedJourneys = useMemo<CreatorJourney[]>(
     () => savedIds.map((id) => allJourneys.find((j) => j.id === id)).filter(Boolean) as CreatorJourney[],
     [savedIds, allJourneys]
+  );
+
+  const savedExperiences = useMemo<CreatorExperience[]>(
+    () => savedExperienceIds.map((id) => allExperiences.find((e) => e.id === id)).filter(Boolean) as CreatorExperience[],
+    [savedExperienceIds, allExperiences]
   );
 
   const handleBudgetFilter = async (b: BudgetLevel | null) => {
@@ -248,6 +257,37 @@ export default function TripsScreen() {
           <Text style={styles.savedEmptySubtext}>Tap the bookmark on any journey to save it</Text>
         </View>
       )}
+
+      {/* ── Saved Experiences ── */}
+      {savedExperiences.length > 0 ? (
+        <View style={styles.savedSection}>
+          <View style={styles.savedHeader}>
+            <Text style={styles.savedLabel}>Saved Experiences</Text>
+            <Text style={styles.savedCount}>{savedExperiences.length}</Text>
+          </View>
+          {savedExperiences.map((exp) => (
+            <Pressable
+              key={exp.id}
+              style={styles.expCard}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
+              }
+            >
+              <View style={styles.expCardLeft}>
+                <Ionicons name="bookmark" size={18} color={LuxuryColors.gold} />
+              </View>
+              <View style={styles.expCardBody}>
+                <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
+                <Text style={styles.expCardMeta} numberOfLines={1}>
+                  {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
+                </Text>
+                <Text style={styles.expCardCreator}>by {exp.creatorName}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {/* ── Journey cards ── */}
       {featuredJourneys.length === 0 ? (

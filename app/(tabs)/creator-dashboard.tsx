@@ -442,8 +442,10 @@ export default function CreatorDashboardScreen() {
     if (isRefresh) setRefreshing(true);
     else setLoadingExperiences(true);
     try {
-      const data = await getCreatorExperiences(creatorId);
-      setExperiences(data);
+     console.log('[Dashboard] loading experiences for creatorId:', creatorId);
+const data = await getCreatorExperiences(creatorId);
+console.log('[Dashboard] experiences loaded:', data);
+setExperiences(data);
     } catch {
       setExperiences([]);
     } finally {

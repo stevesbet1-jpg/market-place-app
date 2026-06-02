@@ -186,7 +186,6 @@ export async function getCreatorExperiences(
     const q = query(
       collection(db, COLLECTION),
       where('creatorId', '==', creatorId),
-      orderBy('createdAt', 'desc')
     );
     const snap = await getDocs(q);
     return snap.docs.map((d) =>
