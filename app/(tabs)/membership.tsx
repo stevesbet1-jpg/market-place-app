@@ -149,7 +149,7 @@ export default function MembershipScreen() {
               <Ionicons key={i} name="star" size={10} color={LuxuryColors.gold} />
             ))}
           </View>
-          <Text style={styles.proofText}>Trusted by 2,000+ members · 6 creators · 20+ journeys</Text>
+          <Text style={styles.proofText}>Join a growing community of luxury travelers</Text>
         </View>
       </View>
 

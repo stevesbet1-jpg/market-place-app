@@ -86,7 +86,7 @@ export default function PaywallScreen() {
             ))}
           </View>
           <Text style={styles.socialProofText}>
-            Trusted by 2,000+ travelers exploring creator-curated journeys.
+            Join a growing community exploring creator-curated journeys.
           </Text>
         </View>
       </View>
