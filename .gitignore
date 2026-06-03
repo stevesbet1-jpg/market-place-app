@@ -45,6 +45,8 @@ travel-marketplace-app/
 # Firebase Admin SDK service account (NEVER commit this)
 scripts/serviceAccount.json
 marketplace-app-3b3f7-firebase-adminsdk-*.json
+*-firebase-adminsdk-*.json
+serviceAccount*.json
 
 # Firebase CLI
 .firebase/
