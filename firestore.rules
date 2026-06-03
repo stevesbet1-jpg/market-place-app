@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper functions ──────────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // ─── creatorExperiences ────────────────────────────────────────────────────
+    // Public read if published == true.
+    // Owner (creatorId == auth.uid) can read their own unpublished experiences.
+    // Only the authenticated user whose UID matches creatorId may write.
+    match /creatorExperiences/{experienceId} {
+      allow read: if resource.data.published == true
+                  || (isAuthenticated() && resource.data.creatorId == request.auth.uid);
+      allow create: if isAuthenticated()
+                    && request.resource.data.creatorId == request.auth.uid;
+      allow update: if isAuthenticated()
+                    && resource.data.creatorId == request.auth.uid;
+      allow delete: if isAuthenticated()
+                    && resource.data.creatorId == request.auth.uid;
+    }
+
+    // ─── creator_journeys ──────────────────────────────────────────────────────
+    // Public read if status == 'published'.
+    // Owner (creatorId == auth.uid) can read their own drafts/archived journeys.
+    // Only the authenticated user whose UID matches creatorId may write.
+    match /creator_journeys/{journeyId} {
+      allow read: if resource.data.status == 'published'
+                  || (isAuthenticated() && resource.data.creatorId == request.auth.uid);
+      allow create: if isAuthenticated()
+                    && request.resource.data.creatorId == request.auth.uid;
+      allow update: if isAuthenticated()
+                    && resource.data.creatorId == request.auth.uid;
+      allow delete: if isAuthenticated()
+                    && resource.data.creatorId == request.auth.uid;
+    }
+
+    // ─── creators ──────────────────────────────────────────────────────────────
+    // Publicly readable (marketplace creator profiles).
+    // Only the owner (document ID == auth.uid) can write their own profile.
+    match /creators/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId);
+    }
+
+    // ─── users ─────────────────────────────────────────────────────────────────
+    // Private: only the account owner may read or write their own user document.
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ─── products ──────────────────────────────────────────────────────────────
+    // Authenticated users can read. Owner (ownerId == auth.uid) can write.
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAuthenticated()
+                            && resource.data.ownerId == request.auth.uid;
+    }
+
+  }
+}
