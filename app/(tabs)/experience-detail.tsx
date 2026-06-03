@@ -47,13 +47,15 @@ import { getFirebaseApp } from '../../lib/firebase';
 import { checkMembership } from '../../lib/membershipService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
 import {
-  getFreeExperienceRemaining,
-  consumeFreeExperience,
   isExperienceUnlocked,
   getSavedExperienceIds,
   toggleSavedExperience,
   FREE_EXPERIENCE_LIMIT,
 } from '../../constants/experienceStore';
+import {
+  getFreeCreditCount,
+  consumeCredit,
+} from '../../lib/freeCreditService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HERO_HEIGHT = 340;
@@ -362,7 +364,7 @@ export default function ExperienceDetailScreen() {
         const [exp, unlocked, remaining, savedIds] = await Promise.all([
           getExperienceById(experienceId as string),
           isExperienceUnlocked(experienceId as string),
-          getFreeExperienceRemaining(),
+          getFreeCreditCount(),
           getSavedExperienceIds(),
         ]);
 
@@ -393,7 +395,7 @@ export default function ExperienceDetailScreen() {
   const handleUseFreeCredit = useCallback(async () => {
     if (!experienceId || isUnlocked) return;
     try {
-      const newRemaining = await consumeFreeExperience(experienceId);
+      const newRemaining = await consumeCredit(experienceId);
       setIsUnlocked(true);
       setFreeRemaining(newRemaining);
       // P2.3: fire-and-forget unlock increment
