@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,16 @@ import { formatFollowers, formatSaves } from '../../constants/creators';
 import { getCreatorById } from '../../lib/creatorService';
 import { getCreatorJourneys } from '../../lib/creatorJourneyService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseApp } from '../../lib/firebase';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { getFirestoreDb, isFirebaseConfigured } from '../../lib/firebase';
 import type { ImageKey } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 
@@ -55,8 +65,19 @@ export default function CreatorProfileScreen() {
   const [creator, setCreator] = useState<Awaited<ReturnType<typeof getCreatorById>>>(null);
   const [loadingCreator, setLoadingCreator] = useState(true);
   const [followed, setFollowed] = useState(false);
+  const [authUid, setAuthUid] = useState<string | null>(null);
   const [creatorJourneys, setCreatorJourneys] = useState<CreatorJourney[]>([]);
 
+  // Auth listener
+  useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAuthUid(user?.uid ?? null);
+    });
+    return unsub;
+  }, []);
+
+  // Load creator data + follow state
   useEffect(() => {
     let cancelled = false;
     const creatorId = id ?? '';
@@ -68,6 +89,22 @@ export default function CreatorProfileScreen() {
     });
     return () => { cancelled = true; };
   }, [id]);
+
+  // Load follow state from Firestore when uid or creatorId changes
+  useEffect(() => {
+    if (!authUid || !id || !isFirebaseConfigured()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const db = getFirestoreDb();
+        const snap = await getDoc(doc(db, 'users', authUid, 'following', id));
+        if (!cancelled) setFollowed(snap.exists());
+      } catch {
+        // silently ignore — local state stays at default
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authUid, id]);
 
   if (loadingCreator) {
     return (
@@ -88,9 +125,25 @@ export default function CreatorProfileScreen() {
     );
   }
 
-  const handleFollow = () => {
+  const persistFollow = useCallback(async (creatorId: string, nowFollowing: boolean) => {
+    if (!authUid || !isFirebaseConfigured()) return;
+    try {
+      const db = getFirestoreDb();
+      const ref = doc(db, 'users', authUid, 'following', creatorId);
+      if (nowFollowing) {
+        await setDoc(ref, { creatorId, followedAt: serverTimestamp() });
+      } else {
+        await deleteDoc(ref);
+      }
+    } catch {
+      // silently ignore — UI state already updated
+    }
+  }, [authUid]);
+
+  const handleFollow = useCallback(() => {
     if (followed) {
       setFollowed(false);
+      persistFollow(id ?? '', false);
       return;
     }
     Alert.alert(
@@ -100,11 +153,14 @@ export default function CreatorProfileScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Enable Notifications',
-          onPress: () => setFollowed(true),
+          onPress: () => {
+            setFollowed(true);
+            persistFollow(id ?? '', true);
+          },
         },
       ],
     );
-  };
+  }, [followed, id, persistFollow]);
 
   const handleSocialPress = (type: string, handle: string) => {
     let url = '';
