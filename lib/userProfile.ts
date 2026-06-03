@@ -75,3 +75,52 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     return null;
   }
 }
+
+// ─── Notification preferences ─────────────────────────────────────
+
+export interface NotificationPrefs {
+  newJourneys: boolean;   // notify when a creator publishes a new journey
+  newExperiences: boolean; // notify when a creator publishes a new experience
+  promotions: boolean;    // marketing / offer emails
+  membershipAlerts: boolean; // membership renewal / expiry alerts
+}
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  newJourneys: true,
+  newExperiences: true,
+  promotions: false,
+  membershipAlerts: true,
+};
+
+export async function getNotificationPrefs(uid: string): Promise<NotificationPrefs> {
+  if (!isFirebaseConfigured()) return DEFAULT_NOTIFICATION_PREFS;
+  try {
+    const db = getFirestoreDb();
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (!snap.exists()) return DEFAULT_NOTIFICATION_PREFS;
+    const data = snap.data() as Record<string, unknown>;
+    return {
+      ...DEFAULT_NOTIFICATION_PREFS,
+      ...(data.notificationPrefs as Partial<NotificationPrefs> ?? {}),
+    };
+  } catch {
+    return DEFAULT_NOTIFICATION_PREFS;
+  }
+}
+
+export async function saveNotificationPrefs(
+  uid: string,
+  prefs: NotificationPrefs
+): Promise<void> {
+  if (!isFirebaseConfigured()) return;
+  try {
+    const db = getFirestoreDb();
+    await setDoc(
+      doc(db, 'users', uid),
+      { notificationPrefs: prefs, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  } catch (e: any) {
+    console.warn('[UserProfile] saveNotificationPrefs failed:', e.message);
+  }
+}

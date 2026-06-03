@@ -218,14 +218,14 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
         {[
-          { icon: 'notifications-outline', title: 'Notifications', desc: 'Push and email alerts' },
-          { icon: 'language-outline', title: 'Language', desc: 'English (US)' },
-          { icon: 'moon-outline', title: 'Dark Mode', desc: 'Always on' },
+          { icon: 'notifications-outline', title: 'Notifications', desc: 'Push and email alerts', route: '/(tabs)/notification-settings' as const },
+          { icon: 'language-outline', title: 'Language', desc: 'English (US)', route: null },
+          { icon: 'moon-outline', title: 'Dark Mode', desc: 'Always on', route: null },
         ].map((item, index) => (
           <TouchableOpacity
             key={index}
             style={styles.menuItem}
-            onPress={() => handleMenuItemPress(item.title)}
+            onPress={() => item.route ? router.push(item.route) : handleMenuItemPress(item.title)}
             activeOpacity={0.8}
           >
             <View style={styles.menuIcon}>
