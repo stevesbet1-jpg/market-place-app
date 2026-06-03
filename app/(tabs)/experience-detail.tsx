@@ -25,7 +25,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
-  Linking,
   Alert,
   Dimensions,
 } from 'react-native';
@@ -46,6 +45,7 @@ import { travelStyleLabel } from '../../constants/creatorExperienceModel';
 import { getExperienceById } from '../../lib/creatorExperienceService';
 import { getFirebaseApp } from '../../lib/firebase';
 import { checkMembership } from '../../lib/membershipService';
+import { safeOpenUrl } from '../../lib/linkingUtils';
 import {
   getFreeExperienceRemaining,
   consumeFreeExperience,
@@ -294,9 +294,7 @@ function MapPlaceholder({
   const mapsUrl = `https://maps.google.com/?q=${query}`;
 
   const handleOpenMaps = () => {
-    Linking.openURL(mapsUrl).catch(() => {
-      Alert.alert('Error', 'Could not open Maps.');
-    });
+    safeOpenUrl(mapsUrl, 'Could not open Maps.');
   };
 
   return (

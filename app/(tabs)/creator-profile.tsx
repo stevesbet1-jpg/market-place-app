@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Pressable,
   Alert,
-  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +23,7 @@ import {
 import { formatFollowers, formatSaves } from '../../constants/creators';
 import { getCreatorById } from '../../lib/creatorService';
 import { getCreatorJourneys } from '../../lib/creatorJourneyService';
+import { safeOpenUrl } from '../../lib/linkingUtils';
 import type { ImageKey } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 
@@ -112,9 +112,7 @@ export default function CreatorProfileScreen() {
     if (type === 'Instagram') url = handle.startsWith('http') ? handle : `https://instagram.com/${handle.replace('@', '')}`;
     else if (type === 'YouTube') url = handle.startsWith('http') ? handle : `https://youtube.com/${handle}`;
     else url = handle.startsWith('http') ? handle : `https://${handle}`;
-    Linking.openURL(url).catch(() =>
-      Alert.alert('Could not open link', `Visit ${handle} manually.`),
-    );
+    safeOpenUrl(url, `Visit ${handle} manually.`);
   };
 
   return (
