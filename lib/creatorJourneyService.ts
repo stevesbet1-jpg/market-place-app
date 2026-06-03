@@ -18,6 +18,9 @@ import {
   query,
   where,
   orderBy,
+  limit,
+  startAfter,
+  type QueryDocumentSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFirestoreDb, isFirebaseConfigured } from './firebase';
@@ -243,4 +246,65 @@ export async function getJourneysByIds(ids: string[]): Promise<CreatorJourney[]>
     .filter((r): r is PromiseFulfilledResult<CreatorJourney | null> => r.status === 'fulfilled')
     .map((r) => r.value)
     .filter((j): j is CreatorJourney => j !== null);
+}
+
+export const JOURNEYS_PAGE_SIZE = 20;
+
+export interface JourneysPage {
+  items: CreatorJourney[];
+  cursor: QueryDocumentSnapshot | null; // pass to nextPage; null = no more pages
+}
+
+/**
+ * Returns the first page of published journeys (newest first).
+ * Falls back to all seed data when Firebase is not configured.
+ */
+export async function getPublishedJourneysPage(
+  pageSize = JOURNEYS_PAGE_SIZE
+): Promise<JourneysPage> {
+  if (!isFirebaseConfigured()) {
+    return { items: JOURNEYS.map(mapSeedToCreatorJourney), cursor: null };
+  }
+  try {
+    const db = getFirestoreDb();
+    const q = query(
+      collection(db, COLLECTION),
+      where('status', '==', 'published'),
+      orderBy('createdAt', 'desc'),
+      limit(pageSize)
+    );
+    const snap = await getDocs(q);
+    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CreatorJourney));
+    if (items.length === 0) return { items: JOURNEYS.map(mapSeedToCreatorJourney), cursor: null };
+    const cursor = snap.docs[snap.docs.length - 1] ?? null;
+    return { items, cursor: snap.docs.length < pageSize ? null : cursor };
+  } catch {
+    return { items: JOURNEYS.map(mapSeedToCreatorJourney), cursor: null };
+  }
+}
+
+/**
+ * Returns the next page of published journeys after `cursor`.
+ */
+export async function getMorePublishedJourneys(
+  cursor: QueryDocumentSnapshot,
+  pageSize = JOURNEYS_PAGE_SIZE
+): Promise<JourneysPage> {
+  if (!isFirebaseConfigured()) return { items: [], cursor: null };
+  try {
+    const db = getFirestoreDb();
+    const q = query(
+      collection(db, COLLECTION),
+      where('status', '==', 'published'),
+      orderBy('createdAt', 'desc'),
+      startAfter(cursor),
+      limit(pageSize)
+    );
+    const snap = await getDocs(q);
+    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CreatorJourney));
+    const nextCursor = snap.docs[snap.docs.length - 1] ?? null;
+    return { items, cursor: snap.docs.length < pageSize ? null : nextCursor };
+  } catch {
+    return { items: [], cursor: null };
+  }
 }

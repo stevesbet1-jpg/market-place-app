@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { View, Text, Image, ActivityIndicator, StyleSheet, ScrollView, Pressable, FlatList } from 'react-native';
+import { View, Text, Image, ActivityIndicator, StyleSheet, ScrollView, Pressable, FlatList, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -7,8 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import type { BudgetLevel } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
-import { getPublishedJourneys } from '../../lib/creatorJourneyService';
-import { getPublishedExperiences, getExperiencesByIds } from '../../lib/creatorExperienceService';
+import { getPublishedJourneys, getPublishedJourneysPage, getMorePublishedJourneys, type JourneysPage } from '../../lib/creatorJourneyService';
+import { getPublishedExperiences, getPublishedExperiencesPage, getMorePublishedExperiences, getExperiencesByIds, type ExperiencesPage } from '../../lib/creatorExperienceService';
 import { formatSaves } from '../../constants/creators';
 import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
 import { getSavedExperienceIds } from '../../constants/experienceStore';
@@ -55,6 +55,9 @@ export default function TripsScreen() {
   const [allJourneys, setAllJourneys] = useState<CreatorJourney[]>([]);
   const [allExperiences, setAllExperiences] = useState<CreatorExperience[]>([]);
   const [loading, setLoading] = useState(true);
+  const [journeyCursor, setJourneyCursor] = useState<JourneysPage['cursor']>(null);
+  const [expCursor, setExpCursor] = useState<ExperiencesPage['cursor']>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -63,13 +66,13 @@ export default function TripsScreen() {
 
       async function loadAll() {
         try {
-          const [remaining, saved, savedExpIds, pref, journeys, exps] = await Promise.all([
+          const [remaining, saved, savedExpIds, pref, journeyPage, expPage] = await Promise.all([
             getFreeRemaining(),
             getSavedIds(),
             getSavedExperienceIds(),
             getBudgetPref(),
-            getPublishedJourneys(),
-            getPublishedExperiences(),
+            getPublishedJourneysPage(),
+            getPublishedExperiencesPage(),
           ]);
           if (cancelled) return;
 
@@ -86,8 +89,10 @@ export default function TripsScreen() {
           setSavedIds(saved as string[]);
           setSavedExperienceDetails(savedExpDetails);
           setBudgetPrefState(pref as BudgetLevel | null);
-          setAllJourneys([...(journeys as CreatorJourney[])].sort(() => Math.random() - 0.5));
-          setAllExperiences(exps as CreatorExperience[]);
+          setAllJourneys([...(journeyPage as JourneysPage).items].sort(() => Math.random() - 0.5));
+          setJourneyCursor((journeyPage as JourneysPage).cursor);
+          setAllExperiences((expPage as ExperiencesPage).items);
+          setExpCursor((expPage as ExperiencesPage).cursor);
           setLoading(false);
         } catch (err) {
           console.error('[Trips] load error:', err);
@@ -116,6 +121,29 @@ export default function TripsScreen() {
     setBudgetPrefState(b);
     await setBudgetPref(b);
   };
+
+  const handleLoadMore = useCallback(async () => {
+    if (loadingMore || (!journeyCursor && !expCursor)) return;
+    setLoadingMore(true);
+    try {
+      const [moreJourneys, moreExps] = await Promise.all([
+        journeyCursor ? getMorePublishedJourneys(journeyCursor) : Promise.resolve(null),
+        expCursor ? getMorePublishedExperiences(expCursor) : Promise.resolve(null),
+      ]);
+      if (moreJourneys) {
+        setAllJourneys((prev) => [...prev, ...moreJourneys.items]);
+        setJourneyCursor(moreJourneys.cursor);
+      }
+      if (moreExps) {
+        setAllExperiences((prev) => [...prev, ...moreExps.items]);
+        setExpCursor(moreExps.cursor);
+      }
+    } catch (err) {
+      console.error('[Trips] loadMore error:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, journeyCursor, expCursor]);
 
   const handleCardPress = (journey: CreatorJourney) => {
     if (freeRemaining === 0) {
@@ -146,7 +174,7 @@ export default function TripsScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + LuxurySpacing.xl }]}>
         <Text style={styles.overline}>Travel Creator Marketplace</Text>
-        <Text style={styles.title}>Discover Journeys</Text>
+        <Text style={styles.title}>My Trips</Text>
         <Text style={styles.subtitle}>Curated journeys from world-class travel creators</Text>
       </View>
 
@@ -444,6 +472,24 @@ export default function TripsScreen() {
               <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
             </Pressable>
           ))}
+        </View>
+      )}
+
+      {/* ── Load More ── */}
+      {(journeyCursor || expCursor) && (
+        <View style={{ alignItems: 'center', paddingVertical: LuxurySpacing.xl }}>
+          <TouchableOpacity
+            style={styles.loadMoreBtn}
+            onPress={handleLoadMore}
+            disabled={loadingMore}
+            activeOpacity={0.8}
+          >
+            {loadingMore ? (
+              <ActivityIndicator color={LuxuryColors.gold} size="small" />
+            ) : (
+              <Text style={styles.loadMoreText}>Load More</Text>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
@@ -990,6 +1036,20 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.xs,
     color: LuxuryColors.gold,
     fontStyle: 'italic',
+  },
+  loadMoreBtn: {
+    paddingHorizontal: LuxurySpacing.xl,
+    paddingVertical: LuxurySpacing.sm,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: LuxuryColors.gold,
+    minWidth: 140,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.gold,
+    fontWeight: '600',
   },
 });
 

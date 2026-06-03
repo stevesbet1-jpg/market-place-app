@@ -22,14 +22,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // ─── Runtime diagnostics (safe: never logs full key) ──────────────
 
-console.log('=== SUPABASE RUNTIME CONFIG ===');
-console.log('Source:', source);
-console.log('Supabase URL exists:', !!supabaseUrl);
-console.log('Supabase URL value:', supabaseUrl || 'MISSING');
-console.log('Supabase anon key exists:', !!supabaseAnonKey);
-console.log('Supabase anon key (first 12 chars):', supabaseAnonKey ? supabaseAnonKey.substring(0, 12) + '...' : 'MISSING');
-console.log('Supabase anon key length:', supabaseAnonKey?.length || 0);
-console.log('================================');
+if (__DEV__) {
+  console.log('=== SUPABASE RUNTIME CONFIG ===');
+  console.log('Source:', source);
+  console.log('Supabase URL exists:', !!supabaseUrl);
+  console.log('Supabase URL value:', supabaseUrl || 'MISSING');
+  console.log('Supabase anon key exists:', !!supabaseAnonKey);
+  console.log('Supabase anon key (first 12 chars):', supabaseAnonKey ? supabaseAnonKey.substring(0, 12) + '...' : 'MISSING');
+  console.log('Supabase anon key length:', supabaseAnonKey?.length || 0);
+  console.log('================================');
+}
 
 // ─── Validation before creating client ─────────────────────────────
 

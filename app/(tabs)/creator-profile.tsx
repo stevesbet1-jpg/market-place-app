@@ -94,17 +94,16 @@ export default function CreatorProfileScreen() {
       return;
     }
     Alert.alert(
-      'Follow Creator',
-      'Following creators unlocks priority notifications when they publish new journeys. Upgrade your membership to follow all creators.',
+      'Notify Me',
+      'You\'ll be notified when this creator publishes new journeys. This works with your current account — no upgrade required.',
       [
-        { text: 'Maybe Later', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Upgrade',
-          onPress: () => router.push('/(tabs)/paywall'),
+          text: 'Enable Notifications',
+          onPress: () => setFollowed(true),
         },
       ],
     );
-    setFollowed(true);
   };
 
   const handleSocialPress = (type: string, handle: string) => {
@@ -158,12 +157,12 @@ export default function CreatorProfileScreen() {
           onPress={handleFollow}
         >
           <Ionicons
-            name={followed ? 'checkmark-circle' : 'person-add-outline'}
+            name={followed ? 'checkmark-circle' : 'notifications-outline'}
             size={14}
             color={followed ? LuxuryColors.background : LuxuryColors.gold}
           />
           <Text style={[styles.followBtnText, followed && styles.followBtnTextActive]}>
-            {followed ? 'Following' : 'Follow'}
+            {followed ? 'Notifying' : 'Notify Me'}
           </Text>
         </Pressable>
       </LinearGradient>

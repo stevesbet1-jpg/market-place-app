@@ -42,7 +42,7 @@ import {
 } from '../../constants/luxuryTheme';
 import type { CreatorExperience, DailyPlanEntry, TravelStyle, Restaurant, HiddenGem, Hotel } from '../../constants/creatorExperienceModel';
 import { travelStyleLabel } from '../../constants/creatorExperienceModel';
-import { getExperienceById } from '../../lib/creatorExperienceService';
+import { getExperienceById, incrementExperienceViews, incrementExperienceUnlocks } from '../../lib/creatorExperienceService';
 import { getFirebaseApp } from '../../lib/firebase';
 import { checkMembership } from '../../lib/membershipService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
@@ -375,6 +375,8 @@ export default function ExperienceDetailScreen() {
           setIsUnlocked(unlocked);
           setFreeRemaining(remaining);
           setIsSaved(savedIds.includes(experienceId as string));
+          // P2.2: fire-and-forget view increment
+          incrementExperienceViews(experienceId as string);
         }
       } catch {
         if (!cancelled) setNotFound(true);
@@ -394,6 +396,8 @@ export default function ExperienceDetailScreen() {
       const newRemaining = await consumeFreeExperience(experienceId);
       setIsUnlocked(true);
       setFreeRemaining(newRemaining);
+      // P2.3: fire-and-forget unlock increment
+      incrementExperienceUnlocks(experienceId as string);
     } catch {
       Alert.alert('Error', 'Could not unlock experience. Try again.');
     }

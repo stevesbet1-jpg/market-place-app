@@ -23,6 +23,11 @@ import {
   query,
   where,
   orderBy,
+  documentId,
+  increment,
+  limit,
+  startAfter,
+  type QueryDocumentSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFirestoreDb, isFirebaseConfigured } from './firebase';
@@ -235,8 +240,32 @@ export async function getExperiencesByIds(
   ids: string[]
 ): Promise<CreatorExperience[]> {
   if (ids.length === 0) return [];
-  const results = await Promise.all(ids.map((id) => getExperienceById(id)));
-  return results.filter(Boolean) as CreatorExperience[];
+  if (!isFirebaseConfigured()) {
+    // Fallback: individual fetches (no seed data for experiences)
+    const results = await Promise.all(ids.map((id) => getExperienceById(id)));
+    return results.filter(Boolean) as CreatorExperience[];
+  }
+
+  // Firestore 'in' query supports max 30 items per batch
+  const BATCH_SIZE = 30;
+  const db = getFirestoreDb();
+  const allResults: CreatorExperience[] = [];
+
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE);
+    try {
+      const snap = await getDocs(
+        query(collection(db, COLLECTION), where(documentId(), 'in', batch))
+      );
+      snap.forEach((d) => allResults.push(mapDoc(d.id, d.data() as Record<string, unknown>)));
+    } catch {
+      // On error fall back to individual fetches for this batch
+      const fallback = await Promise.all(batch.map((id) => getExperienceById(id)));
+      fallback.forEach((e) => e && allResults.push(e));
+    }
+  }
+
+  return allResults;
 }
 
 /**
@@ -255,5 +284,86 @@ export async function getExperienceById(
     return mapDoc(snap.id, snap.data() as Record<string, unknown>);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Atomically increments the `views` counter on an experience document.
+ * Fire-and-forget: errors are swallowed to avoid disrupting the UI.
+ */
+export function incrementExperienceViews(experienceId: string): void {
+  if (!isFirebaseConfigured() || !experienceId) return;
+  try {
+    const db = getFirestoreDb();
+    updateDoc(doc(db, COLLECTION, experienceId), { views: increment(1) }).catch(() => {});
+  } catch { /* silently ignore */ }
+}
+
+/**
+ * Atomically increments the `unlocks` counter on an experience document.
+ * Fire-and-forget: errors are swallowed to avoid disrupting the UI.
+ */
+export function incrementExperienceUnlocks(experienceId: string): void {
+  if (!isFirebaseConfigured() || !experienceId) return;
+  try {
+    const db = getFirestoreDb();
+    updateDoc(doc(db, COLLECTION, experienceId), { unlocks: increment(1) }).catch(() => {});
+  } catch { /* silently ignore */ }
+}
+
+export const EXPERIENCES_PAGE_SIZE = 20;
+
+export interface ExperiencesPage {
+  items: CreatorExperience[];
+  cursor: QueryDocumentSnapshot | null;
+}
+
+/**
+ * Returns the first page of published experiences (newest first).
+ */
+export async function getPublishedExperiencesPage(
+  pageSize = EXPERIENCES_PAGE_SIZE
+): Promise<ExperiencesPage> {
+  if (!isFirebaseConfigured()) return { items: [], cursor: null };
+  try {
+    const db = getFirestoreDb();
+    const q = query(
+      collection(db, COLLECTION),
+      where('published', '==', true),
+      orderBy('createdAt', 'desc'),
+      limit(pageSize)
+    );
+    const snap = await getDocs(q);
+    const items = snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
+    const cursor = snap.docs[snap.docs.length - 1] ?? null;
+    return { items, cursor: snap.docs.length < pageSize ? null : cursor };
+  } catch {
+    return { items: [], cursor: null };
+  }
+}
+
+/**
+ * Returns the next page of published experiences after `cursor`.
+ */
+export async function getMorePublishedExperiences(
+  cursor: QueryDocumentSnapshot,
+  pageSize = EXPERIENCES_PAGE_SIZE
+): Promise<ExperiencesPage> {
+  if (!isFirebaseConfigured()) return { items: [], cursor: null };
+  try {
+    const db = getFirestoreDb();
+    const q = query(
+      collection(db, COLLECTION),
+      where('published', '==', true),
+      orderBy('createdAt', 'desc'),
+      startAfter(cursor),
+      limit(pageSize)
+    );
+    const snap = await getDocs(q);
+    const items = snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
+    const nextCursor = snap.docs[snap.docs.length - 1] ?? null;
+    return { items, cursor: snap.docs.length < pageSize ? null : nextCursor };
+  } catch {
+    return { items: [], cursor: null };
   }
 }
