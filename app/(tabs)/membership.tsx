@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   LuxuryColors,
@@ -12,6 +12,8 @@ import {
 } from '../../constants/luxuryTheme';
 import { getFirebaseApp } from '../../lib/firebase';
 import { getUserProfile } from '../../lib/userProfile';
+import { purchaseMembership } from '../../lib/stripeService';
+import { checkMembership } from '../../lib/membershipService';
 
 const BENEFITS = [
   {
@@ -44,28 +46,71 @@ const BENEFITS = [
 export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
   const [memberName, setMemberName] = useState<string | null>(null);
+  const [purchasing, setPurchasing] = useState(false);
+  const [isMember, setIsMember] = useState(false);
+  const [currentUid, setCurrentUid] = useState<string | null>(null);
+  const [currentEmail, setCurrentEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
-    const user = auth.currentUser;
-    if (!user) return;
-    getUserProfile(user.uid)
-      .then((p) => {
-        const name = p?.fullName ?? user.displayName ?? null;
-        setMemberName(name ? name.split(' ')[0] : null);
-      })
-      .catch(() => {
-        const name = user.displayName;
-        setMemberName(name ? name.split(' ')[0] : null);
-      });
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setCurrentUid(null);
+        setCurrentEmail(null);
+        setIsMember(false);
+        return;
+      }
+      setCurrentUid(user.uid);
+      setCurrentEmail(user.email);
+
+      const [profile, active] = await Promise.all([
+        getUserProfile(user.uid).catch(() => null),
+        checkMembership(user.uid),
+      ]);
+
+      const name = profile?.fullName ?? user.displayName ?? null;
+      setMemberName(name ? name.split(' ')[0] : null);
+      setIsMember(active);
+    });
+    return unsub;
   }, []);
 
-  const handleSubscribe = (plan: 'monthly' | 'annual') => {
-    Alert.alert(
-      plan === 'annual' ? 'Annual Plan' : 'Monthly Plan',
-      'Full payment integration coming soon. You will be notified when memberships open.',
-      [{ text: 'Got it' }],
-    );
+  const handleSubscribe = async (plan: 'monthly' | 'annual') => {
+    const auth = getAuth(getFirebaseApp());
+    const user = auth.currentUser;
+
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to purchase a membership.');
+      return;
+    }
+
+    if (isMember) {
+      Alert.alert('Already a member', 'Your membership is currently active.');
+      return;
+    }
+
+    setPurchasing(true);
+    try {
+      const result = await purchaseMembership(plan, user.uid, user.email ?? '');
+      if (result.success) {
+        // Stripe webhook will write to Firestore — poll once after a short delay
+        await new Promise((r) => setTimeout(r, 2000));
+        const nowMember = await checkMembership(user.uid);
+        setIsMember(nowMember);
+        if (nowMember) {
+          Alert.alert('Welcome to the Club! 🎉', 'Your membership is now active. Enjoy unlimited access.');
+        } else {
+          Alert.alert(
+            'Payment received',
+            'Your payment was processed. Membership activation may take a moment — please reload the app if content is still locked.',
+          );
+        }
+      } else if (!result.cancelled) {
+        Alert.alert('Payment failed', result.error ?? 'Please try again.');
+      }
+    } finally {
+      setPurchasing(false);
+    }
   };
 
   return (
@@ -130,11 +175,20 @@ export default function MembershipScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Choose your plan</Text>
 
+        {/* Active member banner */}
+        {isMember && (
+          <View style={styles.activeBanner}>
+            <Ionicons name="checkmark-circle" size={16} color={LuxuryColors.success} />
+            <Text style={styles.activeBannerText}>Your membership is active</Text>
+          </View>
+        )}
+
         {/* Annual — highlighted */}
         <TouchableOpacity
-          style={styles.planCardAnnual}
+          style={[styles.planCardAnnual, (purchasing || isMember) && styles.planCardDisabled]}
           onPress={() => handleSubscribe('annual')}
           activeOpacity={0.88}
+          disabled={purchasing || isMember}
         >
           <View style={styles.planBestValueBadge}>
             <Text style={styles.planBestValueText}>BEST VALUE</Text>
@@ -154,16 +208,23 @@ export default function MembershipScreen() {
             <Text style={styles.planSavingText}>Save 44% vs monthly · Just $6.58/month</Text>
           </View>
           <View style={styles.planCta}>
-            <Text style={styles.planCtaText}>Start Annual Membership</Text>
-            <Ionicons name="chevron-forward" size={14} color={LuxuryColors.background} />
+            {purchasing ? (
+              <ActivityIndicator size="small" color={LuxuryColors.background} />
+            ) : (
+              <>
+                <Text style={styles.planCtaText}>{isMember ? 'Already a Member' : 'Start Annual Membership'}</Text>
+                <Ionicons name="chevron-forward" size={14} color={LuxuryColors.background} />
+              </>
+            )}
           </View>
         </TouchableOpacity>
 
         {/* Monthly */}
         <TouchableOpacity
-          style={styles.planCardMonthly}
+          style={[styles.planCardMonthly, (purchasing || isMember) && styles.planCardDisabled]}
           onPress={() => handleSubscribe('monthly')}
           activeOpacity={0.88}
+          disabled={purchasing || isMember}
         >
           <View style={styles.planCardInner}>
             <View style={styles.planLeft}>
@@ -176,13 +237,13 @@ export default function MembershipScreen() {
             </View>
           </View>
           <View style={styles.planCtaSecondary}>
-            <Text style={styles.planCtaSecondaryText}>Start Monthly Membership</Text>
+            <Text style={styles.planCtaSecondaryText}>{isMember ? 'Already a Member' : 'Start Monthly Membership'}</Text>
             <Ionicons name="chevron-forward" size={14} color={LuxuryColors.gold} />
           </View>
         </TouchableOpacity>
 
         <Text style={styles.planNote}>
-          No real charges are processed. Membership integration coming soon.
+          Payments are securely processed by Stripe. Cancel anytime.
         </Text>
       </View>
 
@@ -496,6 +557,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
     lineHeight: 15,
     marginTop: -LuxurySpacing.xs,
+  },
+  planCardDisabled: {
+    opacity: 0.55,
+  },
+  activeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+    backgroundColor: 'rgba(46,213,115,0.12)',
+    borderRadius: LuxuryBorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(46,213,115,0.3)',
+    paddingVertical: LuxurySpacing.sm,
+    paddingHorizontal: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.md,
+  },
+  activeBannerText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.success,
+    fontWeight: '600',
   },
 
   // ── Creators ──────────────────────────────────────────────

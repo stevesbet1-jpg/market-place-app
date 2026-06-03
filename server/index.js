@@ -451,6 +451,140 @@ app.post('/api/send-confirmation', async (req, res) => {
   }
 });
 
+// ─── Stripe setup ────────────────────────────────────────────────
+const STRIPE_SECRET_KEY      = process.env.STRIPE_SECRET_KEY;
+const STRIPE_WEBHOOK_SECRET  = process.env.STRIPE_WEBHOOK_SECRET;
+
+let stripe = null;
+if (STRIPE_SECRET_KEY) {
+  try {
+    stripe = require('stripe')(STRIPE_SECRET_KEY);
+    console.log('[Server] ✅ Stripe initialized');
+  } catch (e) {
+    console.warn('[Server] ⚠️  stripe package not found — run: npm install stripe');
+  }
+} else {
+  console.warn('[Server] ⚠️  STRIPE_SECRET_KEY not set — payment endpoints disabled');
+}
+
+/** Plan → amount in USD cents */
+const PLAN_PRICES = { monthly: 1199, annual: 7900 };
+
+/**
+ * POST /api/stripe/create-payment-intent
+ * Body: { plan: 'monthly' | 'annual', uid: string, email: string }
+ * Creates a Stripe PaymentIntent and returns { clientSecret }.
+ */
+app.post('/api/stripe/create-payment-intent', async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+  }
+
+  const { plan, uid, email } = req.body;
+
+  if (!plan || !PLAN_PRICES[plan]) {
+    return res.status(400).json({ success: false, error: 'plan must be "monthly" or "annual"' });
+  }
+  if (!uid || typeof uid !== 'string') {
+    return res.status(400).json({ success: false, error: 'uid is required' });
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, error: 'valid email is required' });
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: PLAN_PRICES[plan],
+      currency: 'usd',
+      metadata: { uid, plan, email },
+      automatic_payment_methods: { enabled: true },
+    });
+
+    console.log(`[Stripe] Created PaymentIntent ${paymentIntent.id} for uid=${uid} plan=${plan}`);
+    return res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error('[Stripe] create-payment-intent error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/stripe/webhook
+ * Receives Stripe events. On payment_intent.succeeded, writes the
+ * membership record to Firestore users/{uid}.membership.
+ *
+ * Requires raw body — must be registered BEFORE express.json() middleware.
+ * Stripe-Signature header verified with STRIPE_WEBHOOK_SECRET.
+ */
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+      console.warn('[Stripe] Webhook received but Stripe/webhook secret not configured');
+      return res.status(503).send('Stripe not configured');
+    }
+
+    const sig = req.headers['stripe-signature'];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.error('[Stripe] Webhook signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === 'payment_intent.succeeded') {
+      const intent = event.data.object;
+      const { uid, plan } = intent.metadata ?? {};
+
+      if (!uid || !plan) {
+        console.warn('[Stripe] payment_intent.succeeded missing uid or plan in metadata');
+        return res.json({ received: true });
+      }
+
+      if (!initFirebaseAdmin()) {
+        console.error('[Stripe] Firebase Admin not available — cannot write membership');
+        return res.status(500).send('Firebase Admin unavailable');
+      }
+
+      try {
+        const adminFirestore = admin.firestore();
+        const now = admin.firestore.FieldValue.serverTimestamp();
+
+        // Determine expiry: annual = 1 year, monthly = 31 days
+        const expiryDate = new Date();
+        if (plan === 'annual') {
+          expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+        } else {
+          expiryDate.setDate(expiryDate.getDate() + 31);
+        }
+        const expiresAt = admin.firestore.Timestamp.fromDate(expiryDate);
+
+        await adminFirestore.doc(`users/${uid}`).set(
+          {
+            membership: {
+              status: 'active',
+              plan,
+              activatedAt: now,
+              expiresAt,
+              stripePaymentIntentId: intent.id,
+            },
+          },
+          { merge: true }
+        );
+
+        console.log(`[Stripe] ✅ Membership written for uid=${uid} plan=${plan} expires=${expiryDate.toISOString()}`);
+      } catch (err) {
+        console.error('[Stripe] Failed to write membership to Firestore:', err.message);
+        return res.status(500).send('Firestore write failed');
+      }
+    }
+
+    res.json({ received: true });
+  }
+);
+
 // ─── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n╔════════════════════════════════════════════════════════════╗`);
@@ -460,5 +594,7 @@ app.listen(PORT, () => {
   console.log(`║  Health:   GET  /api/health                                ║`);
   console.log(`║  Reset:    POST /api/send-reset                            ║`);
   console.log(`║  Confirm:  POST /api/send-confirmation                     ║`);
+  console.log(`║  Stripe:   POST /api/stripe/create-payment-intent          ║`);
+  console.log(`║  Stripe:   POST /api/stripe/webhook                        ║`);
   console.log(`╚════════════════════════════════════════════════════════════╝\n`);
 });
