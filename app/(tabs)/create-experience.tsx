@@ -39,9 +39,10 @@ import {
   publishExperience,
 } from '../../lib/creatorExperienceService';
 import {
-  getCurrentUid,
   getMyApprovedCreatorProfile,
 } from '../../lib/creatorService';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseApp } from '../../lib/firebase';
 import {
   TRAVEL_STYLES,
   BUDGET_RANGES,
@@ -149,34 +150,35 @@ export default function CreateExperienceScreen() {
 
   // ── Auth + approval gate ─────────────────────────────────────────────
   const [checking, setChecking] = useState(true);
+  const [authUid, setAuthUid] = useState<string | null>(null);
   const [creatorProfile, setCreatorProfile] = useState<Creator | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    const checkAccess = async () => {
-      const uid = getCurrentUid();
-      console.log('[CreateExp] current uid:', uid);
+    const auth = getAuth(getFirebaseApp());
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const uid = user?.uid ?? null;
+      setAuthUid(uid);
+      console.log('[CreateExp] onAuthStateChanged uid:', uid);
       if (!uid) {
-        if (!cancelled) { setAccessStatus('no-auth'); setChecking(false); }
+        setAccessStatus('no-auth');
+        setChecking(false);
         return;
       }
       const profile = await getMyApprovedCreatorProfile(uid);
       console.log('[CreateExp] creator profile:', profile ? `id=${profile.id} name=${profile.name}` : 'null');
-      if (!cancelled) {
-        if (profile) {
-          setCreatorProfile(profile);
-          setAccessStatus('approved');
-          console.log('[CreateExp] access: granted');
-        } else {
-          console.log('[CreateExp] no creator profile → not-creator');
-          setAccessStatus('not-creator');
-        }
-        setChecking(false);
+      if (profile) {
+        setCreatorProfile(profile);
+        setAccessStatus('approved');
+        console.log('[CreateExp] access: granted');
+      } else {
+        console.log('[CreateExp] no creator profile → not-creator');
+        setAccessStatus('not-creator');
       }
-    };
-    checkAccess();
-    return () => { cancelled = true; };
+      setChecking(false);
+      unsubscribe();
+    });
+    return unsubscribe;
   }, []);
 
   // ── Form state ───────────────────────────────────────────────────────
@@ -301,9 +303,8 @@ export default function CreateExperienceScreen() {
 
   // ── Build payload ─────────────────────────────────────────────────────
   function buildPayload(): ExperienceUploadPayload {
-    const uid = getCurrentUid();
     return {
-      creatorId: uid ?? '',
+      creatorId: authUid ?? '',
       creatorType: creatorProfile?.creatorType ?? 'community',
       creatorName: creatorProfile?.name ?? '',
       title: title.trim(),

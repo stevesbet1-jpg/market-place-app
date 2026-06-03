@@ -21,9 +21,10 @@ import {
 } from '../../constants/luxuryTheme';
 import { publishCreatorJourney, saveDraftJourney } from '../../lib/creatorJourneyService';
 import {
-  getCurrentUid,
   getMyApprovedCreatorProfile,
 } from '../../lib/creatorService';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseApp } from '../../lib/firebase';
 import type { BudgetLevel, JourneyUploadPayload } from '../../constants/creatorJourneyModel';
 import type { Creator } from '../../constants/creators';
 
@@ -68,30 +69,31 @@ export default function UploadJourneyScreen() {
 
   // ── Auth + approval gate ─────────────────────────────────────────────
   const [checking, setChecking] = useState(true);
+  const [authUid, setAuthUid] = useState<string | null>(null);
   const [creatorProfile, setCreatorProfile] = useState<Creator | null>(null);
   const [accessStatus, setAccessStatus] = useState<'no-auth' | 'not-creator' | 'approved' | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    const checkAccess = async () => {
-      const uid = getCurrentUid();
+    const auth = getAuth(getFirebaseApp());
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const uid = user?.uid ?? null;
+      setAuthUid(uid);
       if (!uid) {
-        if (!cancelled) { setAccessStatus('no-auth'); setChecking(false); }
+        setAccessStatus('no-auth');
+        setChecking(false);
         return;
       }
       const profile = await getMyApprovedCreatorProfile(uid);
-      if (!cancelled) {
-        if (profile) {
-          setCreatorProfile(profile);
-          setAccessStatus('approved');
-        } else {
-          setAccessStatus('not-creator');
-        }
-        setChecking(false);
+      if (profile) {
+        setCreatorProfile(profile);
+        setAccessStatus('approved');
+      } else {
+        setAccessStatus('not-creator');
       }
-    };
-    checkAccess();
-    return () => { cancelled = true; };
+      setChecking(false);
+      unsubscribe();
+    });
+    return unsubscribe;
   }, []);
 
   const [publishing, setPublishing] = useState(false);
@@ -149,7 +151,7 @@ export default function UploadJourneyScreen() {
 
   const buildPayload = useCallback((): JourneyUploadPayload => {
     return {
-      creatorId: creatorProfile?.id ?? getCurrentUid() ?? 'unknown',
+      creatorId: creatorProfile?.id ?? authUid ?? 'unknown',
       creatorName: creatorProfile?.name ?? 'Creator',
       title: title.trim(),
       destination: destination.trim(),

@@ -34,9 +34,10 @@ import {
 } from '../../constants/luxuryTheme';
 import { saveDraftJourney, submitJourneyForReview } from '../../lib/creatorJourneyService';
 import {
-  getCurrentUid,
   getMyApprovedCreatorProfile,
 } from '../../lib/creatorService';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseApp } from '../../lib/firebase';
 import type { BudgetLevel } from '../../constants/creatorJourneyModel';
 import type { Creator } from '../../constants/creators';
 
@@ -140,30 +141,31 @@ export default function CreateJourneyScreen() {
 
   // ── Auth + approval gate ─────────────────────────────────────────────
   const [checking, setChecking] = useState(true);
+  const [authUid, setAuthUid] = useState<string | null>(null);
   const [creatorProfile, setCreatorProfile] = useState<Creator | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    const checkAccess = async () => {
-      const uid = getCurrentUid();
+    const auth = getAuth(getFirebaseApp());
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const uid = user?.uid ?? null;
+      setAuthUid(uid);
       if (!uid) {
-        if (!cancelled) { setAccessStatus('no-auth'); setChecking(false); }
+        setAccessStatus('no-auth');
+        setChecking(false);
         return;
       }
       const profile = await getMyApprovedCreatorProfile(uid);
-      if (!cancelled) {
-        if (profile) {
-          setCreatorProfile(profile);
-          setAccessStatus('approved');
-        } else {
-          setAccessStatus('not-creator');
-        }
-        setChecking(false);
+      if (profile) {
+        setCreatorProfile(profile);
+        setAccessStatus('approved');
+      } else {
+        setAccessStatus('not-creator');
       }
-    };
-    checkAccess();
-    return () => { cancelled = true; };
+      setChecking(false);
+      unsubscribe();
+    });
+    return unsubscribe;
   }, []);
 
   // ── Form state ───────────────────────────────────────────────────────
@@ -214,13 +216,12 @@ export default function CreateJourneyScreen() {
 
   // ── Build payload ────────────────────────────────────────────────────
   function buildPayload() {
-    const uid = getCurrentUid();
     const destination = city.trim()
       ? `${city.trim()}, ${country.trim()}`
       : country.trim();
 
     return {
-      creatorId: uid ?? '',
+      creatorId: authUid ?? '',
       creatorName: creatorProfile?.name ?? '',
       title: title.trim(),
       destination,
