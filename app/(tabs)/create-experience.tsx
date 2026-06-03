@@ -10,7 +10,7 @@
  * Submit       → status: 'pending_review' (queued for editorial review)
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -43,6 +43,7 @@ import {
 } from '../../lib/creatorService';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   TRAVEL_STYLES,
   BUDGET_RANGES,
@@ -65,6 +66,8 @@ interface RestaurantDraft { name: string; description: string; mapsLink: string;
 interface HiddenGemDraft { name: string; description: string; mapsLink: string; }
 
 type AccessStatus = 'no-auth' | 'not-creator' | 'approved';
+
+const DRAFT_KEY = '@createExp/draft';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -207,6 +210,72 @@ export default function CreateExperienceScreen() {
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Restore draft on mount (create mode only) ────────────────────────
+  useEffect(() => {
+    if (isEditMode) return;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(DRAFT_KEY);
+        if (!raw) return;
+        const d = JSON.parse(raw);
+        if (d.title) setTitle(d.title);
+        if (d.country) setCountry(d.country);
+        if (d.city) setCity(d.city);
+        if (d.travelStyle) setTravelStyle(d.travelStyle);
+        if (d.duration) setDuration(d.duration);
+        if (d.budget) setBudget(d.budget);
+        if (d.coverImage) setCoverImage(d.coverImage);
+        if (d.description) setDescription(d.description);
+        if (d.whoIsItFor) setWhoIsItFor(d.whoIsItFor);
+        if (Array.isArray(d.highlights)) setHighlights(d.highlights);
+        if (d.creatorNotes) setCreatorNotes(d.creatorNotes);
+        if (d.tipsText) setTipsText(d.tipsText);
+        if (d.bestTimeToVisit) setBestTimeToVisit(d.bestTimeToVisit);
+        if (d.warnings) setWarnings(d.warnings);
+        if (d.googleMapsUrl) setGoogleMapsUrl(d.googleMapsUrl);
+        if (d.appleMapsUrl) setAppleMapsUrl(d.appleMapsUrl);
+        if (typeof d.freePreview === 'boolean') setFreePreview(d.freePreview);
+        if (Array.isArray(d.dailyPlan) && d.dailyPlan.length > 0) setDailyPlan(d.dailyPlan);
+        if (Array.isArray(d.hotels)) setHotels(d.hotels);
+        if (Array.isArray(d.restaurants)) setRestaurants(d.restaurants);
+        if (Array.isArray(d.hiddenGems)) setHiddenGems(d.hiddenGems);
+        setDraftRestored(true);
+      } catch {
+        // silently ignore corrupted draft
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode]);
+
+  // ── Auto-save draft (debounced, create mode only) ────────────────────
+  useEffect(() => {
+    if (isEditMode) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      AsyncStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          title, country, city, travelStyle, duration, budget,
+          coverImage, description, whoIsItFor, highlights,
+          creatorNotes, tipsText, bestTimeToVisit, warnings,
+          googleMapsUrl, appleMapsUrl, freePreview,
+          dailyPlan, hotels, restaurants, hiddenGems,
+        })
+      ).catch(() => { /* ignore */ });
+    }, 1500);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  }, [
+    isEditMode, title, country, city, travelStyle, duration, budget,
+    coverImage, description, whoIsItFor, highlights,
+    creatorNotes, tipsText, bestTimeToVisit, warnings,
+    googleMapsUrl, appleMapsUrl, freePreview,
+    dailyPlan, hotels, restaurants, hiddenGems,
+  ]);
 
   // ── Load existing experience in edit mode ────────────────────────────
   useEffect(() => {
@@ -365,7 +434,7 @@ export default function CreateExperienceScreen() {
       Alert.alert(
         'Draft Saved',
         'Your experience has been saved as a draft.',
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'OK', onPress: () => { AsyncStorage.removeItem(DRAFT_KEY).catch(() => {}); router.back(); } }]
       );
     } catch (e: unknown) {
       Alert.alert('Save Failed', e instanceof Error ? e.message : 'Unknown error');
@@ -399,7 +468,7 @@ export default function CreateExperienceScreen() {
               Alert.alert(
                 'Published!',
                 'Your experience is now live and visible to travelers.',
-                [{ text: 'OK', onPress: () => router.back() }]
+                [{ text: 'OK', onPress: () => { AsyncStorage.removeItem(DRAFT_KEY).catch(() => {}); router.back(); } }]
               );
             } catch (e: unknown) {
               Alert.alert('Publish Failed', e instanceof Error ? e.message : 'Unknown error');
@@ -451,6 +520,17 @@ export default function CreateExperienceScreen() {
         </View>
 
         <View style={styles.divider} />
+
+        {/* ── Draft restored banner ── */}
+        {draftRestored && (
+          <View style={styles.draftBanner}>
+            <Ionicons name="document-text-outline" size={16} color={LuxuryColors.gold} />
+            <Text style={styles.draftBannerText}>Draft restored — your last unsaved progress has been loaded.</Text>
+            <TouchableOpacity onPress={() => { setDraftRestored(false); AsyncStorage.removeItem(DRAFT_KEY).catch(() => {}); }} hitSlop={8}>
+              <Ionicons name="close" size={16} color={LuxuryColors.textTertiary} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Basic Details ── */}
         <SectionHeader title="Experience Details" />
@@ -991,6 +1071,23 @@ const styles = StyleSheet.create({
     backgroundColor: LuxuryColors.background,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  draftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+    backgroundColor: `${LuxuryColors.gold}18`,
+    borderWidth: 1,
+    borderColor: `${LuxuryColors.gold}44`,
+    borderRadius: LuxuryBorderRadius.sm,
+    padding: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.md,
+  },
+  draftBannerText: {
+    flex: 1,
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.gold,
+    lineHeight: 16,
   },
   container: {
     flex: 1,
