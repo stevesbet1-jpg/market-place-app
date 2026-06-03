@@ -7,6 +7,7 @@ import {
   FieldValue,
 } from 'firebase/firestore';
 import { getFirestoreDb, isFirebaseConfigured } from './firebase';
+import type { MembershipRecord } from './membershipService';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -18,6 +19,8 @@ export interface UserProfile {
   provider: 'email' | 'google' | 'apple' | 'guest';
   createdAt?: Timestamp | FieldValue;
   updatedAt?: Timestamp | FieldValue;
+  /** Populated after the user purchases a membership (Phase 4: Stripe) */
+  membership?: MembershipRecord;
 }
 
 export type UserProfileInput = Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt'>;

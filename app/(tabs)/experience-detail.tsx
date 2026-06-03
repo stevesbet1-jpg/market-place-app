@@ -33,6 +33,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
   LuxuryColors,
   LuxurySpacing,
@@ -43,6 +44,8 @@ import {
 import type { CreatorExperience, DailyPlanEntry, TravelStyle, Restaurant, HiddenGem, Hotel } from '../../constants/creatorExperienceModel';
 import { travelStyleLabel } from '../../constants/creatorExperienceModel';
 import { getExperienceById } from '../../lib/creatorExperienceService';
+import { getFirebaseApp } from '../../lib/firebase';
+import { checkMembership } from '../../lib/membershipService';
 import {
   getFreeExperienceRemaining,
   consumeFreeExperience,
@@ -332,6 +335,19 @@ export default function ExperienceDetailScreen() {
   const [freeRemaining, setFreeRemaining] = useState(FREE_EXPERIENCE_LIMIT);
   const [isSaved, setIsSaved] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
+  const [isMember, setIsMember] = useState(false);
+
+  // ── Membership check: members always have full access ───────────────
+  useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) { setIsMember(false); return; }
+      const active = await checkMembership(user.uid);
+      setIsMember(active);
+      if (active) setIsUnlocked(true); // members bypass free credit gate
+    });
+    return unsubscribe;
+  }, []);
 
   // ── Load experience + unlock state ─────────────────────────────────
   useEffect(() => {

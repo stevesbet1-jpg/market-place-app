@@ -27,6 +27,9 @@ import {
 import type { ImageKey } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 import { formatSaves } from '../../constants/creators';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseApp } from '../../lib/firebase';
+import { checkMembership } from '../../lib/membershipService';
 import { getJourneyById } from '../../lib/creatorJourneyService';
 import {
   consumeFreeJourney,
@@ -157,6 +160,7 @@ export default function JourneyDetailScreen() {
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [isPremium, setIsPremium] = useState(false);
   const [sections, setSections] = useState({
+
     places: true,
     restaurants: true,
     experiences: true,
@@ -188,6 +192,17 @@ export default function JourneyDetailScreen() {
     consumeFreeJourney(id).then(setFreeRemaining);
     getSavedIds().then((ids) => setSaved(ids.includes(id)));
   }, [id]);
+
+  // ── Membership check: set isPremium when Firebase auth resolves ──────────
+  useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) { setIsPremium(false); return; }
+      const active = await checkMembership(user.uid);
+      setIsPremium(active);
+    });
+    return unsubscribe;
+  }, []);
 
   const handleShare = useCallback(async () => {
     if (!journey) return;
