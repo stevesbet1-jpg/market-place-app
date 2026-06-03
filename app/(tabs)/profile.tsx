@@ -1,20 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { useFocusEffect } from 'expo-router';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import { getFirebaseApp } from '../../lib/firebase';
 import { logoutFromFirebase } from '../../lib/firebaseAuth';
 import { getUserProfile, type UserProfile } from '../../lib/userProfile';
 import { getSavedIds } from '../../constants/journeyStore';
-import { JOURNEYS, type ImageKey } from '../../constants/journeys';
+import { getJourneysByIds } from '../../lib/creatorJourneyService';
+import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 import { getMyApprovedCreatorProfile, activateCreator } from '../../lib/creatorService';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [savedJourneys, setSavedJourneys] = useState<(typeof JOURNEYS)[number][]>([]);
+  const [savedJourneys, setSavedJourneys] = useState<CreatorJourney[]>([]);
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isCreator, setIsCreator] = useState<boolean | null>(null);
@@ -22,11 +24,17 @@ export default function ProfileScreen() {
   const [creatorStatusLoading, setCreatorStatusLoading] = useState(true);
   const [activating, setActivating] = useState(false);
 
-  useEffect(() => {
-    getSavedIds().then((ids) => {
-      setSavedJourneys(JOURNEYS.filter((j) => ids.includes(j.id)));
-    });
-  }, []);
+  // ── Saved journeys — reload on every tab focus ─────────────────────────────
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getSavedIds().then(async (ids) => {
+        const journeys = await getJourneysByIds(ids);
+        if (!cancelled) setSavedJourneys(journeys);
+      });
+      return () => { cancelled = true; };
+    }, [])
+  );
 
   // ── Auth state listener ─────────────────────────────────────────────────────
   // onAuthStateChanged fires once Firebase has restored the persisted session
@@ -286,7 +294,7 @@ export default function ProfileScreen() {
                 <View style={styles.savedCardThumb}>
                   <Ionicons name="map-outline" size={22} color={LuxuryColors.gold} />
                 </View>
-                <Text style={styles.savedCardName} numberOfLines={2}>{j.name}</Text>
+                <Text style={styles.savedCardName} numberOfLines={2}>{j.title}</Text>
                 <Text style={styles.savedCardDest} numberOfLines={1}>{j.destination}</Text>
                 <View style={styles.savedCardRating}>
                   <Ionicons name="star" size={10} color={LuxuryColors.gold} />

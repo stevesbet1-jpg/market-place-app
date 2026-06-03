@@ -229,3 +229,18 @@ export async function getJourneyById(id: string): Promise<CreatorJourney | null>
   const seed = JOURNEYS.find((j) => j.id === id);
   return seed ? mapSeedToCreatorJourney(seed) : null;
 }
+
+/**
+ * Returns a list of journeys by their Firestore document IDs.
+ * Used by the Profile screen to load saved journeys directly by ID,
+ * bypassing the published-status filter.
+ * IDs that no longer exist are silently omitted.
+ */
+export async function getJourneysByIds(ids: string[]): Promise<CreatorJourney[]> {
+  if (!ids.length) return [];
+  const results = await Promise.allSettled(ids.map((id) => getJourneyById(id)));
+  return results
+    .filter((r): r is PromiseFulfilledResult<CreatorJourney | null> => r.status === 'fulfilled')
+    .map((r) => r.value)
+    .filter((j): j is CreatorJourney => j !== null);
+}
