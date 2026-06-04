@@ -10,6 +10,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { syncExperienceSavedCount } from '../lib/creatorExperienceService';
 
 export const FREE_EXPERIENCE_LIMIT = 3;
 
@@ -78,9 +79,14 @@ export async function getSavedExperienceIds(): Promise<string[]> {
  */
 export async function toggleSavedExperience(id: string): Promise<string[]> {
   const saved = await getSavedExperienceIds();
-  const next = saved.includes(id)
+  const wasSaved = saved.includes(id);
+  const next = wasSaved
     ? saved.filter((s) => s !== id)
     : [...saved, id];
   await AsyncStorage.setItem(KEY_SAVED_IDS, JSON.stringify(next));
+
+  // Keep Firestore social-proof counter in sync, but never block UX on failures.
+  syncExperienceSavedCount(id, wasSaved ? -1 : 1).catch(() => {});
+
   return next;
 }

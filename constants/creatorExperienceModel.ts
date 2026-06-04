@@ -119,6 +119,8 @@ export interface CreatorExperience {
   views: number;
   /** Total subscription unlocks of this experience */
   unlocks: number;
+  /** Platform save count for social proof */
+  savedCount: number;
 
   // ── Timestamps ──────────────────────────────────────────────────────
   /** Unix-ms at creation. Null until server writes createdAt. */
@@ -148,7 +150,7 @@ export interface CreatorExperienceDoc
  */
 export type ExperienceUploadPayload = Omit<
   CreatorExperience,
-  'id' | 'status' | 'createdAt' | 'updatedAt' | 'publishedAt' | 'views' | 'unlocks'
+  'id' | 'status' | 'createdAt' | 'updatedAt' | 'publishedAt' | 'views' | 'unlocks' | 'savedCount'
 >;
 
 // ─── Display helpers ──────────────────────────────────────────────────────────

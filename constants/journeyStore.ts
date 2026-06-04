@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BudgetLevel } from './journeys';
+import { syncJourneySavedCount } from '../lib/creatorJourneyService';
 
 export const FREE_JOURNEY_LIMIT = 3;
 
@@ -57,10 +58,15 @@ export async function getSavedIds(): Promise<string[]> {
  */
 export async function toggleSaved(id: string): Promise<string[]> {
   const saved = await getSavedIds();
-  const next = saved.includes(id)
+  const wasSaved = saved.includes(id);
+  const next = wasSaved
     ? saved.filter((s) => s !== id)
     : [...saved, id];
   await AsyncStorage.setItem(KEY_SAVED_IDS, JSON.stringify(next));
+
+  // Keep Firestore social-proof counter in sync, but never block UX on failures.
+  syncJourneySavedCount(id, wasSaved ? -1 : 1).catch(() => {});
+
   return next;
 }
 

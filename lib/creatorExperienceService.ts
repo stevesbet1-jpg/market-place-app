@@ -27,6 +27,7 @@ import {
   increment,
   limit,
   startAfter,
+  runTransaction,
   type QueryDocumentSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -87,6 +88,7 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     published: Boolean(data.published),
     views: (data.views as number) ?? 0,
     unlocks: (data.unlocks as number) ?? 0,
+    savedCount: (data.savedCount as number) ?? 0,
     createdAt: data.createdAt
       ? (data.createdAt as { toMillis(): number }).toMillis?.() ?? null
       : null,
@@ -115,6 +117,7 @@ export async function saveExperienceDraft(
   const ref = await addDoc(collection(db, COLLECTION), {
     ...payload,
     status: 'draft',
+    savedCount: 0,
     createdAt: serverTimestamp(),
   });
   return ref.id;
@@ -134,6 +137,7 @@ export async function submitExperienceForReview(
   const ref = await addDoc(collection(db, COLLECTION), {
     ...payload,
     status: 'pending_review',
+    savedCount: 0,
     createdAt: serverTimestamp(),
   });
   return ref.id;
@@ -366,4 +370,25 @@ export async function getMorePublishedExperiences(
   } catch {
     return { items: [], cursor: null };
   }
+}
+
+/**
+ * Applies a save-count delta atomically and clamps at 0.
+ * Fire-and-forget callers should swallow errors to avoid blocking UX.
+ */
+export async function syncExperienceSavedCount(
+  experienceId: string,
+  delta: 1 | -1
+): Promise<void> {
+  if (!isFirebaseConfigured() || !experienceId) return;
+  const db = getFirestoreDb();
+  const ref = doc(db, COLLECTION, experienceId);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const current = Number(snap.data().savedCount ?? 0);
+    const next = Math.max(0, current + delta);
+    tx.update(ref, { savedCount: next });
+  });
 }

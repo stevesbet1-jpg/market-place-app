@@ -20,6 +20,7 @@ import {
   orderBy,
   limit,
   startAfter,
+  runTransaction,
   type QueryDocumentSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -307,4 +308,25 @@ export async function getMorePublishedJourneys(
   } catch {
     return { items: [], cursor: null };
   }
+}
+
+/**
+ * Applies a save-count delta atomically and clamps at 0.
+ * Fire-and-forget callers should swallow errors to avoid blocking UX.
+ */
+export async function syncJourneySavedCount(
+  journeyId: string,
+  delta: 1 | -1
+): Promise<void> {
+  if (!isFirebaseConfigured() || !journeyId) return;
+  const db = getFirestoreDb();
+  const ref = doc(db, COLLECTION, journeyId);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const current = Number(snap.data().savedCount ?? 0);
+    const next = Math.max(0, current + delta);
+    tx.update(ref, { savedCount: next });
+  });
 }
