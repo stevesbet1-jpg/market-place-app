@@ -16,5 +16,6 @@
   },
   "typescript.tsserver.watchOptions": {
     "excludeDirectories": ["node_modules", ".expo"]
-  }
+  },
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false
 }
