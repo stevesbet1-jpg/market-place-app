@@ -222,7 +222,7 @@ export default function CreatorSubscriptionScreen() {
         {/* ── Already a creator? ─────────────────────────────────────────── */}
         <TouchableOpacity
           style={styles.uploadDirectBtn}
-          onPress={() => router.push('/(tabs)/upload-journey')}
+          onPress={() => router.push('/(tabs)/create-journey')}
           activeOpacity={0.8}
         >
           <Ionicons name="cloud-upload-outline" size={18} color={LuxuryColors.textSecondary} />

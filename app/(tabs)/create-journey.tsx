@@ -34,14 +34,14 @@ import {
   LuxurySpacing,
   LuxuryFontSize,
 } from '../../constants/luxuryTheme';
-import { saveDraftJourney, submitJourneyForReview } from '../../lib/creatorJourneyService';
+import { publishCreatorJourney, saveDraftJourney, submitJourneyForReview } from '../../lib/creatorJourneyService';
 import {
   getMyApprovedCreatorProfile,
 } from '../../lib/creatorService';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
 import { uploadCoverImage } from '../../lib/storageService';
-import type { BudgetLevel } from '../../constants/creatorJourneyModel';
+import type { BudgetLevel, JourneyUploadPayload } from '../../constants/creatorJourneyModel';
 import type { Creator } from '../../constants/creators';
 
 // ─── Local form type ──────────────────────────────────────────────────────────
@@ -117,6 +117,11 @@ function AccessGateView({
   };
 
   const m = messages[status];
+  const isNoAuth = status === 'no-auth';
+  const ctaLabel = isNoAuth ? 'Sign In' : 'Go to Profile';
+  const ctaAction = isNoAuth
+    ? () => router.replace('/(auth)/login')
+    : () => router.push('/(tabs)/profile');
 
   return (
     <View style={[gateStyles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
@@ -129,8 +134,8 @@ function AccessGateView({
         </View>
         <Text style={gateStyles.title}>{m.title}</Text>
         <Text style={gateStyles.bodyText}>{m.body}</Text>
-        <TouchableOpacity style={gateStyles.cta} onPress={onBack} activeOpacity={0.85}>
-          <Text style={gateStyles.ctaText}>Go Back</Text>
+        <TouchableOpacity style={gateStyles.cta} onPress={ctaAction} activeOpacity={0.85}>
+          <Text style={gateStyles.ctaText}>{ctaLabel}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -173,15 +178,24 @@ export default function CreateJourneyScreen() {
 
   // ── Form state ───────────────────────────────────────────────────────
   const [title, setTitle] = useState('');
+  const [destination, setDestination] = useState('');
   const [country, setCountry] = useState('');
   const [city, setCity] = useState('');
+  const [region, setRegion] = useState('');
   const [duration, setDuration] = useState('');
+  const [bestTime, setBestTime] = useState('');
   const [budget, setBudget] = useState<BudgetLevel>('$$');
+  const [dailyBudget, setDailyBudget] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [description, setDescription] = useState('');
+  const [places, setPlaces] = useState('');
+  const [restaurants, setRestaurants] = useState('');
+  const [experiences, setExperiences] = useState('');
   const [itineraryDays, setItineraryDays] = useState<ItineraryDayDraft[]>([
     { day: 1, activitiesText: '' },
   ]);
+  const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
@@ -237,44 +251,75 @@ export default function CreateJourneyScreen() {
   }, []);
 
   // ── Validation ────────────────────────────────────────────────────────
-  function validate(): string | null {
+  const resolvedDestination = useCallback(() => {
+    if (destination.trim()) return destination.trim();
+    if (city.trim() && country.trim()) return `${city.trim()}, ${country.trim()}`;
+    if (country.trim()) return country.trim();
+    return '';
+  }, [destination, city, country]);
+
+  function validateForReview(): string | null {
     if (!title.trim()) return 'Journey Title is required.';
-    if (!country.trim()) return 'Country is required.';
-    if (!city.trim()) return 'City is required.';
+    if (!resolvedDestination()) return 'Destination is required.';
     if (!duration.trim()) return 'Duration is required.';
     if (!description.trim()) return 'Short Description is required.';
     return null;
   }
 
+  function validateForPublish(): string | null {
+    if (!title.trim()) return 'Journey Title is required.';
+    if (!resolvedDestination()) return 'Destination is required.';
+    if (!description.trim()) return 'Short Description is required.';
+    return null;
+  }
+
   // ── Build payload ────────────────────────────────────────────────────
-  function buildPayload() {
-    const destination = city.trim()
-      ? `${city.trim()}, ${country.trim()}`
-      : country.trim();
+  function buildPayload(): JourneyUploadPayload {
+    const imageUri = coverImageUrl.trim() || imageUrl.trim() || null;
 
     return {
       creatorId: authUid ?? '',
       creatorName: creatorProfile?.name ?? '',
       title: title.trim(),
-      destination,
-      region: country.trim(),
+      destination: resolvedDestination(),
+      region: region.trim() || country.trim(),
       duration: duration.trim(),
-      bestTime: '',
+      bestTime: bestTime.trim(),
       overview: description.trim(),
       budget,
-      dailyBudget: '',
-      places: [],
-      restaurants: [],
-      experiences: [],
+      dailyBudget: dailyBudget.trim(),
+      places: splitTags(places),
+      restaurants: splitTags(restaurants),
+      experiences: splitTags(experiences),
       itinerary: itineraryDays.map((d) => ({
         day: d.day,
         activities: splitTags(d.activitiesText),
       })),
-      imageUri: coverImageUrl.trim() || null,
-      rating: 0,
-      savedCount: 0,
+      imageUri,
     };
   }
+
+  // ── Publish now ─────────────────────────────────────────────────────
+  const handlePublish = useCallback(async () => {
+    const err = validateForPublish();
+    if (err) {
+      Alert.alert('Missing Information', err);
+      return;
+    }
+
+    setPublishing(true);
+    try {
+      await publishCreatorJourney(buildPayload());
+      Alert.alert('Journey Published', 'Your journey is now live in the marketplace.', [
+        { text: 'Done', onPress: () => router.back() },
+      ]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not publish. Try again.';
+      Alert.alert('Publish Failed', msg);
+    } finally {
+      setPublishing(false);
+    }
+  }, [title, destination, country, city, description, duration, budget, dailyBudget, bestTime, region, places, restaurants, experiences, itineraryDays, coverImageUrl, imageUrl, creatorProfile, authUid]);
 
   // ── Save draft ────────────────────────────────────────────────────────
   const handleSaveDraft = useCallback(async () => {
@@ -284,7 +329,7 @@ export default function CreateJourneyScreen() {
     }
     setSaving(true);
     try {
-      await saveDraftJourney(buildPayload() as Parameters<typeof saveDraftJourney>[0]);
+      await saveDraftJourney(buildPayload());
       Alert.alert('Draft Saved', 'Your journey has been saved as a draft.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -294,11 +339,11 @@ export default function CreateJourneyScreen() {
     } finally {
       setSaving(false);
     }
-  }, [title, country, city, duration, budget, coverImageUrl, description, itineraryDays, creatorProfile]);
+  }, [title, destination, country, city, duration, budget, dailyBudget, coverImageUrl, imageUrl, description, itineraryDays, creatorProfile, region, bestTime, places, restaurants, experiences, authUid]);
 
   // ── Submit for review ─────────────────────────────────────────────────
   const handleSubmitForReview = useCallback(async () => {
-    const err = validate();
+    const err = validateForReview();
     if (err) {
       Alert.alert('Missing Information', err);
       return;
@@ -313,7 +358,7 @@ export default function CreateJourneyScreen() {
           onPress: async () => {
             setSubmitting(true);
             try {
-              await submitJourneyForReview(buildPayload() as Parameters<typeof submitJourneyForReview>[0]);
+              await submitJourneyForReview(buildPayload());
               Alert.alert(
                 'Submitted',
                 'Your journey is now under review. You will be notified when it is approved.',
@@ -329,7 +374,7 @@ export default function CreateJourneyScreen() {
         },
       ]
     );
-  }, [title, country, city, duration, budget, coverImageUrl, description, itineraryDays, creatorProfile]);
+  }, [title, destination, country, city, duration, budget, dailyBudget, coverImageUrl, imageUrl, description, itineraryDays, creatorProfile, region, bestTime, places, restaurants, experiences, authUid]);
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking) {
@@ -371,6 +416,16 @@ export default function CreateJourneyScreen() {
 
         <View style={styles.divider} />
 
+        <TouchableOpacity
+          style={styles.subscriptionBanner}
+          onPress={() => router.push('/(tabs)/creator-subscription')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="diamond-outline" size={16} color={LuxuryColors.gold} />
+          <Text style={styles.subscriptionText}>Creator Subscription required to publish journeys</Text>
+          <Ionicons name="chevron-forward" size={14} color={LuxuryColors.gold} />
+        </TouchableOpacity>
+
         {/* ── Basic Info ── */}
         <SectionHeader title="Journey Details" />
 
@@ -384,9 +439,19 @@ export default function CreateJourneyScreen() {
           maxLength={80}
         />
 
+        <FieldLabel text="Destination" required />
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Kyoto, Japan"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={destination}
+          onChangeText={setDestination}
+          maxLength={100}
+        />
+
         <View style={styles.row}>
           <View style={styles.flex1}>
-            <FieldLabel text="Country" required />
+            <FieldLabel text="Country" />
             <TextInput
               style={styles.input}
               placeholder="Japan"
@@ -398,7 +463,7 @@ export default function CreateJourneyScreen() {
           </View>
           <View style={styles.spacer} />
           <View style={styles.flex1}>
-            <FieldLabel text="City" required />
+            <FieldLabel text="City" />
             <TextInput
               style={styles.input}
               placeholder="Kyoto"
@@ -420,6 +485,26 @@ export default function CreateJourneyScreen() {
           maxLength={30}
         />
 
+        <FieldLabel text="Region" />
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. East Asia"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={region}
+          onChangeText={setRegion}
+          maxLength={60}
+        />
+
+        <FieldLabel text="Best Travel Dates" />
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Mar - May"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={bestTime}
+          onChangeText={setBestTime}
+          maxLength={50}
+        />
+
         {/* Budget */}
         <FieldLabel text="Budget Level" required />
         <View style={styles.budgetRow}>
@@ -436,6 +521,16 @@ export default function CreateJourneyScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        <FieldLabel text="Daily Budget Range" />
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. $150-300/day"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={dailyBudget}
+          onChangeText={setDailyBudget}
+          maxLength={60}
+        />
 
         {/* ── Media ── */}
         <SectionHeader title="Cover Image" />
@@ -456,6 +551,17 @@ export default function CreateJourneyScreen() {
           )}
         </TouchableOpacity>
         <Text style={styles.hint}>Select an image from your library. It will be uploaded to Firebase Storage.</Text>
+        <FieldLabel text="Or Image URL" />
+        <TextInput
+          style={styles.input}
+          placeholder="https://images.unsplash.com/..."
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={imageUrl}
+          onChangeText={setImageUrl}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
         {coverImageUrl ? (
           <View style={styles.previewWrap}>
             <Image source={{ uri: coverImageUrl }} style={styles.previewImage} resizeMode="cover" />
@@ -477,6 +583,45 @@ export default function CreateJourneyScreen() {
           maxLength={600}
           textAlignVertical="top"
         />
+
+        <SectionHeader title="Places to Visit" />
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Arashiyama Bamboo Grove, Fushimi Inari Shrine"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={places}
+          onChangeText={setPlaces}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+        <Text style={styles.hint}>Separate each place with a comma.</Text>
+
+        <SectionHeader title="Restaurants & Cafes" />
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Kikunoi Honten, Nishiki Warai"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={restaurants}
+          onChangeText={setRestaurants}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+        <Text style={styles.hint}>Separate each restaurant with a comma.</Text>
+
+        <SectionHeader title="Local Experiences" />
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Tea ceremony, Geisha district walk"
+          placeholderTextColor={LuxuryColors.textTertiary}
+          value={experiences}
+          onChangeText={setExperiences}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+        <Text style={styles.hint}>Separate each experience with a comma.</Text>
 
         {/* ── Itinerary ── */}
         <SectionHeader title="Itinerary" />
@@ -520,7 +665,7 @@ export default function CreateJourneyScreen() {
           <TouchableOpacity
             style={[styles.draftBtn, saving && styles.btnDisabled]}
             onPress={handleSaveDraft}
-            disabled={saving || submitting || imageUploading}
+            disabled={saving || submitting || publishing || imageUploading}
             activeOpacity={0.85}
           >
             {saving ? (
@@ -531,9 +676,22 @@ export default function CreateJourneyScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.publishBtn, publishing && styles.btnDisabled]}
+            onPress={handlePublish}
+            disabled={saving || submitting || publishing || imageUploading}
+            activeOpacity={0.85}
+          >
+            {publishing ? (
+              <ActivityIndicator color={LuxuryColors.background} size="small" />
+            ) : (
+              <Text style={styles.publishBtnText}>Publish Journey</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.submitBtn, submitting && styles.btnDisabled]}
             onPress={handleSubmitForReview}
-            disabled={saving || submitting || imageUploading}
+            disabled={saving || submitting || publishing || imageUploading}
             activeOpacity={0.85}
           >
             {submitting ? (
@@ -586,6 +744,24 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: LuxuryColors.divider,
     marginBottom: LuxurySpacing.lg,
+  },
+  subscriptionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+    backgroundColor: `${LuxuryColors.gold}10`,
+    borderRadius: LuxuryBorderRadius.md,
+    borderWidth: 1,
+    borderColor: `${LuxuryColors.gold}30`,
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.sm,
+  },
+  subscriptionText: {
+    flex: 1,
+    color: LuxuryColors.gold,
+    fontSize: LuxuryFontSize.xs,
+    fontWeight: '600',
   },
   input: {
     backgroundColor: LuxuryColors.surface,
@@ -730,6 +906,19 @@ const styles = StyleSheet.create({
     paddingVertical: LuxurySpacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  publishBtn: {
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.lg,
+    paddingVertical: LuxurySpacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  publishBtnText: {
+    fontSize: LuxuryFontSize.md,
+    fontWeight: '700',
+    color: LuxuryColors.background,
+    letterSpacing: 0.3,
   },
   submitBtnText: {
     fontSize: LuxuryFontSize.md,
