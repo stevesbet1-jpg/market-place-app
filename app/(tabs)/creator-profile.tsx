@@ -106,25 +106,6 @@ export default function CreatorProfileScreen() {
     return () => { cancelled = true; };
   }, [authUid, id]);
 
-  if (loadingCreator) {
-    return (
-      <View style={[styles.container, styles.notFound]}>
-        <Text style={styles.notFoundText}>Loading…</Text>
-      </View>
-    );
-  }
-
-  if (!creator) {
-    return (
-      <View style={[styles.container, styles.notFound]}>
-        <Text style={styles.notFoundText}>Creator not found</Text>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.8}>
-          <Text style={styles.backFallback}>← Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   const persistFollow = useCallback(async (creatorId: string, nowFollowing: boolean) => {
     if (!authUid || !isFirebaseConfigured()) return;
     try {
@@ -161,6 +142,25 @@ export default function CreatorProfileScreen() {
       ],
     );
   }, [followed, id, persistFollow]);
+
+  if (loadingCreator) {
+    return (
+      <View style={[styles.container, styles.notFound]}>
+        <Text style={styles.notFoundText}>Loading…</Text>
+      </View>
+    );
+  }
+
+  if (!creator) {
+    return (
+      <View style={[styles.container, styles.notFound]}>
+        <Text style={styles.notFoundText}>Creator not found</Text>
+        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.8}>
+          <Text style={styles.backFallback}>← Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const handleSocialPress = (type: string, handle: string) => {
     let url = '';
