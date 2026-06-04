@@ -46,6 +46,7 @@ import { getExperienceById, incrementExperienceViews, incrementExperienceUnlocks
 import { getFirebaseApp } from '../../lib/firebase';
 import { checkMembership } from '../../lib/membershipService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
+import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import {
   isExperienceUnlocked,
   getSavedExperienceIds,
@@ -484,9 +485,9 @@ export default function ExperienceDetailScreen() {
             1. HERO
         ───────────────────────────────────────────────────────────── */}
         <View style={heroStyles.container}>
-          {experience.coverImage ? (
+          {isValidRemoteImageUrl(experience.coverImage) ? (
             <Image
-              source={{ uri: experience.coverImage }}
+              source={{ uri: experience.coverImage!.trim() }}
               style={heroStyles.image}
               resizeMode="cover"
             />

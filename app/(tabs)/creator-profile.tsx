@@ -34,6 +34,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFirestoreDb, isFirebaseConfigured } from '../../lib/firebase';
+import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import type { ImageKey } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 
@@ -53,7 +54,7 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
 };
 
 function journeyImageSource(journey: CreatorJourney) {
-  if (journey.imageUri) return { uri: journey.imageUri };
+  if (isValidRemoteImageUrl(journey.imageUri)) return { uri: journey.imageUri!.trim() };
   const key = journey.imageKey as ImageKey | undefined;
   if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
   return null;

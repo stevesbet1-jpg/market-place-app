@@ -13,6 +13,7 @@ import { formatSaves } from '../../constants/creators';
 import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
 import { getSavedExperienceIds } from '../../constants/experienceStore';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
+import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 
 type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple' | 'bali' | 'seychelles' | 'zanzibar' | 'lakecomo' | 'alps';
 
@@ -32,7 +33,7 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
 };
 
 function journeyImageSource(journey: CreatorJourney) {
-  if (journey.imageUri) return { uri: journey.imageUri };
+  if (isValidRemoteImageUrl(journey.imageUri)) return { uri: journey.imageUri!.trim() };
   const key = journey.imageKey as ImageKey | undefined;
   if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
   return null;

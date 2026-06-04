@@ -46,7 +46,10 @@ import {
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { uploadCoverImage } from '../../lib/storageService';
+import {
+  isValidRemoteImageUrl,
+  remoteImageOrPlaceholder,
+} from '../../lib/imageFallback';
 import {
   TRAVEL_STYLES,
   BUDGET_RANGES,
@@ -195,6 +198,7 @@ export default function CreateExperienceScreen() {
   const [duration, setDuration] = useState('');
   const [budget, setBudget] = useState<BudgetRange>('$$');
   const [coverImage, setCoverImage] = useState('');
+  const [localCoverPreviewUri, setLocalCoverPreviewUri] = useState('');
   const [description, setDescription] = useState('');
   const [whoIsItFor, setWhoIsItFor] = useState('');
   const [highlights, setHighlights] = useState<string[]>([]);
@@ -235,11 +239,8 @@ export default function CreateExperienceScreen() {
 
     setImageUploading(true);
     try {
-      const downloadUrl = await uploadCoverImage(result.assets[0].uri, 'experiences');
-      setCoverImage(downloadUrl);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Could not upload image.';
-      Alert.alert('Upload Failed', msg);
+      // Keep local URI for session preview only; no Storage upload in this flow.
+      setLocalCoverPreviewUri(result.assets[0].uri);
     } finally {
       setImageUploading(false);
     }
@@ -259,7 +260,7 @@ export default function CreateExperienceScreen() {
         if (d.travelStyle) setTravelStyle(d.travelStyle);
         if (d.duration) setDuration(d.duration);
         if (d.budget) setBudget(d.budget);
-        if (d.coverImage) setCoverImage(d.coverImage);
+        if (d.coverImage && isValidRemoteImageUrl(d.coverImage)) setCoverImage(d.coverImage);
         if (d.description) setDescription(d.description);
         if (d.whoIsItFor) setWhoIsItFor(d.whoIsItFor);
         if (Array.isArray(d.highlights)) setHighlights(d.highlights);
@@ -414,7 +415,7 @@ export default function CreateExperienceScreen() {
       travelStyle,
       duration: duration.trim(),
       budget,
-      coverImage: coverImage.trim() || null,
+      coverImage: remoteImageOrPlaceholder(coverImage),
       description: description.trim(),
       whoIsItFor: whoIsItFor.trim(),
       highlights: highlights.map((h) => h.trim()).filter(Boolean),
@@ -666,14 +667,14 @@ export default function CreateExperienceScreen() {
           ) : (
             <>
               <Ionicons name="image-outline" size={18} color={LuxuryColors.gold} />
-              <Text style={styles.imagePickText}>{coverImage ? 'Replace Cover Image' : 'Pick Cover Image'}</Text>
+              <Text style={styles.imagePickText}>{localCoverPreviewUri || coverImage ? 'Replace Cover Image' : 'Pick Cover Image'}</Text>
             </>
           )}
         </TouchableOpacity>
-        <Text style={styles.hint}>Select an image from your library. It will be uploaded to Firebase Storage.</Text>
-        {coverImage ? (
+        <Text style={styles.hint}>Select an image from your library for this session preview only.</Text>
+        {localCoverPreviewUri || coverImage ? (
           <View style={styles.previewWrap}>
-            <Image source={{ uri: coverImage }} style={styles.previewImage} resizeMode="cover" />
+            <Image source={{ uri: localCoverPreviewUri || coverImage }} style={styles.previewImage} resizeMode="cover" />
           </View>
         ) : null}
 

@@ -40,7 +40,7 @@ import {
 } from '../../lib/creatorService';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
-import { uploadCoverImage } from '../../lib/storageService';
+import { remoteImageOrPlaceholder } from '../../lib/imageFallback';
 import type { BudgetLevel, JourneyUploadPayload } from '../../constants/creatorJourneyModel';
 import type { Creator } from '../../constants/creators';
 
@@ -186,7 +186,7 @@ export default function CreateJourneyScreen() {
   const [bestTime, setBestTime] = useState('');
   const [budget, setBudget] = useState<BudgetLevel>('$$');
   const [dailyBudget, setDailyBudget] = useState('');
-  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [localCoverPreviewUri, setLocalCoverPreviewUri] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [description, setDescription] = useState('');
   const [places, setPlaces] = useState('');
@@ -218,11 +218,8 @@ export default function CreateJourneyScreen() {
 
     setImageUploading(true);
     try {
-      const downloadUrl = await uploadCoverImage(result.assets[0].uri, 'journeys');
-      setCoverImageUrl(downloadUrl);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Could not upload image.';
-      Alert.alert('Upload Failed', msg);
+      // Keep local URI for session preview only; no Storage upload in this flow.
+      setLocalCoverPreviewUri(result.assets[0].uri);
     } finally {
       setImageUploading(false);
     }
@@ -275,7 +272,7 @@ export default function CreateJourneyScreen() {
 
   // ── Build payload ────────────────────────────────────────────────────
   function buildPayload(): JourneyUploadPayload {
-    const imageUri = coverImageUrl.trim() || imageUrl.trim() || null;
+    const imageUri = remoteImageOrPlaceholder(imageUrl);
 
     return {
       creatorId: authUid ?? '',
@@ -319,7 +316,7 @@ export default function CreateJourneyScreen() {
     } finally {
       setPublishing(false);
     }
-  }, [title, destination, country, city, description, duration, budget, dailyBudget, bestTime, region, places, restaurants, experiences, itineraryDays, coverImageUrl, imageUrl, creatorProfile, authUid]);
+  }, [title, destination, country, city, description, duration, budget, dailyBudget, bestTime, region, places, restaurants, experiences, itineraryDays, imageUrl, creatorProfile, authUid]);
 
   // ── Save draft ────────────────────────────────────────────────────────
   const handleSaveDraft = useCallback(async () => {
@@ -339,7 +336,7 @@ export default function CreateJourneyScreen() {
     } finally {
       setSaving(false);
     }
-  }, [title, destination, country, city, duration, budget, dailyBudget, coverImageUrl, imageUrl, description, itineraryDays, creatorProfile, region, bestTime, places, restaurants, experiences, authUid]);
+  }, [title, destination, country, city, duration, budget, dailyBudget, imageUrl, description, itineraryDays, creatorProfile, region, bestTime, places, restaurants, experiences, authUid]);
 
   // ── Submit for review ─────────────────────────────────────────────────
   const handleSubmitForReview = useCallback(async () => {
@@ -374,7 +371,7 @@ export default function CreateJourneyScreen() {
         },
       ]
     );
-  }, [title, destination, country, city, duration, budget, dailyBudget, coverImageUrl, imageUrl, description, itineraryDays, creatorProfile, region, bestTime, places, restaurants, experiences, authUid]);
+  }, [title, destination, country, city, duration, budget, dailyBudget, imageUrl, description, itineraryDays, creatorProfile, region, bestTime, places, restaurants, experiences, authUid]);
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking) {
@@ -546,11 +543,11 @@ export default function CreateJourneyScreen() {
           ) : (
             <>
               <Ionicons name="image-outline" size={18} color={LuxuryColors.gold} />
-              <Text style={styles.imagePickText}>{coverImageUrl ? 'Replace Cover Image' : 'Pick Cover Image'}</Text>
+              <Text style={styles.imagePickText}>{localCoverPreviewUri ? 'Replace Cover Image' : 'Pick Cover Image'}</Text>
             </>
           )}
         </TouchableOpacity>
-        <Text style={styles.hint}>Select an image from your library. It will be uploaded to Firebase Storage.</Text>
+        <Text style={styles.hint}>Select an image from your library for this session preview only.</Text>
         <FieldLabel text="Or Image URL" />
         <TextInput
           style={styles.input}
@@ -562,9 +559,9 @@ export default function CreateJourneyScreen() {
           autoCorrect={false}
           keyboardType="url"
         />
-        {coverImageUrl ? (
+        {localCoverPreviewUri ? (
           <View style={styles.previewWrap}>
-            <Image source={{ uri: coverImageUrl }} style={styles.previewImage} resizeMode="cover" />
+            <Image source={{ uri: localCoverPreviewUri }} style={styles.previewImage} resizeMode="cover" />
           </View>
         ) : null}
 

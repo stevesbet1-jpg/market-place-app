@@ -58,6 +58,7 @@ import {
 import type { Creator } from '../../constants/creators';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 import { BarChart } from 'react-native-chart-kit';
+import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 
 // ─── Section types ────────────────────────────────────────────────────────────
 
@@ -133,7 +134,9 @@ function ExperienceRow({
   onSubmitForReview: () => void;
   onPublish: () => void;
 }) {
-  const imgSrc = experience.coverImage ? { uri: experience.coverImage } : null;
+  const imgSrc = isValidRemoteImageUrl(experience.coverImage)
+    ? { uri: experience.coverImage!.trim() }
+    : null;
   const color = statusColor(experience.status);
   const label = statusLabel(experience.status);
 

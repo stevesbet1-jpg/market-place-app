@@ -34,6 +34,7 @@ import { getFirebaseApp } from '../../lib/firebase';
 import { checkMembership } from '../../lib/membershipService';
 import { getJourneyById } from '../../lib/creatorJourneyService';
 import { getJourneyReviews, submitJourneyReview, type JourneyReview } from '../../lib/reviewService';
+import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import {
   consumeFreeJourney,
   getSavedIds,
@@ -60,7 +61,7 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
 };
 
 function journeyImageSource(journey: CreatorJourney) {
-  if (journey.imageUri) return { uri: journey.imageUri };
+  if (isValidRemoteImageUrl(journey.imageUri)) return { uri: journey.imageUri!.trim() };
   const key = journey.imageKey as ImageKey | undefined;
   if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
   return null;
