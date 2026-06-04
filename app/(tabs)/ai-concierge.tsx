@@ -44,6 +44,15 @@ const API_BASE =
   (process.env.EXPO_PUBLIC_RESET_API_URL ?? '').replace(/\/$/, '') ||
   'https://market-place-app-1.onrender.com';
 
+function normalizeApiBase(url: string): string {
+  // EXPO_PUBLIC_RESET_API_URL may be configured as a full reset endpoint.
+  // Strip route suffixes so AI requests still hit the API host.
+  return url
+    .replace(/\/$/, '')
+    .replace(/\/api\/send-reset$/i, '')
+    .replace(/\/api\/health$/i, '');
+}
+
 const PROMPT_CHIPS = [
   '7 days in Japan under $4,000',
   'Romantic Italy trip in May',
@@ -104,17 +113,29 @@ export default function AIPlannerScreen() {
     setAiLoading(true);
     setAiReply(null);
     try {
-      const res = await fetch(`${API_BASE}/api/ai/chat`, {
+      const apiBase = normalizeApiBase(API_BASE);
+      const res = await fetch(`${apiBase}/api/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query.trim() }),
       });
+
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+
       const data = await res.json();
-      if (!data.fallback && data.reply) {
-        setAiReply(data.reply);
+      if (typeof data?.reply === 'string' && data.reply.trim()) {
+        setAiReply(data.reply.trim());
+      } else if (data?.fallback) {
+        setAiReply(
+          'Voya is temporarily unavailable. Here are matched journeys below while AI reconnects.'
+        );
+      } else {
+        setAiReply('No AI response was returned. Please try again.');
       }
     } catch {
-      // Server unreachable — silently fall back to local scoring
+      setAiReply('Could not reach Voya right now. Please try again in a moment.');
     } finally {
       setAiLoading(false);
     }

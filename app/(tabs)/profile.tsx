@@ -11,7 +11,7 @@ import { getUserProfile, type UserProfile } from '../../lib/userProfile';
 import { getSavedIds } from '../../constants/journeyStore';
 import { getJourneysByIds } from '../../lib/creatorJourneyService';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
-import { getMyApprovedCreatorProfile, activateCreator } from '../../lib/creatorService';
+import { getMyApprovedCreatorProfile } from '../../lib/creatorService';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -22,7 +22,6 @@ export default function ProfileScreen() {
   const [isCreator, setIsCreator] = useState<boolean | null>(null);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [creatorStatusLoading, setCreatorStatusLoading] = useState(true);
-  const [activating, setActivating] = useState(false);
 
   // ── Saved journeys — reload on every tab focus ─────────────────────────────
   useFocusEffect(
@@ -377,35 +376,26 @@ export default function ProfileScreen() {
         ) : (
           // Not yet a creator — show "Become a Creator" activation button
           <TouchableOpacity
-            style={[styles.menuItem, activating && { opacity: 0.6 }]}
-            disabled={activating}
+            style={styles.menuItem}
             onPress={async () => {
               console.log('[Profile:Creator] "Become a Creator" tapped — authUid:', authUid ?? 'null', '| authReady:', authReady);
-              if (!authUid) {
+              // Resolve current user at tap-time to avoid transient null from auth restore race.
+              const auth = getAuth(getFirebaseApp());
+              const resolvedUid = authUid ?? auth.currentUser?.uid ?? null;
+              if (!resolvedUid) {
                 console.warn('[Profile:Creator] No authUid — user is not authenticated. Redirecting to login.');
                 router.replace('/(auth)/login');
                 return;
               }
-              setActivating(true);
-              try {
-                console.log('[Profile:Creator] Calling activateCreator for uid:', authUid);
-                const creatorProfile = await activateCreator(authUid, profile?.fullName ?? '');
-                console.log('[Profile:Creator] activateCreator succeeded — name:', creatorProfile.name);
-                setIsCreator(true);
-                setCreatorName(creatorProfile.name);
-              } catch (e: any) {
-                console.error('[Profile:Creator] activateCreator failed:', e?.message);
-                Alert.alert('Error', e?.message ?? 'Could not activate creator account. Please try again.');
-              } finally {
-                setActivating(false);
-              }
+
+              // Creator onboarding/subscription flow starts from this screen.
+              // Activation occurs when the user continues in creator flows.
+              router.push('/(tabs)/creator-subscription');
             }}
             activeOpacity={0.8}
           >
             <View style={styles.menuIcon}>
-              {activating
-                ? <ActivityIndicator size="small" color={LuxuryColors.gold} />
-                : <Ionicons name="create-outline" size={24} color={LuxuryColors.gold} />}
+              <Ionicons name="create-outline" size={24} color={LuxuryColors.gold} />
             </View>
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>Become a Creator</Text>
