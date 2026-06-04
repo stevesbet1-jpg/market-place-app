@@ -22,7 +22,9 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +40,7 @@ import {
 } from '../../lib/creatorService';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
+import { uploadCoverImage } from '../../lib/storageService';
 import type { BudgetLevel } from '../../constants/creatorJourneyModel';
 import type { Creator } from '../../constants/creators';
 
@@ -181,6 +184,35 @@ export default function CreateJourneyScreen() {
   ]);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+
+  const handlePickCoverImage = useCallback(async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission Needed', 'Please allow photo library access to upload a cover image.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+
+    setImageUploading(true);
+    try {
+      const downloadUrl = await uploadCoverImage(result.assets[0].uri, 'journeys');
+      setCoverImageUrl(downloadUrl);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not upload image.';
+      Alert.alert('Upload Failed', msg);
+    } finally {
+      setImageUploading(false);
+    }
+  }, []);
 
   // ── Itinerary helpers ────────────────────────────────────────────────
   const addDay = useCallback(() => {
@@ -408,19 +440,27 @@ export default function CreateJourneyScreen() {
         {/* ── Media ── */}
         <SectionHeader title="Cover Image" />
 
-        <FieldLabel text="Cover Image URL" />
-        <TextInput
-          style={styles.input}
-          placeholder="https://example.com/image.jpg"
-          placeholderTextColor={LuxuryColors.textTertiary}
-          value={coverImageUrl}
-          onChangeText={setCoverImageUrl}
-          keyboardType="url"
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={500}
-        />
-        <Text style={styles.hint}>Paste a public image URL for your journey cover photo.</Text>
+        <TouchableOpacity
+          style={[styles.imagePickBtn, imageUploading && styles.btnDisabled]}
+          onPress={handlePickCoverImage}
+          activeOpacity={0.8}
+          disabled={imageUploading}
+        >
+          {imageUploading ? (
+            <ActivityIndicator color={LuxuryColors.gold} size="small" />
+          ) : (
+            <>
+              <Ionicons name="image-outline" size={18} color={LuxuryColors.gold} />
+              <Text style={styles.imagePickText}>{coverImageUrl ? 'Replace Cover Image' : 'Pick Cover Image'}</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <Text style={styles.hint}>Select an image from your library. It will be uploaded to Firebase Storage.</Text>
+        {coverImageUrl ? (
+          <View style={styles.previewWrap}>
+            <Image source={{ uri: coverImageUrl }} style={styles.previewImage} resizeMode="cover" />
+          </View>
+        ) : null}
 
         {/* ── Description ── */}
         <SectionHeader title="Description" />
@@ -480,7 +520,7 @@ export default function CreateJourneyScreen() {
           <TouchableOpacity
             style={[styles.draftBtn, saving && styles.btnDisabled]}
             onPress={handleSaveDraft}
-            disabled={saving || submitting}
+            disabled={saving || submitting || imageUploading}
             activeOpacity={0.85}
           >
             {saving ? (
@@ -493,7 +533,7 @@ export default function CreateJourneyScreen() {
           <TouchableOpacity
             style={[styles.submitBtn, submitting && styles.btnDisabled]}
             onPress={handleSubmitForReview}
-            disabled={saving || submitting}
+            disabled={saving || submitting || imageUploading}
             activeOpacity={0.85}
           >
             {submitting ? (
@@ -576,6 +616,33 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textTertiary,
     marginBottom: LuxurySpacing.md,
     marginTop: -LuxurySpacing.sm,
+  },
+  imagePickBtn: {
+    height: 48,
+    borderRadius: LuxuryBorderRadius.md,
+    borderWidth: 1,
+    borderColor: LuxuryColors.gold,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: LuxurySpacing.xs,
+    marginBottom: LuxurySpacing.sm,
+  },
+  imagePickText: {
+    color: LuxuryColors.gold,
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+  },
+  previewWrap: {
+    borderRadius: LuxuryBorderRadius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: LuxuryColors.glassBorder,
+    marginBottom: LuxurySpacing.md,
+  },
+  previewImage: {
+    width: '100%',
+    height: 170,
   },
   budgetRow: {
     flexDirection: 'row',

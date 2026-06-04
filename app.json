@@ -38,7 +38,13 @@
     "plugins": [
       "expo-router",
       "expo-web-browser",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Marketplace to access your photos so you can upload journey and experience cover images."
+        }
+      ]
     ],
     "extra": {
       "router": {},

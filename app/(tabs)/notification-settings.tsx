@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   },
   rowLeft: {
     flex: 1,
-    gap: LuxurySpacing.xxs ?? 2,
+    gap: 2,
   },
   rowLabel: {
     fontSize: LuxuryFontSize.md,
