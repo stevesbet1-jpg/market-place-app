@@ -4,9 +4,11 @@ import {
   Text,
   Image,
   ActivityIndicator,
+  Alert,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Modal,
   Animated,
   Dimensions,
@@ -31,6 +33,7 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
 import { checkMembership } from '../../lib/membershipService';
 import { getJourneyById } from '../../lib/creatorJourneyService';
+import { getJourneyReviews, submitJourneyReview, type JourneyReview } from '../../lib/reviewService';
 import {
   consumeFreeJourney,
   getSavedIds,
@@ -65,6 +68,15 @@ function journeyImageSource(journey: CreatorJourney) {
 
 function deriveInitials(name: string): string {
   return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
+}
+
+function formatReviewDate(ms: number): string {
+  if (!ms) return 'Just now';
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 // ─── Derived presentation helpers ───────────────────────────────────────────
@@ -159,6 +171,12 @@ export default function JourneyDetailScreen() {
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [isPremium, setIsPremium] = useState(false);
+  const [reviews, setReviews] = useState<JourneyReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [authUid, setAuthUid] = useState<string | null>(null);
   const [sections, setSections] = useState({
 
     places: true,
@@ -178,6 +196,18 @@ export default function JourneyDetailScreen() {
     setSections((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  const loadReviews = useCallback(async (journeyId: string) => {
+    setReviewsLoading(true);
+    try {
+      const next = await getJourneyReviews(journeyId, 20);
+      setReviews(next);
+    } catch {
+      setReviews([]);
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     if (!id) { setLoading(false); return; }
@@ -191,18 +221,49 @@ export default function JourneyDetailScreen() {
     if (!id) return;
     consumeFreeJourney(id).then(setFreeRemaining);
     getSavedIds().then((ids) => setSaved(ids.includes(id)));
-  }, [id]);
+    loadReviews(id);
+  }, [id, loadReviews]);
 
   // ── Membership check: set isPremium when Firebase auth resolves ──────────
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setAuthUid(user?.uid ?? null);
       if (!user) { setIsPremium(false); return; }
       const active = await checkMembership(user.uid);
       setIsPremium(active);
     });
     return unsubscribe;
   }, []);
+
+  const handleSubmitReview = useCallback(async () => {
+    if (!id || reviewSubmitting) return;
+    if (!authUid) {
+      Alert.alert('Sign in required', 'Please log in to leave a review.');
+      return;
+    }
+    if (reviewComment.trim().length < 6) {
+      Alert.alert('Review too short', 'Please write at least 6 characters.');
+      return;
+    }
+
+    setReviewSubmitting(true);
+    try {
+      await submitJourneyReview({
+        journeyId: id,
+        rating: reviewRating,
+        comment: reviewComment,
+      });
+      setReviewComment('');
+      setReviewRating(5);
+      await loadReviews(id);
+      Alert.alert('Thank you', 'Your review has been posted.');
+    } catch (e: any) {
+      Alert.alert('Could not post review', e?.message || 'Please try again.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  }, [authUid, id, loadReviews, reviewComment, reviewRating, reviewSubmitting]);
 
   const handleShare = useCallback(async () => {
     if (!journey) return;
@@ -266,6 +327,9 @@ export default function JourneyDetailScreen() {
   const difficulty = getDifficulty(journey);
   const travelStyles = getTravelStyles(journey);
   const creatorInitials = deriveInitials(journey.creatorName || 'Creator');
+  const reviewAverage = reviews.length
+    ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+    : 0;
 
   return (
     <>
@@ -745,7 +809,100 @@ export default function JourneyDetailScreen() {
             />
             {sections.reviews && (
               <View style={styles.sectionBody}>
-                <Text style={styles.bodyText}>No reviews yet.</Text>
+                {reviewsLoading ? (
+                  <ActivityIndicator color={LuxuryColors.gold} />
+                ) : (
+                  <>
+                    {reviews.length > 0 ? (
+                      <View style={styles.reviewSummary}>
+                        <Text style={styles.reviewAvgScore}>{reviewAverage.toFixed(1)}</Text>
+                        <View style={styles.reviewMeta}>
+                          <View style={styles.reviewAvgStars}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Ionicons
+                                key={star}
+                                name={star <= Math.round(reviewAverage) ? 'star' : 'star-outline'}
+                                size={12}
+                                color={LuxuryColors.gold}
+                              />
+                            ))}
+                          </View>
+                          <Text style={styles.reviewAvgLabel}>{reviews.length} traveler reviews</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={styles.bodyText}>Be the first to review this journey.</Text>
+                    )}
+
+                    <View style={styles.reviewFormCard}>
+                      <Text style={styles.reviewFormTitle}>Share your experience</Text>
+                      <View style={styles.reviewRatingPicker}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <TouchableOpacity
+                            key={star}
+                            onPress={() => setReviewRating(star)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons
+                              name={star <= reviewRating ? 'star' : 'star-outline'}
+                              size={20}
+                              color={LuxuryColors.gold}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <TextInput
+                        style={styles.reviewInput}
+                        value={reviewComment}
+                        onChangeText={setReviewComment}
+                        placeholder="What made this journey special?"
+                        placeholderTextColor={LuxuryColors.textTertiary}
+                        multiline
+                        maxLength={400}
+                        textAlignVertical="top"
+                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.reviewSubmitBtn,
+                          (!authUid || reviewSubmitting || reviewComment.trim().length < 6) && styles.reviewSubmitBtnDisabled,
+                        ]}
+                        onPress={handleSubmitReview}
+                        disabled={!authUid || reviewSubmitting || reviewComment.trim().length < 6}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.reviewSubmitText}>
+                          {reviewSubmitting ? 'Posting...' : authUid ? 'Post Review' : 'Sign In to Review'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {reviews.map((review) => (
+                      <View key={review.id} style={styles.reviewCard}>
+                        <View style={styles.reviewCardHeader}>
+                          <View style={styles.reviewAvatar}>
+                            <Text style={styles.reviewAvatarText}>{deriveInitials(review.authorName)}</Text>
+                          </View>
+                          <View style={styles.reviewMeta}>
+                            <Text style={styles.reviewAuthor}>{review.authorName}</Text>
+                            <View style={styles.reviewRating}>
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Ionicons
+                                  key={star}
+                                  name={star <= review.rating ? 'star' : 'star-outline'}
+                                  size={11}
+                                  color={LuxuryColors.gold}
+                                />
+                              ))}
+                            </View>
+                          </View>
+                          <Text style={styles.reviewDate}>{formatReviewDate(review.createdAtMs)}</Text>
+                        </View>
+                        <Text style={styles.reviewText}>{review.comment}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
               </View>
             )}
           </View>
@@ -1588,6 +1745,53 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textTertiary,
     letterSpacing: 0.3,
     textAlign: 'right',
+  },
+  reviewFormCard: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.md,
+    gap: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.sm,
+  },
+  reviewFormTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: 0.1,
+  },
+  reviewRatingPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+  },
+  reviewInput: {
+    minHeight: 90,
+    borderRadius: LuxuryBorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(13,21,37,0.95)',
+    color: LuxuryColors.textPrimary,
+    fontSize: LuxuryFontSize.sm,
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: LuxurySpacing.sm,
+  },
+  reviewSubmitBtn: {
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.full,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewSubmitBtnDisabled: {
+    opacity: 0.45,
+  },
+  reviewSubmitText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.background,
+    letterSpacing: 0.2,
   },
 
   // ── Paywall Banner ───────────────────────────────────────
