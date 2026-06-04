@@ -584,7 +584,70 @@ app.post(
     res.json({ received: true });
   }
 );
+// ─── AI Concierge endpoint ────────────────────────────────────────
+//
+//  POST /api/ai/chat
+//  Body: { query: string }
+//  Returns: { reply: string, fallback: boolean }
+//
+//  If OPENAI_API_KEY is not set in the environment the endpoint returns
+//  a 503 with { fallback: true } so the client gracefully falls back to
+//  local keyword-scoring.
+//
+//  System prompt instructs the model to recommend relevant journey styles
+//  in concise, luxury-travel concierge voice — not to invent specific
+//  prices or make bookings.
 
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+
+let openaiClient = null;
+
+if (OPENAI_API_KEY) {
+  try {
+    const { OpenAI } = require('openai');
+    openaiClient = new OpenAI({ apiKey: OPENAI_API_KEY });
+    console.log('[AI] ✅ OpenAI client initialised');
+  } catch (e) {
+    console.warn('[AI] ⚠️  openai package not found — run: npm install openai');
+  }
+} else {
+  console.warn('[AI] ⚠️  OPENAI_API_KEY not set — /api/ai/chat will return fallback:true');
+}
+
+const AI_SYSTEM_PROMPT = `You are Voya, a luxury travel concierge AI. Help travelers discover
+curated journeys and experiences. When a user describes their dream trip, respond in 2-3 short
+sentences recommending a travel style, destination or mood — keep it aspirational and elegant.
+Do not invent specific prices, hotel names, or booking details. Do not use markdown.`;
+
+app.post('/api/ai/chat', async (req, res) => {
+  const { query } = req.body;
+
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return res.status(400).json({ success: false, error: 'query is required' });
+  }
+
+  if (!openaiClient) {
+    return res.status(503).json({ success: false, fallback: true, error: 'AI not configured' });
+  }
+
+  try {
+    const completion = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: AI_SYSTEM_PROMPT },
+        { role: 'user', content: query.trim().slice(0, 500) },
+      ],
+      max_tokens: 150,
+      temperature: 0.7,
+    });
+
+    const reply = completion.choices?.[0]?.message?.content?.trim() ?? '';
+    return res.json({ success: true, reply, fallback: false });
+  } catch (err) {
+    console.error('[AI] OpenAI call failed:', err.message);
+    return res.status(502).json({ success: false, fallback: true, error: 'AI service unavailable' });
+  }
+});
 // ─── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n╔════════════════════════════════════════════════════════════╗`);
@@ -596,5 +659,6 @@ app.listen(PORT, () => {
   console.log(`║  Confirm:  POST /api/send-confirmation                     ║`);
   console.log(`║  Stripe:   POST /api/stripe/create-payment-intent          ║`);
   console.log(`║  Stripe:   POST /api/stripe/webhook                        ║`);
+  console.log(`║  AI:       POST /api/ai/chat                               ║`);
   console.log(`╚════════════════════════════════════════════════════════════╝\n`);
 });

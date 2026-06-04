@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
+  ActivityIndicator,
   Platform,
   Image,
 } from 'react-native';
@@ -39,6 +40,10 @@ const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   alps:       require('../../assets/collections/swiss-alps-day.jpg'),
 };
 
+const API_BASE =
+  (process.env.EXPO_PUBLIC_RESET_API_URL ?? '').replace(/\/$/, '') ||
+  'https://market-place-app-1.onrender.com';
+
 const PROMPT_CHIPS = [
   '7 days in Japan under $4,000',
   'Romantic Italy trip in May',
@@ -70,6 +75,8 @@ export default function AIPlannerScreen() {
   const [query, setQuery] = useState(params.query ?? '');
   const [inputFocused, setInputFocused] = useState(false);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [aiReply, setAiReply] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   React.useEffect(() => {
     getSavedIds().then(setSavedIds);
@@ -91,6 +98,27 @@ export default function AIPlannerScreen() {
     const newIds = await toggleSaved(id);
     setSavedIds(newIds);
   }, []);
+
+  const handleAskAI = useCallback(async () => {
+    if (!query.trim() || aiLoading) return;
+    setAiLoading(true);
+    setAiReply(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim() }),
+      });
+      const data = await res.json();
+      if (!data.fallback && data.reply) {
+        setAiReply(data.reply);
+      }
+    } catch {
+      // Server unreachable — silently fall back to local scoring
+    } finally {
+      setAiLoading(false);
+    }
+  }, [query, aiLoading]);
 
   // Top-3 journeys that best match the current query; if empty fall back to top-rated
   const recommended = React.useMemo(() => {
@@ -143,18 +171,47 @@ export default function AIPlannerScreen() {
               placeholder={'e.g. 7 days in Japan under $4,000'}
               placeholderTextColor={LuxuryColors.textTertiary}
               value={query}
-              onChangeText={setQuery}
+              onChangeText={(t) => { setQuery(t); setAiReply(null); }}
               onFocus={() => setInputFocused(true)}
               onBlur={() => setInputFocused(false)}
               returnKeyType="search"
+              onSubmitEditing={handleAskAI}
               autoCorrect={false}
             />
             {query.length > 0 && (
-              <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => { setQuery(''); setAiReply(null); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close-circle" size={16} color={LuxuryColors.textTertiary} />
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Ask Voya button */}
+          <TouchableOpacity
+            style={[styles.askBtn, (!query.trim() || aiLoading) && styles.askBtnDisabled]}
+            onPress={handleAskAI}
+            disabled={!query.trim() || aiLoading}
+            activeOpacity={0.8}
+          >
+            {aiLoading ? (
+              <ActivityIndicator size="small" color={LuxuryColors.background} />
+            ) : (
+              <>
+                <Ionicons name="sparkles" size={14} color={LuxuryColors.background} />
+                <Text style={styles.askBtnText}>Ask Voya</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {/* AI reply card */}
+          {aiReply ? (
+            <View style={styles.aiReplyCard}>
+              <View style={styles.aiReplyHeader}>
+                <Ionicons name="sparkles" size={13} color={LuxuryColors.gold} />
+                <Text style={styles.aiReplyLabel}>Voya suggests</Text>
+              </View>
+              <Text style={styles.aiReplyText}>{aiReply}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* ── Prompt chips ── */}
@@ -310,6 +367,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: LuxurySpacing.xl,
     paddingTop: LuxurySpacing.xl,
     paddingBottom: LuxurySpacing.sm,
+    gap: LuxurySpacing.sm,
   },
   inputWrap: {
     flexDirection: 'row',
@@ -335,6 +393,54 @@ const styles = StyleSheet.create({
     color: LuxuryColors.textPrimary,
     letterSpacing: 0.1,
     paddingVertical: 0,
+  },
+
+  askBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: LuxurySpacing.xs,
+    backgroundColor: LuxuryColors.gold,
+    borderRadius: LuxuryBorderRadius.full,
+    paddingVertical: LuxurySpacing.sm + 2,
+    paddingHorizontal: LuxurySpacing.xl,
+    alignSelf: 'flex-end',
+    minWidth: 120,
+  },
+  askBtnDisabled: {
+    opacity: 0.4,
+  },
+  askBtnText: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.background,
+    letterSpacing: 0.4,
+  },
+  aiReplyCard: {
+    backgroundColor: 'rgba(212,175,55,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.25)',
+    borderRadius: LuxuryBorderRadius.xl,
+    padding: LuxurySpacing.md,
+    gap: LuxurySpacing.xs,
+  },
+  aiReplyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.xs,
+  },
+  aiReplyLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  aiReplyText: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 21,
+    letterSpacing: 0.1,
   },
 
   // ── Chips ─────────────────────────────────────────────────
