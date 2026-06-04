@@ -29,6 +29,7 @@ import {
   FlatList,
   RefreshControl,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -56,6 +57,7 @@ import {
 } from '../../constants/creatorExperienceModel';
 import type { Creator } from '../../constants/creators';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
+import { BarChart } from 'react-native-chart-kit';
 
 // ─── Section types ────────────────────────────────────────────────────────────
 
@@ -474,6 +476,7 @@ export default function CreatorDashboardScreen() {
   const draftCount = experiences.filter((e) => e.status === 'draft').length;
   const totalViews = experiences.reduce((sum, e) => sum + (e.views ?? 0), 0);
   const totalUnlocks = experiences.reduce((sum, e) => sum + (e.unlocks ?? 0), 0);
+  const totalSaves = experiences.reduce((sum, e) => sum + (e.savedCount ?? 0), 0);
 
   // ── Render states ─────────────────────────────────────────────────────
   if (checking) {
@@ -726,12 +729,44 @@ export default function CreatorDashboardScreen() {
 
   // ─── Section: Analytics ───────────────────────────────────────────────
   function renderAnalytics() {
+    const published = experiences.filter((e) => e.status === 'published');
+    const top5 = [...published]
+      .sort((a, b) => (b.views ?? 0) - (a.views ?? 0))
+      .slice(0, 5);
+    const hasData = top5.length > 0;
+
+    const chartWidth = Dimensions.get('window').width - LuxurySpacing.lg * 2;
+
+    const chartConfig = {
+      backgroundColor: LuxuryColors.surface,
+      backgroundGradientFrom: LuxuryColors.surface,
+      backgroundGradientTo: LuxuryColors.surface,
+      decimalPlaces: 0,
+      color: (opacity = 1) => `rgba(212, 175, 55, ${opacity})`,
+      labelColor: (opacity = 1) => `rgba(122, 118, 104, ${opacity})`,
+      barPercentage: 0.6,
+      propsForBackgroundLines: { stroke: '#141E33' },
+    };
+
+    const truncate = (s: string) => (s.length > 7 ? s.slice(0, 7) + '\u2026' : s);
+
+    const viewsData = {
+      labels: top5.map((e) => truncate(e.title)),
+      datasets: [{ data: top5.map((e) => e.views ?? 0) }],
+    };
+
+    const unlocksData = {
+      labels: top5.map((e) => truncate(e.title)),
+      datasets: [{ data: top5.map((e) => e.unlocks ?? 0) }],
+    };
+
     return (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sectionStyles.content}>
         <Text style={sectionStyles.sectionIntro}>
           Engagement stats across all your published experiences.
         </Text>
 
+        {/* Aggregate stat cards */}
         <View style={sectionStyles.statGrid}>
           <View style={sectionStyles.statRow}>
             <StatCard label="Total Views" value={totalViews} icon="eye-outline" />
@@ -739,16 +774,54 @@ export default function CreatorDashboardScreen() {
             <StatCard label="Total Unlocks" value={totalUnlocks} icon="lock-open-outline" />
           </View>
           <View style={[sectionStyles.statRow, { marginTop: LuxurySpacing.sm }]}>
-            <StatCard label="Published" value={publishedCount} icon="checkmark-circle-outline" />
+            <StatCard label="Total Saves" value={totalSaves} icon="bookmark-outline" />
             <View style={{ width: LuxurySpacing.sm }} />
-            <View style={{ flex: 1 }} />
+            <StatCard label="Published" value={publishedCount} icon="checkmark-circle-outline" />
           </View>
         </View>
 
-        <View style={planStyles.comingSoonBanner}>
-          <Ionicons name="bar-chart-outline" size={20} color={LuxuryColors.gold} />
-          <Text style={planStyles.comingSoonText}>Detailed per-experience analytics coming soon</Text>
-        </View>
+        {/* Per-experience charts or empty state */}
+        {hasData ? (
+          <>
+            <Text style={analyticsStyles.chartTitle}>Views — Top Experiences</Text>
+            <View style={analyticsStyles.chartWrap}>
+              <BarChart
+                data={viewsData}
+                width={chartWidth}
+                height={200}
+                chartConfig={chartConfig}
+                fromZero
+                showValuesOnTopOfBars
+                style={analyticsStyles.chart}
+                yAxisLabel=""
+                yAxisSuffix=""
+              />
+            </View>
+
+            <Text style={analyticsStyles.chartTitle}>Unlocks — Top Experiences</Text>
+            <View style={analyticsStyles.chartWrap}>
+              <BarChart
+                data={unlocksData}
+                width={chartWidth}
+                height={200}
+                chartConfig={chartConfig}
+                fromZero
+                showValuesOnTopOfBars
+                style={analyticsStyles.chart}
+                yAxisLabel=""
+                yAxisSuffix=""
+              />
+            </View>
+          </>
+        ) : (
+          <View style={analyticsStyles.emptyState}>
+            <Ionicons name="bar-chart-outline" size={40} color={LuxuryColors.textTertiary} />
+            <Text style={analyticsStyles.emptyTitle}>No data yet</Text>
+            <Text style={analyticsStyles.emptyBody}>
+              Publish an experience to start seeing engagement charts.
+            </Text>
+          </View>
+        )}
       </ScrollView>
     );
   }
@@ -1158,5 +1231,42 @@ const planStyles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.gold,
     fontWeight: '500',
+  },
+});
+
+const analyticsStyles = StyleSheet.create({
+  chartTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '600',
+    color: LuxuryColors.textPrimary,
+    marginTop: LuxurySpacing.lg,
+    marginBottom: LuxurySpacing.sm,
+    letterSpacing: 0.2,
+  },
+  chartWrap: {
+    backgroundColor: LuxuryColors.surface,
+    borderRadius: LuxuryBorderRadius.lg,
+    borderWidth: 1,
+    borderColor: LuxuryColors.divider,
+    overflow: 'hidden',
+  },
+  chart: {
+    borderRadius: LuxuryBorderRadius.lg,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: LuxurySpacing.xxxl,
+    gap: LuxurySpacing.sm,
+  },
+  emptyTitle: {
+    fontSize: LuxuryFontSize.md,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+  },
+  emptyBody: {
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
