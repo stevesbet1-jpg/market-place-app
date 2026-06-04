@@ -45,6 +45,59 @@ import type {
 
 const COLLECTION = 'creatorExperiences';
 
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean);
+}
+
+function normalizeDailyPlan(value: unknown): DailyPlanEntry[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((raw, index) => {
+      const item = (raw ?? {}) as Record<string, unknown>;
+      const activities = toStringArray(item.activities);
+      const title =
+        (typeof item.title === 'string' && item.title.trim()) ||
+        (typeof item.dayTitle === 'string' && item.dayTitle.trim()) ||
+        '';
+      const description =
+        (typeof item.description === 'string' && item.description.trim()) ||
+        (typeof item.dayDescription === 'string' && item.dayDescription.trim()) ||
+        (activities.length > 0 ? activities.join(', ') : '');
+
+      return {
+        day:
+          (typeof item.day === 'number' && item.day > 0 ? item.day : null) ??
+          (typeof item.dayNumber === 'number' && item.dayNumber > 0 ? item.dayNumber : null) ??
+          index + 1,
+        title,
+        description,
+      };
+    })
+    .filter((d) => d.title.length > 0 || d.description.length > 0)
+    .sort((a, b) => a.day - b.day);
+}
+
+function normalizeTips(data: Record<string, unknown>): string[] {
+  const rawTips = data.tips;
+
+  if (typeof rawTips === 'string') {
+    const text = rawTips.trim();
+    return text ? [text] : [];
+  }
+
+  const tipsArray = toStringArray(rawTips);
+  if (tipsArray.length > 0) {
+    return tipsArray;
+  }
+
+  const legacyText = typeof data.tipsText === 'string' ? data.tipsText.trim() : '';
+  return legacyText ? [legacyText] : [];
+}
+
 // ─── Guards ───────────────────────────────────────────────────────────────────
 
 function requireFirebase(): void {
@@ -74,13 +127,13 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     whoIsItFor: (data.whoIsItFor as string) ?? '',
     highlights: (data.highlights as string[]) ?? [],
     creatorNotes: (data.creatorNotes as string) ?? '',
-    tips: (data.tips as string[]) ?? [],
+    tips: normalizeTips(data),
     bestTimeToVisit: (data.bestTimeToVisit as string) ?? '',
     warnings: (data.warnings as string) ?? '',
     hiddenGems: (data.hiddenGems as HiddenGem[]) ?? [],
     restaurants: (data.restaurants as Restaurant[]) ?? [],
     hotels: (data.hotels as Hotel[]) ?? [],
-    dailyPlan: (data.dailyPlan as DailyPlanEntry[]) ?? [],
+    dailyPlan: normalizeDailyPlan(data.dailyPlan),
     googleMapsUrl: (data.googleMapsUrl as string) ?? '',
     appleMapsUrl: (data.appleMapsUrl as string) ?? '',
     freePreview: Boolean(data.freePreview),

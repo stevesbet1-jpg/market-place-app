@@ -420,7 +420,7 @@ export default function CreateExperienceScreen() {
       whoIsItFor: whoIsItFor.trim(),
       highlights: highlights.map((h) => h.trim()).filter(Boolean),
       creatorNotes: creatorNotes.trim(),
-      tips: tipsText.split(',').map((s) => s.trim()).filter(Boolean),
+      tips: tipsText.trim() ? [tipsText.trim()] : [],
       bestTimeToVisit: bestTimeToVisit.trim(),
       warnings: warnings.trim(),
       googleMapsUrl: googleMapsUrl.trim(),
