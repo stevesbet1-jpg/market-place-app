@@ -77,8 +77,17 @@ function normalizeDailyPlan(value: unknown): DailyPlanEntry[] {
         description,
       };
     })
-    .filter((d) => d.title.length > 0 || d.description.length > 0)
     .sort((a, b) => a.day - b.day);
+}
+
+function likelyFragmentedSentence(parts: string[]): boolean {
+  if (parts.length < 2) return false;
+  const first = parts[0] ?? '';
+  const firstWords = first.split(/\s+/).filter(Boolean).length;
+  const hasLowercaseContinuation = parts
+    .slice(1)
+    .some((p) => /^[a-z]/.test(p));
+  return hasLowercaseContinuation && (first.length > 40 || firstWords >= 8);
 }
 
 function normalizeTips(data: Record<string, unknown>): string[] {
@@ -91,6 +100,9 @@ function normalizeTips(data: Record<string, unknown>): string[] {
 
   const tipsArray = toStringArray(rawTips);
   if (tipsArray.length > 0) {
+    if (likelyFragmentedSentence(tipsArray)) {
+      return [tipsArray.join(', ')];
+    }
     return tipsArray;
   }
 
@@ -133,7 +145,9 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     hiddenGems: (data.hiddenGems as HiddenGem[]) ?? [],
     restaurants: (data.restaurants as Restaurant[]) ?? [],
     hotels: (data.hotels as Hotel[]) ?? [],
-    dailyPlan: normalizeDailyPlan(data.dailyPlan),
+    dailyPlan: normalizeDailyPlan(
+      data.dailyPlan ?? data.itinerary ?? data.dayByDay ?? data.daily_plan
+    ),
     googleMapsUrl: (data.googleMapsUrl as string) ?? '',
     appleMapsUrl: (data.appleMapsUrl as string) ?? '',
     freePreview: Boolean(data.freePreview),

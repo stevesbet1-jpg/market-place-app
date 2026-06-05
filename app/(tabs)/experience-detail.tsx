@@ -226,16 +226,21 @@ function PaywallBanner({
 // ─── Day Card ─────────────────────────────────────────────────────────────────
 
 function DayCard({ entry }: { entry: DailyPlanEntry }) {
+  const title = entry.title?.trim() ?? '';
+  const description = entry.description?.trim() ?? '';
   return (
     <View style={dayStyles.card}>
       <View style={dayStyles.dayHeader}>
         <View style={dayStyles.dayBadge}>
           <Text style={dayStyles.dayBadgeText}>Day {entry.day}</Text>
         </View>
-        {entry.title ? <Text style={dayStyles.dayTitle}>{entry.title}</Text> : null}
+        {title ? <Text style={dayStyles.dayTitle}>{title}</Text> : null}
       </View>
-      {entry.description ? (
-        <Text style={dayStyles.dayDescription}>{entry.description}</Text>
+      {description ? (
+        <Text style={dayStyles.dayDescription}>{description}</Text>
+      ) : null}
+      {!title && !description ? (
+        <Text style={dayStyles.dayDescription}>No details provided for this day yet.</Text>
       ) : null}
     </View>
   );
