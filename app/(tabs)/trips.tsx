@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import type { BudgetLevel } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
@@ -14,6 +15,7 @@ import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURN
 import { getSavedExperienceIds } from '../../constants/experienceStore';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
+import { getFirebaseApp } from '../../lib/firebase';
 
 type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple' | 'bali' | 'seychelles' | 'zanzibar' | 'lakecomo' | 'alps';
 
@@ -59,6 +61,14 @@ export default function TripsScreen() {
   const [journeyCursor, setJourneyCursor] = useState<JourneysPage['cursor']>(null);
   const [expCursor, setExpCursor] = useState<ExperiencesPage['cursor']>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [authUid, setAuthUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    return onAuthStateChanged(auth, (user) => {
+      setAuthUid(user?.uid ?? null);
+    });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -117,6 +127,11 @@ export default function TripsScreen() {
     () => savedIds.map((id) => allJourneys.find((j) => j.id === id)).filter(Boolean) as CreatorJourney[],
     [savedIds, allJourneys]
   );
+
+  const myPublishedExperiences = useMemo<CreatorExperience[]>(() => {
+    if (!authUid) return [];
+    return allExperiences.filter((exp) => exp.creatorId === authUid);
+  }, [allExperiences, authUid]);
 
   const handleBudgetFilter = async (b: BudgetLevel | null) => {
     setBudgetPrefState(b);
@@ -347,6 +362,36 @@ export default function TripsScreen() {
           </Text>
         </View>
       ) : null}
+
+      {/* ── My Published Experiences ── */}
+      {myPublishedExperiences.length > 0 && (
+        <View style={styles.expSection}>
+          <Text style={styles.expSectionTitle}>My Published Experiences</Text>
+          <Text style={styles.expSectionSub}>Experiences you published from your creator account</Text>
+          {myPublishedExperiences.map((exp) => (
+            <Pressable
+              key={exp.id}
+              style={styles.expCard}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
+              }
+            >
+              <View style={styles.expCardLeft}>
+                <Ionicons name="person-circle-outline" size={22} color={LuxuryColors.gold} />
+              </View>
+              <View style={styles.expCardBody}>
+                <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
+                <Text style={styles.expCardMeta} numberOfLines={1}>
+                  {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
+                </Text>
+                <Text style={styles.expCardCreator}>by {exp.creatorName}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+
       <View style={[styles.padH, styles.cardList]}>
         {featuredJourneys.map((journey) => (
           <Pressable
