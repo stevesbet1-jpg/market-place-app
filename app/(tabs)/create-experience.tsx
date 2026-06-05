@@ -400,6 +400,16 @@ export default function CreateExperienceScreen() {
     if (!city.trim()) return 'City is required.';
     if (!duration.trim()) return 'Duration is required.';
     if (!description.trim()) return 'Short Description is required.';
+
+    const incompleteDays = dailyPlan
+      .filter((d) => !d.title.trim() || !d.description.trim())
+      .map((d) => d.day)
+      .sort((a, b) => a - b);
+
+    if (incompleteDays.length > 0) {
+      return `Complete Day Plan details before publishing. Missing title or description for Day ${incompleteDays.join(', Day ')}.`;
+    }
+
     return null;
   }
 
@@ -968,7 +978,7 @@ export default function CreateExperienceScreen() {
                 </TouchableOpacity>
               )}
             </View>
-            <FieldLabel text="Day Title" />
+            <FieldLabel text="Day Title" required />
             <TextInput
               style={styles.input}
               placeholder="Temples & Traditional Crafts"
@@ -977,7 +987,7 @@ export default function CreateExperienceScreen() {
               onChangeText={(text) => updateDay(index, 'title', text)}
               maxLength={80}
             />
-            <FieldLabel text="Description" />
+            <FieldLabel text="Description" required />
             <TextInput
               style={[styles.input, styles.textArea, { marginBottom: 0 }]}
               placeholder="Start at Fushimi Inari at dawn, head to Arashiyama for lunch…"
