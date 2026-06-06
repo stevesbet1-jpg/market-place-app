@@ -30,7 +30,8 @@ import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
 // ─── Creator Card ─────────────────────────────────────────────────────────────
 
-function CreatorCard({ creator }: { creator: Creator }) {
+function CreatorCard({ creator, authUid }: { creator: Creator; authUid: string | null }) {
+  const isCurrentUserCreator = Boolean(authUid && creator.userId && creator.userId === authUid);
   return (
     <TouchableOpacity
       style={styles.card}
@@ -60,6 +61,9 @@ function CreatorCard({ creator }: { creator: Creator }) {
             </View>
           )}
         </View>
+        <Text style={styles.cardOwnershipText}>
+          {isCurrentUserCreator ? 'Your creator profile' : 'Public creator profile'}
+        </Text>
         <Text style={styles.cardBio} numberOfLines={2}>{creator.bio}</Text>
 
         {/* Stats row */}
@@ -80,7 +84,7 @@ function CreatorCard({ creator }: { creator: Creator }) {
           <View style={styles.stat}>
             <Ionicons name="map" size={11} color={LuxuryColors.textTertiary} />
             <Text style={styles.statText}>
-              {creator.publishedExperiencesCount} {creator.publishedExperiencesCount === 1 ? 'Journey' : 'Journeys'}
+              {creator.publishedExperiencesCount} {creator.publishedExperiencesCount === 1 ? 'Published Journey' : 'Published Journeys'}
             </Text>
           </View>
           {creator.instagram && (
@@ -262,7 +266,7 @@ export default function DiscoverScreen() {
             {/* Creator list */}
             <View style={styles.list}>
               {creators.map((creator) => (
-                <CreatorCard key={creator.id} creator={creator} />
+                <CreatorCard key={creator.id} creator={creator} authUid={authUid} />
               ))}
             </View>
 
@@ -492,6 +496,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: LuxuryColors.textSecondary,
     lineHeight: 17,
+  },
+  cardOwnershipText: {
+    fontSize: 11,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
   },
   statsRow: {
     flexDirection: 'row',
