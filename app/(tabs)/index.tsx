@@ -155,16 +155,12 @@ export default function DiscoverScreen() {
 
   // ── Auth state (avoids race condition where currentUser is null on cold start)
   const [authUid, setAuthUid] = useState<string | null>(null);
-  const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [myCreatorProfileId, setMyCreatorProfileId] = useState<string | null>(null);
-  const [myCreatorProfileUserId, setMyCreatorProfileUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     return onAuthStateChanged(auth, (user) => {
       setAuthUid(user?.uid ?? null);
-      setAuthEmail(user?.email ?? null);
       setAuthReady(true);
     });
   }, []);
@@ -214,23 +210,10 @@ export default function DiscoverScreen() {
   // ── Update isCreator once auth state is known
   useEffect(() => {
     if (!authReady) return;
-    if (!authUid) {
-      setIsCreator(false);
-      setMyCreatorProfileId(null);
-      setMyCreatorProfileUserId(null);
-      return;
-    }
+    if (!authUid) { setIsCreator(false); return; }
     getMyApprovedCreatorProfile(authUid)
-      .then((profile) => {
-        setIsCreator(profile !== null);
-        setMyCreatorProfileId(profile?.id ?? null);
-        setMyCreatorProfileUserId(profile?.userId ?? null);
-      })
-      .catch(() => {
-        setIsCreator(false);
-        setMyCreatorProfileId(null);
-        setMyCreatorProfileUserId(null);
-      });
+      .then((profile) => setIsCreator(profile !== null))
+      .catch(() => setIsCreator(false));
   }, [authReady, authUid]);
 
   return (
@@ -251,17 +234,6 @@ export default function DiscoverScreen() {
             Browse handcrafted journeys from independent travel creators
           </Text>
         </View>
-
-        {__DEV__ ? (
-          <View style={styles.debugBox}>
-            <Text style={styles.debugTitle}>Runtime Debug (temporary)</Text>
-            <Text style={styles.debugText}>auth.uid: {authUid ?? 'null'}</Text>
-            <Text style={styles.debugText}>auth.email: {authEmail ?? 'null'}</Text>
-            <Text style={styles.debugText}>creatorProfile.id: {myCreatorProfileId ?? 'null'}</Text>
-            <Text style={styles.debugText}>creatorProfile.userId: {myCreatorProfileUserId ?? 'null'}</Text>
-            <Text style={styles.debugText}>journey count source: creators[].publishedExperiencesCount (public Discover)</Text>
-          </View>
-        ) : null}
 
         {loading ? (
           <ActivityIndicator
@@ -399,25 +371,6 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textSecondary,
     lineHeight: 20,
-  },
-  debugBox: {
-    marginBottom: LuxurySpacing.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-    gap: 4,
-  },
-  debugTitle: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    marginBottom: 4,
-  },
-  debugText: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textSecondary,
   },
 
   // Demo notice
