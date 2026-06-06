@@ -128,11 +128,13 @@ function ExperienceRow({
   onDelete,
   onSubmitForReview,
   onPublish,
+  onUnpublish,
 }: {
   experience: CreatorExperience;
   onDelete: () => void;
   onSubmitForReview: () => void;
   onPublish: () => void;
+  onUnpublish: () => void;
 }) {
   const imgSrc = isValidRemoteImageUrl(experience.coverImage)
     ? { uri: experience.coverImage!.trim() }
@@ -177,6 +179,17 @@ function ExperienceRow({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="eye-outline" size={18} color={LuxuryColors.textSecondary} />
+          </TouchableOpacity>
+        )}
+
+        {experience.status === 'published' && (
+          <TouchableOpacity
+            style={rowStyles.actionBtn}
+            onPress={onUnpublish}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="arrow-undo-outline" size={18} color={LuxuryColors.gold} />
           </TouchableOpacity>
         )}
 
@@ -556,6 +569,7 @@ export default function CreatorDashboardScreen() {
                 onDelete={() => handleDelete(exp.id, exp.title)}
                 onSubmitForReview={() => handleSubmitForReview(exp.id, exp.title)}
                 onPublish={() => handlePublish(exp.id, exp.title)}
+                onUnpublish={() => handleUnpublish(exp.id, exp.title)}
               />
             ))}
             {experiences.length > 3 && (
@@ -666,6 +680,7 @@ export default function CreatorDashboardScreen() {
             onDelete={() => handleDelete(item.id, item.title)}
             onSubmitForReview={() => handleSubmitForReview(item.id, item.title)}
             onPublish={() => handlePublish(item.id, item.title)}
+            onUnpublish={() => handleUnpublish(item.id, item.title)}
           />
         )}
       />
@@ -866,6 +881,45 @@ export default function CreatorDashboardScreen() {
               if (creator?.id) loadExperiences(creator.id);
             } catch (e: unknown) {
               Alert.alert('Publish Failed', e instanceof Error ? e.message : 'Unknown error');
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleUnpublish(experienceId: string, title: string) {
+    Alert.alert(
+      'Unpublish Experience',
+      `Unpublish "${title}"? It will be moved to Drafts and removed from public listings.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unpublish',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await updateExperience(experienceId, {
+                status: 'draft',
+                published: false,
+                publishedAt: null,
+              });
+
+              setExperiences((prev) =>
+                prev.map((experience) =>
+                  experience.id === experienceId
+                    ? {
+                        ...experience,
+                        status: 'draft',
+                        published: false,
+                        publishedAt: null,
+                        updatedAt: Date.now(),
+                      }
+                    : experience
+                )
+              );
+            } catch (e: unknown) {
+              Alert.alert('Unpublish Failed', e instanceof Error ? e.message : 'Unknown error');
             }
           },
         },
