@@ -21,19 +21,17 @@ import {
   LuxuryShadow,
 } from '../../constants/luxuryTheme';
 import { formatFollowers, formatSaves } from '../../constants/creators';
-import { getCreatorById } from '../../lib/creatorService';
+import {
+  getCreatorById,
+  subscribeCreatorById,
+  isFollowingCreator,
+  followCreator,
+  unfollowCreator,
+} from '../../lib/creatorService';
 import { getPublishedExperiencesByCreator } from '../../lib/creatorExperienceService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { getFirestoreDb, isFirebaseConfigured } from '../../lib/firebase';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
@@ -62,6 +60,7 @@ export default function CreatorProfileScreen() {
   const [loadingCreator, setLoadingCreator] = useState(true);
   const [followed, setFollowed] = useState(false);
   const [authUid, setAuthUid] = useState<string | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
   const [creatorExperiences, setCreatorExperiences] = useState<CreatorExperience[]>([]);
 
   // Auth listener
@@ -86,58 +85,73 @@ export default function CreatorProfileScreen() {
     return () => { cancelled = true; };
   }, [id]);
 
-  // Load follow state from Firestore when uid or creatorId changes
   useEffect(() => {
-    if (!authUid || !id || !isFirebaseConfigured()) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const db = getFirestoreDb();
-        const snap = await getDoc(doc(db, 'users', authUid, 'following', id));
-        if (!cancelled) setFollowed(snap.exists());
-      } catch {
-        // silently ignore — local state stays at default
+    if (!id) return;
+    return subscribeCreatorById(id, (liveCreator) => {
+      if (liveCreator) {
+        setCreator(liveCreator);
       }
-    })();
+    });
+  }, [id]);
+
+  // Load follow state when uid or creatorId changes
+  useEffect(() => {
+    if (!id || !authUid) {
+      setFollowed(false);
+      return;
+    }
+    let cancelled = false;
+    isFollowingCreator(id, authUid)
+      .then((isFollowing) => {
+        if (!cancelled) setFollowed(isFollowing);
+      })
+      .catch(() => {
+        if (!cancelled) setFollowed(false);
+      });
     return () => { cancelled = true; };
   }, [authUid, id]);
 
-  const persistFollow = useCallback(async (creatorId: string, nowFollowing: boolean) => {
-    if (!authUid || !isFirebaseConfigured()) return;
-    try {
-      const db = getFirestoreDb();
-      const ref = doc(db, 'users', authUid, 'following', creatorId);
-      if (nowFollowing) {
-        await setDoc(ref, { creatorId, followedAt: serverTimestamp() });
-      } else {
-        await deleteDoc(ref);
-      }
-    } catch {
-      // silently ignore — UI state already updated
-    }
-  }, [authUid]);
-
   const handleFollow = useCallback(() => {
-    if (followed) {
-      setFollowed(false);
-      persistFollow(id ?? '', false);
+    const creatorId = id ?? '';
+    if (!creatorId || !creator || followBusy) return;
+
+    if (!authUid) {
+      Alert.alert('Sign In Required', 'Please sign in to follow creators.');
       return;
     }
-    Alert.alert(
-      'Notify Me',
-      'You\'ll be notified when this creator publishes new journeys. This works with your current account — no upgrade required.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Enable Notifications',
-          onPress: () => {
-            setFollowed(true);
-            persistFollow(id ?? '', true);
-          },
-        },
-      ],
-    );
-  }, [followed, id, persistFollow]);
+    if (authUid === creatorId) {
+      Alert.alert('Unavailable', 'You cannot follow yourself.');
+      return;
+    }
+
+    const nextFollowed = !followed;
+    const prevFollowers = Math.max(0, creator.followers ?? 0);
+    const optimisticFollowers = Math.max(0, prevFollowers + (nextFollowed ? 1 : -1));
+
+    setFollowBusy(true);
+    setFollowed(nextFollowed);
+    setCreator((prev) => (prev ? { ...prev, followers: optimisticFollowers } : prev));
+
+    const request = nextFollowed
+      ? followCreator(creatorId, authUid)
+      : unfollowCreator(creatorId, authUid);
+
+    request
+      .then((confirmedFollowers) => {
+        setCreator((prev) => (prev ? { ...prev, followers: Math.max(0, confirmedFollowers) } : prev));
+      })
+      .catch((e: unknown) => {
+        setFollowed(!nextFollowed);
+        setCreator((prev) => (prev ? { ...prev, followers: prevFollowers } : prev));
+        Alert.alert(
+          nextFollowed ? 'Follow Failed' : 'Unfollow Failed',
+          e instanceof Error ? e.message : 'Please try again when your connection is stable.'
+        );
+      })
+      .finally(() => {
+        setFollowBusy(false);
+      });
+  }, [authUid, creator, followed, followBusy, id]);
 
   if (loadingCreator) {
     return (
@@ -205,16 +219,17 @@ export default function CreatorProfileScreen() {
 
         {/* Follow button */}
         <Pressable
-          style={[styles.followBtn, followed && styles.followBtnActive]}
+          style={[styles.followBtn, followed && styles.followBtnActive, followBusy && { opacity: 0.7 }]}
           onPress={handleFollow}
+          disabled={followBusy}
         >
           <Ionicons
-            name={followed ? 'checkmark-circle' : 'notifications-outline'}
+            name={followed ? 'checkmark-circle' : 'person-add-outline'}
             size={14}
             color={followed ? LuxuryColors.background : LuxuryColors.gold}
           />
           <Text style={[styles.followBtnText, followed && styles.followBtnTextActive]}>
-            {followed ? 'Notifying' : 'Notify Me'}
+            {followBusy ? 'Updating...' : followed ? 'Following' : 'Follow'}
           </Text>
         </Pressable>
       </LinearGradient>

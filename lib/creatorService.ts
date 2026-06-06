@@ -26,11 +26,14 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  onSnapshot,
   query,
   where,
   orderBy,
   limit,
+  runTransaction,
   serverTimestamp,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getFirestoreDb, isFirebaseConfigured, getFirebaseApp } from './firebase';
@@ -59,6 +62,7 @@ export {
 
 /** Firestore collection for creator profiles (all active creators) */
 const CREATORS_COLLECTION = 'creators';
+const CREATOR_FOLLOWERS_SUBCOLLECTION = 'followers';
 
 // ─── Creator plan constants ───────────────────────────────────────────────────
 
@@ -97,6 +101,7 @@ export function deriveInitials(name: string): string {
  */
 function mapFirestoreCreator(docId: string, data: Record<string, unknown>): Creator {
   const displayName = (data.displayName as string | undefined) ?? (data.name as string | undefined) ?? '';
+  const followersCount = Number(data.followersCount ?? data.followers ?? 0);
   return {
     id: docId,
     name: displayName,
@@ -108,7 +113,7 @@ function mapFirestoreCreator(docId: string, data: Record<string, unknown>): Crea
     tiktok: data.tiktok as string | undefined,
     website: data.website as string | undefined,
     rating: (data.rating as number | undefined) ?? 0,
-    followers: (data.followers as number | undefined) ?? 0,
+    followers: Number.isFinite(followersCount) ? followersCount : 0,
     totalJourneys: (data.totalJourneys as number | undefined) ?? 0,
     creatorType: (data.creatorType as Creator['creatorType']) ?? 'community',
     creatorSubscription: data.creatorSubscription as CreatorSubscription | undefined,
@@ -153,6 +158,36 @@ export async function getApprovedCreators(): Promise<Creator[]> {
   }
 }
 
+export function subscribeApprovedCreators(
+  onChange: (creators: Creator[]) => void,
+  onError?: () => void,
+): Unsubscribe {
+  if (!isFirebaseConfigured()) {
+    onChange([...CREATORS]);
+    return () => {};
+  }
+
+  const db = getFirestoreDb();
+  const q = query(
+    collection(db, CREATORS_COLLECTION),
+    orderBy('createdAt', 'desc')
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      if (snap.empty) {
+        onChange([...CREATORS]);
+        return;
+      }
+      onChange(snap.docs.map((d) => mapFirestoreCreator(d.id, d.data() as Record<string, unknown>)));
+    },
+    () => {
+      onError?.();
+    }
+  );
+}
+
 /**
  * Returns a single creator by Firestore document ID.
  * Checks Firestore first, falls back to seed data.
@@ -173,6 +208,120 @@ export async function getCreatorById(id: string): Promise<Creator | null> {
   }
 
   return CREATORS.find((c) => c.id === id) ?? null;
+}
+
+export function subscribeCreatorById(
+  id: string,
+  onChange: (creator: Creator | null) => void,
+  onError?: () => void,
+): Unsubscribe {
+  if (!isFirebaseConfigured() || !id) {
+    onChange(CREATORS.find((c) => c.id === id) ?? null);
+    return () => {};
+  }
+
+  const db = getFirestoreDb();
+  const ref = doc(db, CREATORS_COLLECTION, id);
+
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) {
+        onChange(null);
+        return;
+      }
+      onChange(mapFirestoreCreator(snap.id, snap.data() as Record<string, unknown>));
+    },
+    () => {
+      onError?.();
+    }
+  );
+}
+
+export async function isFollowingCreator(creatorId: string, followerUserId: string): Promise<boolean> {
+  if (!isFirebaseConfigured() || !creatorId || !followerUserId) return false;
+  try {
+    const db = getFirestoreDb();
+    const followRef = doc(db, CREATORS_COLLECTION, creatorId, CREATOR_FOLLOWERS_SUBCOLLECTION, followerUserId);
+    const followSnap = await getDoc(followRef);
+    return followSnap.exists();
+  } catch {
+    return false;
+  }
+}
+
+export async function followCreator(creatorId: string, followerUserId: string): Promise<number> {
+  if (!isFirebaseConfigured()) throw new Error('Firebase is not configured.');
+  if (!creatorId || !followerUserId) throw new Error('Missing creator or follower ID.');
+  if (creatorId === followerUserId) throw new Error('You cannot follow yourself.');
+
+  const db = getFirestoreDb();
+  const creatorRef = doc(db, CREATORS_COLLECTION, creatorId);
+  const followRef = doc(db, CREATORS_COLLECTION, creatorId, CREATOR_FOLLOWERS_SUBCOLLECTION, followerUserId);
+
+  return runTransaction(db, async (tx) => {
+    const creatorSnap = await tx.get(creatorRef);
+    if (!creatorSnap.exists()) {
+      throw new Error('Creator not found.');
+    }
+
+    const followSnap = await tx.get(followRef);
+    const creatorData = creatorSnap.data() as Record<string, unknown>;
+    const current = Math.max(0, Number(creatorData.followersCount ?? creatorData.followers ?? 0));
+
+    if (followSnap.exists()) {
+      return current;
+    }
+
+    const next = current + 1;
+    tx.set(followRef, {
+      creatorId,
+      followerUserId,
+      createdAt: serverTimestamp(),
+    });
+    tx.update(creatorRef, {
+      followers: next,
+      followersCount: next,
+      updatedAt: serverTimestamp(),
+    });
+
+    return next;
+  });
+}
+
+export async function unfollowCreator(creatorId: string, followerUserId: string): Promise<number> {
+  if (!isFirebaseConfigured()) throw new Error('Firebase is not configured.');
+  if (!creatorId || !followerUserId) throw new Error('Missing creator or follower ID.');
+  if (creatorId === followerUserId) throw new Error('You cannot unfollow yourself.');
+
+  const db = getFirestoreDb();
+  const creatorRef = doc(db, CREATORS_COLLECTION, creatorId);
+  const followRef = doc(db, CREATORS_COLLECTION, creatorId, CREATOR_FOLLOWERS_SUBCOLLECTION, followerUserId);
+
+  return runTransaction(db, async (tx) => {
+    const creatorSnap = await tx.get(creatorRef);
+    if (!creatorSnap.exists()) {
+      throw new Error('Creator not found.');
+    }
+
+    const followSnap = await tx.get(followRef);
+    const creatorData = creatorSnap.data() as Record<string, unknown>;
+    const current = Math.max(0, Number(creatorData.followersCount ?? creatorData.followers ?? 0));
+
+    if (!followSnap.exists()) {
+      return current;
+    }
+
+    const next = Math.max(0, current - 1);
+    tx.delete(followRef);
+    tx.update(creatorRef, {
+      followers: next,
+      followersCount: next,
+      updatedAt: serverTimestamp(),
+    });
+
+    return next;
+  });
 }
 
 /**
@@ -276,6 +425,7 @@ export async function activateCreator(uid: string, displayName: string): Promise
     creatorSubscription: DEFAULT_CREATOR_SUBSCRIPTION,
     rating: 0,
     followers: 0,
+    followersCount: 0,
     totalJourneys: 0,
     createdAt: serverTimestamp(),
   };

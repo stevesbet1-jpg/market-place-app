@@ -44,6 +44,7 @@ import {
   getCurrentUid,
   getMyApprovedCreatorProfile,
   deriveInitials,
+  subscribeCreatorById,
 } from '../../lib/creatorService';
 import {
   getCreatorExperiences,
@@ -485,11 +486,19 @@ export default function CreatorDashboardScreen() {
     }
   }, [creator?.id, loadExperiences]);
 
+  useEffect(() => {
+    if (!creator?.id) return;
+    return subscribeCreatorById(creator.id, (liveCreator) => {
+      if (liveCreator) setCreator(liveCreator);
+    });
+  }, [creator?.id]);
+
   // ── Stats ──────────────────────────────────────────────
   const totalExperiences = experiences.length;
   const publishedCount = experiences.filter((e) => e.status === 'published').length;
   const pendingCount = experiences.filter((e) => e.status === 'pending_review').length;
   const draftCount = experiences.filter((e) => e.status === 'draft').length;
+  const followersCount = creator?.followers ?? 0;
   const totalViews = experiences.reduce((sum, e) => sum + (e.views ?? 0), 0);
   const totalUnlocks = experiences.reduce((sum, e) => sum + (e.unlocks ?? 0), 0);
   const totalSaves = experiences.reduce((sum, e) => sum + (e.savedCount ?? 0), 0);
@@ -544,7 +553,7 @@ export default function CreatorDashboardScreen() {
           <View style={[sectionStyles.statRow, { marginTop: LuxurySpacing.sm }]}>
             <StatCard label="Total Views" value={totalViews} icon="eye-outline" />
             <View style={{ width: LuxurySpacing.sm }} />
-            <StatCard label="Total Unlocks" value={totalUnlocks} icon="lock-open-outline" />
+            <StatCard label="Followers" value={followersCount} icon="people-outline" />
           </View>
         </View>
 

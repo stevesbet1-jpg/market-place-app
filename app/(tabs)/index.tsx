@@ -16,7 +16,12 @@ import {
   LuxuryBorderRadius,
   LuxuryFontSize,
 } from '../../constants/luxuryTheme';
-import { getApprovedCreators, hasRealCreators, getMyApprovedCreatorProfile } from '../../lib/creatorService';
+import {
+  getApprovedCreators,
+  hasRealCreators,
+  getMyApprovedCreatorProfile,
+  subscribeApprovedCreators,
+} from '../../lib/creatorService';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
 import { getPublishedExperiences } from '../../lib/creatorExperienceService';
@@ -164,6 +169,7 @@ export default function DiscoverScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
+      let unsubCreators: (() => void) | null = null;
       setLoading(true);
       Promise.all([
         getApprovedCreators(),
@@ -178,11 +184,26 @@ export default function DiscoverScreen() {
           setShowingDemo(allDemo);
           setReallyEmpty(anyReal === false && (list as Creator[]).length === 0);
           setLoading(false);
+
+          unsubCreators = subscribeApprovedCreators(
+            (liveCreators) => {
+              if (cancelled) return;
+              const liveAllDemo = liveCreators.every((c) => c.isDemo);
+              setCreators(liveCreators);
+              setShowingDemo(liveAllDemo);
+            },
+            () => {
+              if (!cancelled) setLoading(false);
+            }
+          );
         }
       ).catch(() => {
         if (!cancelled) setLoading(false);
       });
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+        unsubCreators?.();
+      };
     }, [])
   );
 
