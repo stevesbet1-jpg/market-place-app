@@ -14,14 +14,17 @@ import { syncExperienceSavedCount } from '../lib/creatorExperienceService';
 
 export const FREE_EXPERIENCE_LIMIT = 3;
 
-const KEY_FREE_REMAINING  = '@experiences/free_remaining';
-const KEY_UNLOCKED_IDS    = '@experiences/unlocked_ids';
-const KEY_SAVED_IDS       = '@experiences/saved_ids';
+let _experienceStoreUid: string | null = null;
+export function setExperienceStoreUid(uid: string | null): void { _experienceStoreUid = uid; }
+const _e = () => _experienceStoreUid ?? 'anon';
+const KEY_FREE_REMAINING  = () => `@experiences/${_e()}/free_remaining`;
+const KEY_UNLOCKED_IDS    = () => `@experiences/${_e()}/unlocked_ids`;
+const KEY_SAVED_IDS       = () => `@experiences/${_e()}/saved_ids`;
 
 // ── Free credits ──────────────────────────────────────────────────────────────
 
 export async function getFreeExperienceRemaining(): Promise<number> {
-  const stored = await AsyncStorage.getItem(KEY_FREE_REMAINING);
+  const stored = await AsyncStorage.getItem(KEY_FREE_REMAINING());
   if (stored === null) return FREE_EXPERIENCE_LIMIT;
   const n = parseInt(stored, 10);
   return isNaN(n) ? FREE_EXPERIENCE_LIMIT : Math.max(0, n);
@@ -37,7 +40,7 @@ export async function getFreeExperienceRemaining(): Promise<number> {
 export async function consumeFreeExperience(id: string): Promise<number> {
   const [remaining, unlockedRaw] = await Promise.all([
     getFreeExperienceRemaining(),
-    AsyncStorage.getItem(KEY_UNLOCKED_IDS),
+    AsyncStorage.getItem(KEY_UNLOCKED_IDS()),
   ]);
 
   const unlocked: string[] = unlockedRaw ? JSON.parse(unlockedRaw) : [];
@@ -51,8 +54,8 @@ export async function consumeFreeExperience(id: string): Promise<number> {
   const newRemaining = Math.max(0, remaining - 1);
 
   await Promise.all([
-    AsyncStorage.setItem(KEY_UNLOCKED_IDS, JSON.stringify(newUnlocked)),
-    AsyncStorage.setItem(KEY_FREE_REMAINING, String(newRemaining)),
+    AsyncStorage.setItem(KEY_UNLOCKED_IDS(), JSON.stringify(newUnlocked)),
+    AsyncStorage.setItem(KEY_FREE_REMAINING(), String(newRemaining)),
   ]);
 
   return newRemaining;
@@ -62,7 +65,7 @@ export async function consumeFreeExperience(id: string): Promise<number> {
  * Returns whether the user has a full view (unlocked) for a given experience ID.
  */
 export async function isExperienceUnlocked(id: string): Promise<boolean> {
-  const raw = await AsyncStorage.getItem(KEY_UNLOCKED_IDS);
+  const raw = await AsyncStorage.getItem(KEY_UNLOCKED_IDS());
   const unlocked: string[] = raw ? JSON.parse(raw) : [];
   return unlocked.includes(id);
 }
@@ -70,7 +73,7 @@ export async function isExperienceUnlocked(id: string): Promise<boolean> {
 // ── Saved experiences ─────────────────────────────────────────────────────────
 
 export async function getSavedExperienceIds(): Promise<string[]> {
-  const raw = await AsyncStorage.getItem(KEY_SAVED_IDS);
+  const raw = await AsyncStorage.getItem(KEY_SAVED_IDS());
   return raw ? JSON.parse(raw) : [];
 }
 
@@ -83,7 +86,7 @@ export async function toggleSavedExperience(id: string): Promise<string[]> {
   const next = wasSaved
     ? saved.filter((s) => s !== id)
     : [...saved, id];
-  await AsyncStorage.setItem(KEY_SAVED_IDS, JSON.stringify(next));
+  await AsyncStorage.setItem(KEY_SAVED_IDS(), JSON.stringify(next));
 
   // Keep Firestore social-proof counter in sync, but never block UX on failures.
   syncExperienceSavedCount(id, wasSaved ? -1 : 1).catch(() => {});

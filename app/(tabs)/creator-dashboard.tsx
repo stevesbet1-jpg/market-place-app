@@ -34,6 +34,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseApp } from '../../lib/firebase';
 import {
   LuxuryColors,
   LuxurySpacing,
@@ -492,6 +494,19 @@ export default function CreatorDashboardScreen() {
       if (liveCreator) setCreator(liveCreator);
     });
   }, [creator?.id]);
+
+  // ── Clear state and reload on auth UID change so stale previous-account
+  //    data never remains visible after signing in as a different user.
+  useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    return onAuthStateChanged(auth, () => {
+      setCreator(null);
+      setExperiences([]);
+      setAccessStatus(null);
+      setChecking(true);
+      loadCreatorProfile();
+    });
+  }, [loadCreatorProfile]);
 
   // ── Stats ──────────────────────────────────────────────
   const totalExperiences = experiences.length;

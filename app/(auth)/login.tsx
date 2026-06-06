@@ -65,12 +65,19 @@ export default function LoginScreen() {
         .then(async (result) => {
           if (result.success) {
             if (result.userId) {
-              await upsertUserProfile(result.userId, {
+              const saved = await upsertUserProfile(result.userId, {
                 email: result.email ?? null,
                 fullName: result.displayName ?? null,
                 photoURL: result.photoURL ?? null,
                 provider: 'google',
               });
+              if (!saved) {
+                Alert.alert(
+                  'Profile Save Failed',
+                  'Your Google account was verified but your profile could not be saved. Please check your connection and try again.'
+                );
+                return;
+              }
             }
             router.replace('/(tabs)');
           }

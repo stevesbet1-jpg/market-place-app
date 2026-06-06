@@ -34,8 +34,8 @@ export type UserProfileInput = Omit<UserProfile, 'uid' | 'createdAt' | 'updatedA
 export async function upsertUserProfile(
   uid: string,
   data: UserProfileInput
-): Promise<void> {
-  if (!isFirebaseConfigured()) return;
+): Promise<boolean> {
+  if (!isFirebaseConfigured()) return true;
   try {
     const db = getFirestoreDb();
     const ref = doc(db, 'users', uid);
@@ -57,8 +57,10 @@ export async function upsertUserProfile(
         updatedAt: serverTimestamp(),
       });
     }
+    return true;
   } catch (e: any) {
     console.warn('[UserProfile] upsertUserProfile failed:', e.message);
+    return false;
   }
 }
 

@@ -4,15 +4,18 @@ import { syncJourneySavedCount } from '../lib/creatorJourneyService';
 
 export const FREE_JOURNEY_LIMIT = 3;
 
-const KEY_FREE_REMAINING = '@journeys/free_remaining';
-const KEY_OPENED_IDS = '@journeys/opened_ids';
-const KEY_SAVED_IDS = '@journeys/saved_ids';
-const KEY_BUDGET_PREF = '@journeys/budget_pref';
+let _journeyStoreUid: string | null = null;
+export function setJourneyStoreUid(uid: string | null): void { _journeyStoreUid = uid; }
+const _u = () => _journeyStoreUid ?? 'anon';
+const KEY_FREE_REMAINING = () => `@journeys/${_u()}/free_remaining`;
+const KEY_OPENED_IDS     = () => `@journeys/${_u()}/opened_ids`;
+const KEY_SAVED_IDS      = () => `@journeys/${_u()}/saved_ids`;
+const KEY_BUDGET_PREF    = () => `@journeys/${_u()}/budget_pref`;
 
 // ── Free counter ────────────────────────────────────────────────────
 
 export async function getFreeRemaining(): Promise<number> {
-  const stored = await AsyncStorage.getItem(KEY_FREE_REMAINING);
+  const stored = await AsyncStorage.getItem(KEY_FREE_REMAINING());
   if (stored === null) return FREE_JOURNEY_LIMIT;
   const n = parseInt(stored, 10);
   return isNaN(n) ? FREE_JOURNEY_LIMIT : Math.max(0, n);
@@ -25,7 +28,7 @@ export async function getFreeRemaining(): Promise<number> {
 export async function consumeFreeJourney(id: string): Promise<number> {
   const [remaining, openedRaw] = await Promise.all([
     getFreeRemaining(),
-    AsyncStorage.getItem(KEY_OPENED_IDS),
+    AsyncStorage.getItem(KEY_OPENED_IDS()),
   ]);
   const opened: string[] = openedRaw ? JSON.parse(openedRaw) : [];
 
@@ -39,8 +42,8 @@ export async function consumeFreeJourney(id: string): Promise<number> {
   const newRemaining = Math.max(0, remaining - 1);
 
   await Promise.all([
-    AsyncStorage.setItem(KEY_OPENED_IDS, JSON.stringify(newOpened)),
-    AsyncStorage.setItem(KEY_FREE_REMAINING, String(newRemaining)),
+    AsyncStorage.setItem(KEY_OPENED_IDS(), JSON.stringify(newOpened)),
+    AsyncStorage.setItem(KEY_FREE_REMAINING(), String(newRemaining)),
   ]);
 
   return newRemaining;
@@ -49,7 +52,7 @@ export async function consumeFreeJourney(id: string): Promise<number> {
 // ── Saved journeys ──────────────────────────────────────────────────
 
 export async function getSavedIds(): Promise<string[]> {
-  const raw = await AsyncStorage.getItem(KEY_SAVED_IDS);
+  const raw = await AsyncStorage.getItem(KEY_SAVED_IDS());
   return raw ? JSON.parse(raw) : [];
 }
 
@@ -62,7 +65,7 @@ export async function toggleSaved(id: string): Promise<string[]> {
   const next = wasSaved
     ? saved.filter((s) => s !== id)
     : [...saved, id];
-  await AsyncStorage.setItem(KEY_SAVED_IDS, JSON.stringify(next));
+  await AsyncStorage.setItem(KEY_SAVED_IDS(), JSON.stringify(next));
 
   // Keep Firestore social-proof counter in sync, but never block UX on failures.
   syncJourneySavedCount(id, wasSaved ? -1 : 1).catch(() => {});
@@ -73,14 +76,14 @@ export async function toggleSaved(id: string): Promise<string[]> {
 // ── Budget preference ───────────────────────────────────────────────
 
 export async function getBudgetPref(): Promise<BudgetLevel | null> {
-  const raw = await AsyncStorage.getItem(KEY_BUDGET_PREF);
+  const raw = await AsyncStorage.getItem(KEY_BUDGET_PREF());
   return (raw as BudgetLevel) ?? null;
 }
 
 export async function setBudgetPref(budget: BudgetLevel | null): Promise<void> {
   if (budget === null) {
-    await AsyncStorage.removeItem(KEY_BUDGET_PREF);
+    await AsyncStorage.removeItem(KEY_BUDGET_PREF());
   } else {
-    await AsyncStorage.setItem(KEY_BUDGET_PREF, budget);
+    await AsyncStorage.setItem(KEY_BUDGET_PREF(), budget);
   }
 }

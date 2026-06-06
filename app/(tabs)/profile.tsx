@@ -8,8 +8,9 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import { getFirebaseApp } from '../../lib/firebase';
 import { logoutFromFirebase } from '../../lib/firebaseAuth';
 import { getUserProfile, type UserProfile } from '../../lib/userProfile';
-import { getSavedIds } from '../../constants/journeyStore';
+import { getSavedIds, setJourneyStoreUid } from '../../constants/journeyStore';
 import { getJourneysByIds } from '../../lib/creatorJourneyService';
+import { setExperienceStoreUid } from '../../constants/experienceStore';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 import { getMyApprovedCreatorProfile } from '../../lib/creatorService';
 
@@ -49,6 +50,19 @@ export default function ProfileScreen() {
     });
     return unsubscribe;
   }, []);
+
+  // Clear all account-scoped state immediately when the auth UID changes
+  // so the previous account's data never briefly appears for a new account.
+  useEffect(() => {
+    setProfile(null);
+    setIsCreator(null);
+    setCreatorName(null);
+    setSavedJourneys([]);
+    setCreatorStatusLoading(true);
+    setLoading(true);
+    setJourneyStoreUid(authUid);
+    setExperienceStoreUid(authUid);
+  }, [authUid]);
 
   // Load creator status — runs only after auth state is known
   useEffect(() => {
