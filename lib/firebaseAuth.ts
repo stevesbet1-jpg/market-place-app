@@ -27,6 +27,7 @@ import {
   signInWithCredential,
   getAdditionalUserInfo,
 } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirebaseApp, isFirebaseConfigured as _isFirebaseConfigured } from './firebase';
 
 export { _isFirebaseConfigured as isFirebaseConfigured };
@@ -36,6 +37,53 @@ export interface FirebaseAuthResult {
   userId?: string;
   email?: string;
   error?: string;
+}
+
+const GOOGLE_ACCESS_TOKEN_STORAGE_KEY = 'google_access_token';
+const GOOGLE_ID_TOKEN_STORAGE_KEY = 'google_id_token';
+
+async function cacheGoogleTokens(
+  idToken: string | null,
+  accessToken?: string | null,
+): Promise<void> {
+  try {
+    if (accessToken) {
+      await AsyncStorage.setItem(GOOGLE_ACCESS_TOKEN_STORAGE_KEY, accessToken);
+    }
+    if (idToken) {
+      await AsyncStorage.setItem(GOOGLE_ID_TOKEN_STORAGE_KEY, idToken);
+    }
+  } catch {
+    // Non-critical: auth should still proceed even if token cache write fails.
+  }
+}
+
+async function revokeGoogleSessionCacheBestEffort(): Promise<void> {
+  try {
+    const [accessToken, idToken] = await Promise.all([
+      AsyncStorage.getItem(GOOGLE_ACCESS_TOKEN_STORAGE_KEY),
+      AsyncStorage.getItem(GOOGLE_ID_TOKEN_STORAGE_KEY),
+    ]);
+
+    const tokens = [accessToken, idToken].filter((token): token is string => !!token);
+
+    await Promise.all(
+      tokens.map((token) =>
+        fetch('https://oauth2.googleapis.com/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `token=${encodeURIComponent(token)}`,
+        }).catch(() => undefined)
+      )
+    );
+
+    await AsyncStorage.multiRemove([
+      GOOGLE_ACCESS_TOKEN_STORAGE_KEY,
+      GOOGLE_ID_TOKEN_STORAGE_KEY,
+    ]);
+  } catch {
+    // Best-effort only. Firebase sign-out should still complete.
+  }
 }
 
 // ─── Diagnostic-only sign-in methods check ─────────────────────────
@@ -427,6 +475,8 @@ export const registerWithFirebaseEmail = async (
 };
 
 export const logoutFromFirebase = async (): Promise<void> => {
+  await revokeGoogleSessionCacheBestEffort();
+
   if (!_isFirebaseConfigured()) {
     return;
   }
@@ -467,6 +517,7 @@ export const signInWithFirebaseGoogle = async (
     const credential = GoogleAuthProvider.credential(idToken, accessToken ?? null);
     const result = await signInWithCredential(auth, credential);
     const additionalInfo = getAdditionalUserInfo(result);
+    await cacheGoogleTokens(idToken, accessToken);
     console.log('[FirebaseAuth] Google sign-in SUCCESS. UID:', result.user.uid, '| new user:', additionalInfo?.isNewUser);
     return {
       success: true,

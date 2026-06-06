@@ -47,6 +47,7 @@ export default function LoginScreen() {
   const [, googleResponse, googlePromptAsync] = GoogleProvider.useAuthRequest({
     webClientId: _hookWebClientId,
     iosClientId: _hookIosClientId,
+    selectAccount: true,
     ...(_iosRedirectUri ? { redirectUri: _iosRedirectUri } : {}),
   });
 
