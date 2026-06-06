@@ -9,7 +9,13 @@ import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, Luxury
 import type { BudgetLevel } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 import { getPublishedJourneys, getPublishedJourneysPage, getMorePublishedJourneys, type JourneysPage } from '../../lib/creatorJourneyService';
-import { getPublishedExperiences, getPublishedExperiencesPage, getMorePublishedExperiences, getExperiencesByIds, type ExperiencesPage } from '../../lib/creatorExperienceService';
+import {
+  getPublishedExperiencesPage,
+  getMorePublishedExperiences,
+  getExperiencesByIds,
+  getPublishedExperiencesByCreator,
+  type ExperiencesPage,
+} from '../../lib/creatorExperienceService';
 import { formatSaves } from '../../constants/creators';
 import {
   getFreeRemaining,
@@ -23,6 +29,7 @@ import { getSavedExperienceIds, setExperienceStoreUid } from '../../constants/ex
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import { getFirebaseApp } from '../../lib/firebase';
+import { getMyApprovedCreatorProfile } from '../../lib/creatorService';
 
 type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple' | 'bali' | 'seychelles' | 'zanzibar' | 'lakecomo' | 'alps';
 
@@ -64,6 +71,7 @@ export default function TripsScreen() {
   const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
   const [allJourneys, setAllJourneys] = useState<CreatorJourney[]>([]);
   const [allExperiences, setAllExperiences] = useState<CreatorExperience[]>([]);
+  const [myPublishedExperiences, setMyPublishedExperiences] = useState<CreatorExperience[]>([]);
   const [loading, setLoading] = useState(true);
   const [journeyCursor, setJourneyCursor] = useState<JourneysPage['cursor']>(null);
   const [expCursor, setExpCursor] = useState<ExperiencesPage['cursor']>(null);
@@ -106,6 +114,19 @@ export default function TripsScreen() {
 
           console.log('[Trips] loaded saved experience details:', savedExpDetails.length, savedExpDetails.map(e => e.id));
 
+          let myPublished: CreatorExperience[] = [];
+          if (authUid) {
+            try {
+              const creatorProfile = await getMyApprovedCreatorProfile(authUid);
+              if (creatorProfile?.id) {
+                myPublished = await getPublishedExperiencesByCreator(creatorProfile.id);
+              }
+            } catch {
+              myPublished = [];
+            }
+          }
+          if (cancelled) return;
+
           setFreeRemaining(remaining as number);
           setSavedIds(saved as string[]);
           setSavedExperienceDetails(savedExpDetails);
@@ -113,6 +134,7 @@ export default function TripsScreen() {
           setAllJourneys([...(journeyPage as JourneysPage).items].sort(() => Math.random() - 0.5));
           setJourneyCursor((journeyPage as JourneysPage).cursor);
           setAllExperiences((expPage as ExperiencesPage).items);
+          setMyPublishedExperiences(myPublished);
           setExpCursor((expPage as ExperiencesPage).cursor);
           setLoading(false);
         } catch (err) {
@@ -123,7 +145,7 @@ export default function TripsScreen() {
 
       loadAll();
       return () => { cancelled = true; };
-    }, [])
+    }, [authUid])
   );
 
   const featuredJourneys = useMemo<CreatorJourney[]>(() => {
@@ -137,11 +159,6 @@ export default function TripsScreen() {
     () => savedIds.map((id) => allJourneys.find((j) => j.id === id)).filter(Boolean) as CreatorJourney[],
     [savedIds, allJourneys]
   );
-
-  const myPublishedExperiences = useMemo<CreatorExperience[]>(() => {
-    if (!authUid) return [];
-    return allExperiences.filter((exp) => exp.creatorId === authUid);
-  }, [allExperiences, authUid]);
 
   const handleBudgetFilter = async (b: BudgetLevel | null) => {
     setBudgetPrefState(b);
