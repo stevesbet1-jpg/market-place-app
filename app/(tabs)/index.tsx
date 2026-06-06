@@ -75,7 +75,7 @@ function CreatorCard({ creator }: { creator: Creator }) {
           <View style={styles.stat}>
             <Ionicons name="map" size={11} color={LuxuryColors.textTertiary} />
             <Text style={styles.statText}>
-              {creator.totalJourneys} {creator.totalJourneys === 1 ? 'Journey' : 'Journeys'}
+              {creator.publishedExperiencesCount} {creator.publishedExperiencesCount === 1 ? 'Journey' : 'Journeys'}
             </Text>
           </View>
           {creator.instagram && (

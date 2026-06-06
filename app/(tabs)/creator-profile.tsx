@@ -22,7 +22,7 @@ import {
 } from '../../constants/luxuryTheme';
 import { formatFollowers, formatSaves } from '../../constants/creators';
 import { getCreatorById } from '../../lib/creatorService';
-import { getCreatorJourneys } from '../../lib/creatorJourneyService';
+import { getPublishedExperiencesByCreator } from '../../lib/creatorExperienceService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
@@ -35,29 +35,24 @@ import {
 } from 'firebase/firestore';
 import { getFirestoreDb, isFirebaseConfigured } from '../../lib/firebase';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
-import type { ImageKey } from '../../constants/journeys';
-import type { CreatorJourney } from '../../constants/creatorJourneyModel';
+import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
-const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
-  islands:    require('../../assets/collections/private-islands.jpg'),
-  villas:     require('../../assets/collections/super-villas.jpg'),
-  yacht:      require('../../assets/collections/yacht-escapes.jpg'),
-  desert:     require('../../assets/collections/desert-retreats.jpg'),
-  mountain:   require('../../assets/collections/alpine-mountains.jpg'),
-  city:       require('../../assets/collections/japanese-city.jpg'),
-  temple:     require('../../assets/collections/japanese-temple.jpg'),
-  bali:       require('../../assets/collections/bali-rice.jpg'),
-  seychelles: require('../../assets/collections/seychelles-beach.jpg'),
-  zanzibar:   require('../../assets/collections/zanzibar-coast.jpg'),
-  lakecomo:   require('../../assets/collections/lake-como-view.jpg'),
-  alps:       require('../../assets/collections/swiss-alps-day.jpg'),
-};
-
-function journeyImageSource(journey: CreatorJourney) {
-  if (isValidRemoteImageUrl(journey.imageUri)) return { uri: journey.imageUri!.trim() };
-  const key = journey.imageKey as ImageKey | undefined;
-  if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
+function experienceImageSource(experience: CreatorExperience) {
+  if (isValidRemoteImageUrl(experience.coverImage)) return { uri: experience.coverImage!.trim() };
   return null;
+}
+
+function experienceLocation(experience: CreatorExperience) {
+  const locationParts = [experience.city?.trim(), experience.country?.trim()].filter(Boolean);
+  return locationParts.length > 0 ? locationParts.join(', ') : 'Location TBA';
+}
+
+function experienceTitle(experience: CreatorExperience) {
+  return experience.title?.trim() || 'Untitled Experience';
+}
+
+function experienceDuration(experience: CreatorExperience) {
+  return experience.duration?.trim() || 'Duration TBA';
 }
 
 export default function CreatorProfileScreen() {
@@ -67,7 +62,7 @@ export default function CreatorProfileScreen() {
   const [loadingCreator, setLoadingCreator] = useState(true);
   const [followed, setFollowed] = useState(false);
   const [authUid, setAuthUid] = useState<string | null>(null);
-  const [creatorJourneys, setCreatorJourneys] = useState<CreatorJourney[]>([]);
+  const [creatorExperiences, setCreatorExperiences] = useState<CreatorExperience[]>([]);
 
   // Auth listener
   useEffect(() => {
@@ -85,8 +80,8 @@ export default function CreatorProfileScreen() {
     getCreatorById(creatorId).then((c) => {
       if (!cancelled) { setCreator(c); setLoadingCreator(false); }
     });
-    getCreatorJourneys(creatorId).then((journeys) => {
-      if (!cancelled) setCreatorJourneys(journeys.filter((j) => j.status === 'published'));
+    getPublishedExperiencesByCreator(creatorId).then((experiences) => {
+      if (!cancelled) setCreatorExperiences(experiences);
     });
     return () => { cancelled = true; };
   }, [id]);
@@ -240,8 +235,8 @@ export default function CreatorProfileScreen() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{creatorJourneys.length}</Text>
-          <Text style={styles.statLabel}>Journeys</Text>
+          <Text style={styles.statValue}>{creatorExperiences.length}</Text>
+          <Text style={styles.statLabel}>Experiences</Text>
         </View>
       </View>
 
@@ -280,24 +275,24 @@ export default function CreatorProfileScreen() {
 
       {/* ── Creator's journeys ── */}
       <View style={styles.journeySection}>
-        <Text style={styles.sectionLabel}>Published Journeys</Text>
-        {creatorJourneys.length === 0 ? (
+        <Text style={styles.sectionLabel}>Published Experiences</Text>
+        {creatorExperiences.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No journeys published yet</Text>
+            <Text style={styles.emptyText}>No experiences published yet</Text>
           </View>
         ) : (
           <View style={styles.journeyGrid}>
-            {creatorJourneys.map((journey) => (
+            {creatorExperiences.map((experience) => (
               <Pressable
-                key={journey.id}
+                key={experience.id}
                 style={({ pressed }) => [styles.journeyCard, pressed && styles.journeyCardPressed]}
                 onPress={() =>
-                  router.push({ pathname: '/(tabs)/journey-detail', params: { id: journey.id } })
+                  router.push({ pathname: '/(tabs)/experience-detail', params: { id: experience.id } })
                 }
               >
-                {journeyImageSource(journey) ? (
+                {experienceImageSource(experience) ? (
                   <Image
-                    source={journeyImageSource(journey)!}
+                    source={experienceImageSource(experience)!}
                     style={styles.journeyCardImg}
                     resizeMode="cover"
                   />
@@ -311,19 +306,19 @@ export default function CreatorProfileScreen() {
                 {/* Premium badge */}
                 <View style={styles.premiumBadge}>
                   <Ionicons name="diamond" size={7} color={LuxuryColors.gold} />
-                  <Text style={styles.premiumBadgeText}>Premium</Text>
+                  <Text style={styles.premiumBadgeText}>Published</Text>
                 </View>
                 <View style={styles.journeyCardInfo}>
-                  <Text style={styles.journeyRegion}>{journey.region}</Text>
-                  <Text style={styles.journeyTitle} numberOfLines={1}>{journey.title}</Text>
+                  <Text style={styles.journeyRegion}>{experienceLocation(experience)}</Text>
+                  <Text style={styles.journeyTitle} numberOfLines={1}>{experienceTitle(experience)}</Text>
                   <View style={styles.journeyMeta}>
                     <View style={styles.journeyMetaItem}>
                       <Ionicons name="time-outline" size={9} color="rgba(255,255,255,0.60)" />
-                      <Text style={styles.journeyMetaText}>{journey.duration}</Text>
+                      <Text style={styles.journeyMetaText}>{experienceDuration(experience)}</Text>
                     </View>
                     <View style={styles.journeyMetaItem}>
                       <Ionicons name="heart" size={9} color="rgba(212,175,55,0.60)" />
-                      <Text style={styles.journeyMetaText}>{formatSaves(journey.savedCount)}</Text>
+                      <Text style={styles.journeyMetaText}>{formatSaves(experience.savedCount)}</Text>
                     </View>
                   </View>
                 </View>

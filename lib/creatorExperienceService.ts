@@ -168,6 +168,38 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
   };
 }
 
+async function syncCreatorPublishedExperiencesCount(creatorId: string): Promise<void> {
+  if (!creatorId) return;
+
+  const experiences = await getCreatorExperiences(creatorId);
+  const publishedCount = experiences.filter(
+    (experience) => experience.published === true && experience.status === 'published'
+  ).length;
+
+  const db = getFirestoreDb();
+  const directRef = doc(db, 'creators', creatorId);
+  const directSnap = await getDoc(directRef);
+
+  if (directSnap.exists()) {
+    await updateDoc(directRef, {
+      publishedExperiencesCount: publishedCount,
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+
+  const legacySnap = await getDocs(
+    query(collection(db, 'creators'), where('userId', '==', creatorId), limit(1))
+  );
+
+  if (!legacySnap.empty) {
+    await updateDoc(legacySnap.docs[0].ref, {
+      publishedExperiencesCount: publishedCount,
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
+
 // ─── Writes ───────────────────────────────────────────────────────────────────
 
 /**
@@ -220,10 +252,24 @@ export async function updateExperience(
 ): Promise<void> {
   requireFirebase();
   const db = getFirestoreDb();
+  const existingSnap = await getDoc(doc(db, COLLECTION, experienceId));
+  const existingData = existingSnap.exists()
+    ? mapDoc(existingSnap.id, existingSnap.data() as Record<string, unknown>)
+    : null;
+
   await updateDoc(doc(db, COLLECTION, experienceId), {
     ...changes,
     updatedAt: serverTimestamp(),
   });
+
+  const maybeCreatorIds = new Set<string>([
+    existingData?.creatorId ?? '',
+    typeof changes.creatorId === 'string' ? changes.creatorId : '',
+  ].filter(Boolean));
+
+  if ('published' in changes || 'status' in changes || 'creatorId' in changes) {
+    await Promise.all([...maybeCreatorIds].map((creatorId) => syncCreatorPublishedExperiencesCount(creatorId)));
+  }
 }
 
 /**
@@ -234,12 +280,18 @@ export async function updateExperience(
 export async function publishExperience(experienceId: string): Promise<void> {
   requireFirebase();
   const db = getFirestoreDb();
+  const snap = await getDoc(doc(db, COLLECTION, experienceId));
   await updateDoc(doc(db, COLLECTION, experienceId), {
     status: 'published',
     published: true,
     publishedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  if (snap.exists()) {
+    const experience = mapDoc(snap.id, snap.data() as Record<string, unknown>);
+    await syncCreatorPublishedExperiencesCount(experience.creatorId);
+  }
 }
 
 /**
@@ -249,7 +301,13 @@ export async function publishExperience(experienceId: string): Promise<void> {
 export async function deleteExperience(experienceId: string): Promise<void> {
   requireFirebase();
   const db = getFirestoreDb();
+  const snap = await getDoc(doc(db, COLLECTION, experienceId));
   await deleteDoc(doc(db, COLLECTION, experienceId));
+
+  if (snap.exists()) {
+    const experience = mapDoc(snap.id, snap.data() as Record<string, unknown>);
+    await syncCreatorPublishedExperiencesCount(experience.creatorId);
+  }
 }
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
@@ -273,6 +331,25 @@ export async function getCreatorExperiences(
     return snap.docs.map((d) =>
       mapDoc(d.id, d.data() as Record<string, unknown>)
     );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns published experiences for a specific creator.
+ * Used by the public creator profile screen.
+ */
+export async function getPublishedExperiencesByCreator(
+  creatorId: string
+): Promise<CreatorExperience[]> {
+  if (!isFirebaseConfigured() || !creatorId) return [];
+
+  try {
+    const experiences = await getCreatorExperiences(creatorId);
+    return experiences
+      .filter((experience) => experience.published === true && experience.status === 'published')
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   } catch {
     return [];
   }
