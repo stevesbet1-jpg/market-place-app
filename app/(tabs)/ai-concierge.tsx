@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
   LuxuryColors,
   LuxurySpacing,
@@ -23,7 +24,8 @@ import {
 } from '../../constants/luxuryTheme';
 import { JOURNEYS, ImageKey } from '../../constants/journeys';
 import { getCreatorById } from '../../constants/creators';
-import { toggleSaved, getSavedIds } from '../../constants/journeyStore';
+import { toggleSaved, getSavedIds, setJourneyStoreUid } from '../../constants/journeyStore';
+import { getFirebaseApp } from '../../lib/firebase';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
   islands:    require('../../assets/collections/private-islands.jpg'),
@@ -86,6 +88,13 @@ export default function AIPlannerScreen() {
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [aiReply, setAiReply] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  React.useEffect(() => {
+    const auth = getAuth(getFirebaseApp());
+    return onAuthStateChanged(auth, (user) => {
+      setJourneyStoreUid(user?.uid ?? null);
+    });
+  }, []);
 
   React.useEffect(() => {
     getSavedIds().then(setSavedIds);

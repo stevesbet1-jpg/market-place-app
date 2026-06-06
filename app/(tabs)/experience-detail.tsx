@@ -52,6 +52,7 @@ import {
   getSavedExperienceIds,
   toggleSavedExperience,
   FREE_EXPERIENCE_LIMIT,
+  setExperienceStoreUid,
 } from '../../constants/experienceStore';
 import {
   getFreeCreditCount,
@@ -347,6 +348,7 @@ export default function ExperienceDetailScreen() {
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setExperienceStoreUid(user?.uid ?? null);
       if (!user) { setIsMember(false); return; }
       const active = await checkMembership(user.uid);
       setIsMember(active);

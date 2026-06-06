@@ -19,9 +19,13 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [savedJourneys, setSavedJourneys] = useState<CreatorJourney[]>([]);
   const [authUid, setAuthUid] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isCreator, setIsCreator] = useState<boolean | null>(null);
   const [creatorName, setCreatorName] = useState<string | null>(null);
+  const [creatorProfileId, setCreatorProfileId] = useState<string | null>(null);
+  const [creatorProfileUserId, setCreatorProfileUserId] = useState<string | null>(null);
+  const [userDocExists, setUserDocExists] = useState<boolean | null>(null);
   const [creatorStatusLoading, setCreatorStatusLoading] = useState(true);
 
   // ── Saved journeys — reload on every tab focus ─────────────────────────────
@@ -46,6 +50,7 @@ export default function ProfileScreen() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       console.log('[Profile:Auth] onAuthStateChanged fired — uid:', user?.uid ?? 'null (signed out)');
       setAuthUid(user?.uid ?? null);
+      setAuthEmail(user?.email ?? null);
       setAuthReady(true);
     });
     return unsubscribe;
@@ -57,6 +62,9 @@ export default function ProfileScreen() {
     setProfile(null);
     setIsCreator(null);
     setCreatorName(null);
+    setCreatorProfileId(null);
+    setCreatorProfileUserId(null);
+    setUserDocExists(null);
     setSavedJourneys([]);
     setCreatorStatusLoading(true);
     setLoading(true);
@@ -81,10 +89,16 @@ export default function ProfileScreen() {
         if (!cancelled) {
           setIsCreator(creatorProfile !== null);
           setCreatorName(creatorProfile?.name ?? null);
+          setCreatorProfileId(creatorProfile?.id ?? null);
+          setCreatorProfileUserId(creatorProfile?.userId ?? null);
         }
       } catch (err: any) {
         console.warn('[Profile:Creator] Error loading creator status:', err?.message);
-        if (!cancelled) setIsCreator(false);
+        if (!cancelled) {
+          setIsCreator(false);
+          setCreatorProfileId(null);
+          setCreatorProfileUserId(null);
+        }
       } finally {
         if (!cancelled) setCreatorStatusLoading(false);
       }
@@ -108,6 +122,7 @@ export default function ProfileScreen() {
         console.log('[Profile:Data] Loading profile for uid:', authUid, '| auth.currentUser uid:', user?.uid ?? 'null');
         const data = await getUserProfile(authUid);
         if (!cancelled) {
+          setUserDocExists(data !== null);
           // Merge Auth data as fallback for fields not yet in Firestore
           setProfile(data ?? {
             uid: authUid,
@@ -119,6 +134,7 @@ export default function ProfileScreen() {
         }
       } catch (e: any) {
         console.warn('[Profile:Data] load error:', e.message);
+        if (!cancelled) setUserDocExists(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -201,6 +217,18 @@ export default function ProfileScreen() {
         <Text style={styles.email}>{profile?.email || ''}</Text>
         <Text style={styles.providerText}>Signed in with {providerLabel(profile?.provider)}</Text>
       </View>
+
+      {__DEV__ ? (
+        <View style={styles.debugBox}>
+          <Text style={styles.debugTitle}>Runtime Debug (temporary)</Text>
+          <Text style={styles.debugText}>auth.uid: {authUid ?? 'null'}</Text>
+          <Text style={styles.debugText}>auth.email: {authEmail ?? 'null'}</Text>
+          <Text style={styles.debugText}>users/doc exists: {String(userDocExists)}</Text>
+          <Text style={styles.debugText}>creatorProfile.id: {creatorProfileId ?? 'null'}</Text>
+          <Text style={styles.debugText}>creatorProfile.userId: {creatorProfileUserId ?? 'null'}</Text>
+          <Text style={styles.debugText}>saved source: journeyStore (uid-scoped)</Text>
+        </View>
+      ) : null}
 
       {/* Account menu */}
       <View style={styles.section}>
@@ -507,6 +535,26 @@ const styles = StyleSheet.create({
   providerText: {
     fontSize: LuxuryFontSize.xs,
     color: LuxuryColors.textTertiary,
+  },
+  debugBox: {
+    marginHorizontal: LuxurySpacing.xl,
+    marginBottom: LuxurySpacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    borderRadius: LuxuryBorderRadius.lg,
+    padding: LuxurySpacing.md,
+    gap: 4,
+  },
+  debugTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+    marginBottom: 4,
+  },
+  debugText: {
+    fontSize: LuxuryFontSize.xs,
+    color: LuxuryColors.textSecondary,
   },
   section: {
     paddingHorizontal: LuxurySpacing.xl,

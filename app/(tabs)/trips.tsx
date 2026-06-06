@@ -11,8 +11,15 @@ import type { CreatorJourney } from '../../constants/creatorJourneyModel';
 import { getPublishedJourneys, getPublishedJourneysPage, getMorePublishedJourneys, type JourneysPage } from '../../lib/creatorJourneyService';
 import { getPublishedExperiences, getPublishedExperiencesPage, getMorePublishedExperiences, getExperiencesByIds, type ExperiencesPage } from '../../lib/creatorExperienceService';
 import { formatSaves } from '../../constants/creators';
-import { getFreeRemaining, getSavedIds, setBudgetPref, getBudgetPref, FREE_JOURNEY_LIMIT } from '../../constants/journeyStore';
-import { getSavedExperienceIds } from '../../constants/experienceStore';
+import {
+  getFreeRemaining,
+  getSavedIds,
+  setBudgetPref,
+  getBudgetPref,
+  FREE_JOURNEY_LIMIT,
+  setJourneyStoreUid,
+} from '../../constants/journeyStore';
+import { getSavedExperienceIds, setExperienceStoreUid } from '../../constants/experienceStore';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import { getFirebaseApp } from '../../lib/firebase';
@@ -66,7 +73,10 @@ export default function TripsScreen() {
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     return onAuthStateChanged(auth, (user) => {
-      setAuthUid(user?.uid ?? null);
+      const uid = user?.uid ?? null;
+      setAuthUid(uid);
+      setJourneyStoreUid(uid);
+      setExperienceStoreUid(uid);
     });
   }, []);
 

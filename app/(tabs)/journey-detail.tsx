@@ -40,6 +40,7 @@ import {
   getSavedIds,
   toggleSaved,
   FREE_JOURNEY_LIMIT,
+  setJourneyStoreUid,
 } from '../../constants/journeyStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -229,6 +230,7 @@ export default function JourneyDetailScreen() {
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setJourneyStoreUid(user?.uid ?? null);
       setAuthUid(user?.uid ?? null);
       if (!user) { setIsPremium(false); return; }
       const active = await checkMembership(user.uid);
