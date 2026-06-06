@@ -62,15 +62,15 @@ export default function LoginScreen() {
         return;
       }
       signInWithFirebaseGoogle(idToken, accessToken)
-        .then((result) => {
+        .then(async (result) => {
           if (result.success) {
             if (result.userId) {
-              upsertUserProfile(result.userId, {
+              await upsertUserProfile(result.userId, {
                 email: result.email ?? null,
                 fullName: result.displayName ?? null,
                 photoURL: result.photoURL ?? null,
                 provider: 'google',
-              }).catch((err: any) => console.warn('[GoogleSignIn] Profile save failed (non-critical):', err?.message));
+              });
             }
             router.replace('/(tabs)');
           }
@@ -82,6 +82,8 @@ export default function LoginScreen() {
             msg = 'An account already exists with a different sign-in method. Please use email/password.';
           } else if (err?.message === 'NETWORK_ERROR') {
             msg = 'Network error. Please check your connection and try again.';
+          } else if (String(err?.message || '').includes('permission') || String(err?.message || '').includes('firestore')) {
+            msg = 'Signed in, but could not initialize your profile. Please try again.';
           }
           Alert.alert('Sign In Failed', msg);
         })
