@@ -8,7 +8,7 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import type { BudgetLevel } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
-import { getPublishedJourneys, getPublishedJourneysPage, getMorePublishedJourneys, type JourneysPage } from '../../lib/creatorJourneyService';
+import { getJourneysByIds } from '../../lib/creatorJourneyService';
 import {
   getPublishedExperiencesPage,
   getMorePublishedExperiences,
@@ -55,6 +55,20 @@ function journeyImageSource(journey: CreatorJourney) {
   return null;
 }
 
+function experienceImageSource(experience: CreatorExperience) {
+  if (isValidRemoteImageUrl(experience.coverImage)) return { uri: experience.coverImage!.trim() };
+  return null;
+}
+
+function experienceLocation(experience: CreatorExperience) {
+  const locationParts = [experience.city?.trim(), experience.country?.trim()].filter(Boolean);
+  return locationParts.length > 0 ? locationParts.join(', ') : 'Location TBA';
+}
+
+function experienceDailyBudget(experience: CreatorExperience) {
+  return `${experience.budget}/day`;
+}
+
 function deriveInitials(name: string): string {
   return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 }
@@ -65,15 +79,13 @@ export default function TripsScreen() {
   const insets = useSafeAreaInsets();
 
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
-  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [savedJourneyDetails, setSavedJourneyDetails] = useState<CreatorJourney[]>([]);
   // Saved experience objects fetched directly by ID (not filtered from published list)
   const [savedExperienceDetails, setSavedExperienceDetails] = useState<CreatorExperience[]>([]);
   const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
-  const [allJourneys, setAllJourneys] = useState<CreatorJourney[]>([]);
   const [allExperiences, setAllExperiences] = useState<CreatorExperience[]>([]);
   const [myPublishedExperiences, setMyPublishedExperiences] = useState<CreatorExperience[]>([]);
   const [loading, setLoading] = useState(true);
-  const [journeyCursor, setJourneyCursor] = useState<JourneysPage['cursor']>(null);
   const [expCursor, setExpCursor] = useState<ExperiencesPage['cursor']>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [authUid, setAuthUid] = useState<string | null>(null);
@@ -95,12 +107,11 @@ export default function TripsScreen() {
 
       async function loadAll() {
         try {
-          const [remaining, saved, savedExpIds, pref, journeyPage, expPage] = await Promise.all([
+          const [remaining, saved, savedExpIds, pref, expPage] = await Promise.all([
             getFreeRemaining(),
             getSavedIds(),
             getSavedExperienceIds(),
             getBudgetPref(),
-            getPublishedJourneysPage(),
             getPublishedExperiencesPage(),
           ]);
           if (cancelled) return;
@@ -108,6 +119,7 @@ export default function TripsScreen() {
           console.log('[Trips] loaded saved journey ids:', (saved as string[]).length, saved);
           console.log('[Trips] loaded saved experience ids:', (savedExpIds as string[]).length, savedExpIds);
 
+          const savedJourneyDetails = await getJourneysByIds(saved as string[]);
           // Fetch saved experience objects directly by ID — works for drafts and published alike
           const savedExpDetails = await getExperiencesByIds(savedExpIds as string[]);
           if (cancelled) return;
@@ -128,11 +140,9 @@ export default function TripsScreen() {
           if (cancelled) return;
 
           setFreeRemaining(remaining as number);
-          setSavedIds(saved as string[]);
+          setSavedJourneyDetails(savedJourneyDetails);
           setSavedExperienceDetails(savedExpDetails);
           setBudgetPrefState(pref as BudgetLevel | null);
-          setAllJourneys([...(journeyPage as JourneysPage).items].sort(() => Math.random() - 0.5));
-          setJourneyCursor((journeyPage as JourneysPage).cursor);
           setAllExperiences((expPage as ExperiencesPage).items);
           setMyPublishedExperiences(myPublished);
           setExpCursor((expPage as ExperiencesPage).cursor);
@@ -148,17 +158,14 @@ export default function TripsScreen() {
     }, [authUid])
   );
 
-  const featuredJourneys = useMemo<CreatorJourney[]>(() => {
-    if (!budgetPref) return allJourneys.slice(0, 5);
-    const matching = allJourneys.filter((j) => j.budget === budgetPref);
-    const others = allJourneys.filter((j) => j.budget !== budgetPref);
-    return [...matching, ...others].slice(0, 5);
-  }, [budgetPref, allJourneys]);
+  const featuredExperiences = useMemo<CreatorExperience[]>(() => {
+    if (!budgetPref) return allExperiences;
+    const matching = allExperiences.filter((experience) => experience.budget === budgetPref);
+    const others = allExperiences.filter((experience) => experience.budget !== budgetPref);
+    return [...matching, ...others];
+  }, [budgetPref, allExperiences]);
 
-  const savedJourneys = useMemo<CreatorJourney[]>(
-    () => savedIds.map((id) => allJourneys.find((j) => j.id === id)).filter(Boolean) as CreatorJourney[],
-    [savedIds, allJourneys]
-  );
+  const savedJourneys = savedJourneyDetails;
 
   const handleBudgetFilter = async (b: BudgetLevel | null) => {
     setBudgetPrefState(b);
@@ -166,17 +173,10 @@ export default function TripsScreen() {
   };
 
   const handleLoadMore = useCallback(async () => {
-    if (loadingMore || (!journeyCursor && !expCursor)) return;
+    if (loadingMore || !expCursor) return;
     setLoadingMore(true);
     try {
-      const [moreJourneys, moreExps] = await Promise.all([
-        journeyCursor ? getMorePublishedJourneys(journeyCursor) : Promise.resolve(null),
-        expCursor ? getMorePublishedExperiences(expCursor) : Promise.resolve(null),
-      ]);
-      if (moreJourneys) {
-        setAllJourneys((prev) => [...prev, ...moreJourneys.items]);
-        setJourneyCursor(moreJourneys.cursor);
-      }
+      const moreExps = await getMorePublishedExperiences(expCursor);
       if (moreExps) {
         setAllExperiences((prev) => [...prev, ...moreExps.items]);
         setExpCursor(moreExps.cursor);
@@ -186,7 +186,7 @@ export default function TripsScreen() {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, journeyCursor, expCursor]);
+  }, [loadingMore, expCursor]);
 
   const handleCardPress = (journey: CreatorJourney) => {
     if (freeRemaining === 0) {
@@ -380,7 +380,7 @@ export default function TripsScreen() {
       ) : null}
 
       {/* ── Journey cards ── */}
-      {featuredJourneys.length === 0 ? (
+      {featuredExperiences.length === 0 ? (
         <View style={styles.emptyJourneys}>
           <Ionicons name="map-outline" size={36} color={LuxuryColors.textTertiary} />
           <Text style={styles.emptyJourneysTitle}>No creator journeys published yet.</Text>
@@ -420,20 +420,20 @@ export default function TripsScreen() {
       )}
 
       <View style={[styles.padH, styles.cardList]}>
-        {featuredJourneys.map((journey) => (
+        {featuredExperiences.map((experience) => (
           <Pressable
-            key={journey.id}
+            key={experience.id}
             style={({ pressed }) => [
               styles.journeyCard,
               pressed && styles.journeyCardPressed,
             ]}
-            onPress={() => handleCardPress(journey)}
+            onPress={() => router.push({ pathname: '/(tabs)/experience-detail', params: { id: experience.id } })}
           >
             {/* Hero image */}
             <View style={styles.imageWrap}>
-              {journeyImageSource(journey) ? (
+              {experienceImageSource(experience) ? (
                 <Image
-                  source={journeyImageSource(journey)!}
+                  source={experienceImageSource(experience)!}
                   style={styles.heroImg}
                   resizeMode="cover"
                 />
@@ -445,11 +445,11 @@ export default function TripsScreen() {
                 style={StyleSheet.absoluteFill}
               />
               <View style={styles.regionBadge}>
-                <Text style={styles.regionText}>{journey.region}</Text>
+                <Text style={styles.regionText}>{experienceLocation(experience)}</Text>
               </View>
               <View style={styles.durationBadge}>
                 <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.80)" />
-                <Text style={styles.durationText}>{journey.duration}</Text>
+                <Text style={styles.durationText}>{experience.duration || 'Duration TBA'}</Text>
               </View>
               {isLocked && (
                 <View style={styles.premiumBadge}>
@@ -466,48 +466,38 @@ export default function TripsScreen() {
                 style={styles.creatorRow}
                 onPress={(e) => {
                   e.stopPropagation();
-                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } });
+                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: experience.creatorId } });
                 }}
               >
                 <View style={styles.creatorAvatar}>
                   <Text style={styles.creatorAvatarText}>
-                    {deriveInitials(journey.creatorName || 'Creator')}
+                    {deriveInitials(experience.creatorName || 'Creator')}
                   </Text>
                 </View>
                 <Text style={styles.creatorName} numberOfLines={1}>
-                  {journey.creatorName || 'Creator'}
+                  {experience.creatorName || 'Creator'}
                 </Text>
-                {journey.rating > 0 && (
-                  <View style={styles.creatorRatingPill}>
-                    <Ionicons name="star" size={9} color={LuxuryColors.gold} />
-                    <Text style={styles.creatorRatingText}>{journey.rating.toFixed(1)}</Text>
-                  </View>
-                )}
               </Pressable>
 
-              <Text style={styles.journeyName}>{journey.title}</Text>
+              <Text style={styles.journeyName}>{experience.title}</Text>
 
               {/* Duration + season row */}
               <View style={styles.metaRow}>
                 <Ionicons name="time-outline" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.metaText}>{journey.duration}</Text>
+                <Text style={styles.metaText}>{experience.duration || 'Duration TBA'}</Text>
                 <View style={styles.metaDivider} />
                 <Ionicons name="sunny-outline" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.metaText}>{journey.bestTime}</Text>
+                <Text style={styles.metaText}>{experience.bestTimeToVisit || 'Any season'}</Text>
               </View>
 
               {/* Budget + rating + saves + CTA */}
               <View style={styles.cardFooter}>
                 <View style={styles.budgetChip}>
-                  <Text style={styles.budgetChipText}>{journey.dailyBudget}</Text>
-                </View>
-                <View style={styles.ratingChip}>
-                  <Ionicons name="star" size={9} color={LuxuryColors.gold} />
-                  <Text style={styles.ratingChipText}>{journey.rating.toFixed(1)}</Text>
+                  <Text style={styles.budgetChipText}>{experienceDailyBudget(experience)}</Text>
                 </View>
                 <View style={styles.savesChip}>
                   <Ionicons name="heart" size={9} color="rgba(212,175,55,0.60)" />
-                  <Text style={styles.savesText}>{formatSaves(journey.savedCount)}</Text>
+                  <Text style={styles.savesText}>{formatSaves(experience.savedCount)}</Text>
                 </View>
                 <View style={styles.exploreLink}>
                   <Text style={styles.exploreLinkText}>View Journey</Text>
@@ -519,37 +509,8 @@ export default function TripsScreen() {
         ))}
       </View>
 
-      {/* ── Published Experiences ── */}
-      {allExperiences.length > 0 && (
-        <View style={styles.expSection}>
-          <Text style={styles.expSectionTitle}>Creator Experiences</Text>
-          <Text style={styles.expSectionSub}>Travel blueprints from independent creators</Text>
-          {allExperiences.map((exp) => (
-            <Pressable
-              key={exp.id}
-              style={styles.expCard}
-              onPress={() =>
-                router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
-              }
-            >
-              <View style={styles.expCardLeft}>
-                <Ionicons name="globe-outline" size={22} color={LuxuryColors.gold} />
-              </View>
-              <View style={styles.expCardBody}>
-                <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
-                <Text style={styles.expCardMeta} numberOfLines={1}>
-                  {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
-                </Text>
-                <Text style={styles.expCardCreator}>by {exp.creatorName}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
-            </Pressable>
-          ))}
-        </View>
-      )}
-
       {/* ── Load More ── */}
-      {(journeyCursor || expCursor) && (
+      {expCursor && (
         <View style={{ alignItems: 'center', paddingVertical: LuxurySpacing.xl }}>
           <TouchableOpacity
             style={styles.loadMoreBtn}
