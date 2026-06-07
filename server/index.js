@@ -469,18 +469,368 @@ if (STRIPE_SECRET_KEY) {
 
 /** Plan → amount in USD cents */
 const PLAN_PRICES = { monthly: 1199, annual: 7900 };
+const EXPERIENCE_PURCHASE_AMOUNT = Number(process.env.EXPERIENCE_PURCHASE_AMOUNT_CENTS || 999);
+const EXPERIENCE_PURCHASE_CURRENCY = (process.env.EXPERIENCE_PURCHASE_CURRENCY || 'usd').toLowerCase();
+
+function getBearerToken(req) {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Bearer ')) return null;
+  return header.slice('Bearer '.length).trim();
+}
+
+async function requireFirebaseUser(req, res) {
+  if (!initFirebaseAdmin()) {
+    res.status(500).json({ success: false, error: 'Firebase Admin unavailable' });
+    return null;
+  }
+
+  const token = getBearerToken(req);
+  if (!token) {
+    res.status(401).json({ success: false, error: 'Authorization bearer token is required' });
+    return null;
+  }
+
+  try {
+    return await admin.auth().verifyIdToken(token);
+  } catch {
+    res.status(401).json({ success: false, error: 'Invalid or expired auth token' });
+    return null;
+  }
+}
+
+function purchaseDocId(uid, experienceId) {
+  return `${uid}_${experienceId}`;
+}
+
+function sanitizeCardPaymentMethod(paymentMethod, defaultPaymentMethodId) {
+  const card = paymentMethod.card || {};
+  return {
+    id: paymentMethod.id,
+    brand: card.brand || 'card',
+    last4: card.last4 || '',
+    expMonth: card.exp_month || null,
+    expYear: card.exp_year || null,
+    isDefault: paymentMethod.id === defaultPaymentMethodId,
+  };
+}
+
+async function getUserRefAndData(uid) {
+  const adminFirestore = admin.firestore();
+  const userRef = adminFirestore.doc(`users/${uid}`);
+  const userSnap = await userRef.get();
+  return { adminFirestore, userRef, userData: userSnap.exists ? userSnap.data() || {} : {} };
+}
+
+async function getOrCreateStripeCustomer(uid, email) {
+  const { userRef, userData } = await getUserRefAndData(uid);
+  const existingCustomerId = typeof userData.stripeCustomerId === 'string' ? userData.stripeCustomerId : null;
+
+  if (existingCustomerId) {
+    try {
+      const existing = await stripe.customers.retrieve(existingCustomerId);
+      if (!existing.deleted) return existing.id;
+    } catch (err) {
+      console.warn('[Stripe] Stored customer lookup failed, creating a replacement:', err.message);
+    }
+  }
+
+  const customer = await stripe.customers.create({
+    email: email || undefined,
+    metadata: { uid },
+  });
+
+  await userRef.set(
+    {
+      uid,
+      stripeCustomerId: customer.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return customer.id;
+}
+
+async function getDefaultPaymentMethodId(uid, customerId) {
+  const { userData } = await getUserRefAndData(uid);
+  if (typeof userData.defaultPaymentMethodId === 'string') return userData.defaultPaymentMethodId;
+  const customer = await stripe.customers.retrieve(customerId);
+  if (customer.deleted) return null;
+  const value = customer.invoice_settings?.default_payment_method;
+  return typeof value === 'string' ? value : value?.id || null;
+}
+
+async function assertCustomerPaymentMethod(customerId, paymentMethodId) {
+  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+  const owner = typeof paymentMethod.customer === 'string' ? paymentMethod.customer : paymentMethod.customer?.id;
+  if (owner !== customerId) {
+    const err = new Error('Payment method does not belong to this customer');
+    err.statusCode = 403;
+    throw err;
+  }
+  return paymentMethod;
+}
+
+async function getPublishedExperience(experienceId) {
+  const adminFirestore = admin.firestore();
+  const experienceRef = adminFirestore.doc(`creatorExperiences/${experienceId}`);
+  const experienceSnap = await experienceRef.get();
+  if (!experienceSnap.exists) return null;
+  const data = experienceSnap.data() || {};
+  if (data.published !== true || data.status !== 'published') return null;
+  return { ref: experienceRef, data };
+}
+
+app.get('/api/stripe/payment-methods', async (req, res) => {
+  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+
+  const user = await requireFirebaseUser(req, res);
+  if (!user) return;
+
+  try {
+    const customerId = await getOrCreateStripeCustomer(user.uid, user.email);
+    const defaultPaymentMethodId = await getDefaultPaymentMethodId(user.uid, customerId);
+    const paymentMethods = await stripe.paymentMethods.list({ customer: customerId, type: 'card' });
+
+    return res.json({
+      success: true,
+      stripeCustomerId: customerId,
+      defaultPaymentMethodId,
+      paymentMethods: paymentMethods.data.map((pm) => sanitizeCardPaymentMethod(pm, defaultPaymentMethodId)),
+    });
+  } catch (err) {
+    console.error('[Stripe] list payment methods error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/stripe/setup-intent', async (req, res) => {
+  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+
+  const user = await requireFirebaseUser(req, res);
+  if (!user) return;
+
+  try {
+    const customerId = await getOrCreateStripeCustomer(user.uid, user.email);
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+      metadata: { uid: user.uid },
+    });
+
+    return res.json({ success: true, clientSecret: setupIntent.client_secret, stripeCustomerId: customerId });
+  } catch (err) {
+    console.error('[Stripe] setup-intent error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/stripe/payment-methods/default', async (req, res) => {
+  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+
+  const user = await requireFirebaseUser(req, res);
+  if (!user) return;
+
+  const { paymentMethodId } = req.body;
+  if (!paymentMethodId || typeof paymentMethodId !== 'string') {
+    return res.status(400).json({ success: false, error: 'paymentMethodId is required' });
+  }
+
+  try {
+    const customerId = await getOrCreateStripeCustomer(user.uid, user.email);
+    await assertCustomerPaymentMethod(customerId, paymentMethodId);
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+
+    const { userRef } = await getUserRefAndData(user.uid);
+    await userRef.set(
+      {
+        uid: user.uid,
+        stripeCustomerId: customerId,
+        defaultPaymentMethodId: paymentMethodId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return res.json({ success: true, defaultPaymentMethodId: paymentMethodId });
+  } catch (err) {
+    console.error('[Stripe] set default payment method error:', err.message);
+    return res.status(err.statusCode || 500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/stripe/payment-methods/:paymentMethodId', async (req, res) => {
+  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+
+  const user = await requireFirebaseUser(req, res);
+  if (!user) return;
+
+  try {
+    const customerId = await getOrCreateStripeCustomer(user.uid, user.email);
+    const paymentMethodId = req.params.paymentMethodId;
+    await assertCustomerPaymentMethod(customerId, paymentMethodId);
+    await stripe.paymentMethods.detach(paymentMethodId);
+
+    const { userRef, userData } = await getUserRefAndData(user.uid);
+    if (userData.defaultPaymentMethodId === paymentMethodId) {
+      await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: null } });
+      await userRef.set(
+        {
+          uid: user.uid,
+          defaultPaymentMethodId: admin.firestore.FieldValue.delete(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[Stripe] remove payment method error:', err.message);
+    return res.status(err.statusCode || 500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/stripe/purchase-intent', async (req, res) => {
+  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+
+  const user = await requireFirebaseUser(req, res);
+  if (!user) return;
+
+  const { experienceId } = req.body;
+  if (!experienceId || typeof experienceId !== 'string') {
+    return res.status(400).json({ success: false, error: 'experienceId is required' });
+  }
+
+  try {
+    const experience = await getPublishedExperience(experienceId);
+    if (!experience) return res.status(404).json({ success: false, error: 'Published experience not found' });
+
+    const adminFirestore = admin.firestore();
+    const purchaseRef = adminFirestore.doc(`purchases/${purchaseDocId(user.uid, experienceId)}`);
+    const existingPurchase = await purchaseRef.get();
+    if (existingPurchase.exists && existingPurchase.data()?.status === 'succeeded') {
+      return res.status(409).json({ success: false, code: 'duplicate_purchase', error: 'Experience already purchased' });
+    }
+
+    const customerId = await getOrCreateStripeCustomer(user.uid, user.email);
+    const defaultPaymentMethodId = await getDefaultPaymentMethodId(user.uid, customerId);
+    if (!defaultPaymentMethodId) {
+      return res.status(400).json({ success: false, code: 'no_default_payment_method', error: 'Add a default payment method before purchase' });
+    }
+    await assertCustomerPaymentMethod(customerId, defaultPaymentMethodId);
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: EXPERIENCE_PURCHASE_AMOUNT,
+      currency: EXPERIENCE_PURCHASE_CURRENCY,
+      customer: customerId,
+      payment_method_types: ['card'],
+      metadata: {
+        userId: user.uid,
+        experienceId,
+        creatorId: experience.data.creatorId || '',
+        purchaseType: 'creator_experience',
+      },
+    });
+
+    return res.json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      paymentMethodId: defaultPaymentMethodId,
+      amount: EXPERIENCE_PURCHASE_AMOUNT,
+      currency: EXPERIENCE_PURCHASE_CURRENCY,
+    });
+  } catch (err) {
+    console.error('[Stripe] purchase-intent error:', err.message);
+    return res.status(err.statusCode || 500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/stripe/confirm-purchase', async (req, res) => {
+  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+
+  const user = await requireFirebaseUser(req, res);
+  if (!user) return;
+
+  const { paymentIntentId } = req.body;
+  if (!paymentIntentId || typeof paymentIntentId !== 'string') {
+    return res.status(400).json({ success: false, error: 'paymentIntentId is required' });
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const metadata = paymentIntent.metadata || {};
+    const { userId, experienceId, creatorId } = metadata;
+
+    if (userId !== user.uid || !experienceId || !creatorId) {
+      return res.status(403).json({ success: false, error: 'PaymentIntent ownership mismatch' });
+    }
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ success: false, error: `Payment is ${paymentIntent.status}` });
+    }
+    if (paymentIntent.amount !== EXPERIENCE_PURCHASE_AMOUNT || paymentIntent.currency !== EXPERIENCE_PURCHASE_CURRENCY) {
+      return res.status(400).json({ success: false, error: 'Payment amount does not match current purchase price' });
+    }
+
+    const experience = await getPublishedExperience(experienceId);
+    if (!experience || experience.data.creatorId !== creatorId) {
+      return res.status(404).json({ success: false, error: 'Published experience no longer matches purchase' });
+    }
+
+    const adminFirestore = admin.firestore();
+    const purchaseRef = adminFirestore.doc(`purchases/${purchaseDocId(user.uid, experienceId)}`);
+    const userRef = adminFirestore.doc(`users/${user.uid}`);
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    await adminFirestore.runTransaction(async (tx) => {
+      const purchaseSnap = await tx.get(purchaseRef);
+      if (purchaseSnap.exists && purchaseSnap.data()?.status === 'succeeded') return;
+
+      tx.set(purchaseRef, {
+        userId: user.uid,
+        experienceId,
+        creatorId,
+        stripePaymentIntentId: paymentIntent.id,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        status: 'succeeded',
+        createdAt: now,
+      });
+      tx.set(userRef, {
+        uid: user.uid,
+        unlockedExperienceIds: admin.firestore.FieldValue.arrayUnion(experienceId),
+        updatedAt: now,
+      }, { merge: true });
+      tx.update(experience.ref, {
+        unlocks: admin.firestore.FieldValue.increment(1),
+        updatedAt: now,
+      });
+    });
+
+    return res.json({ success: true, purchaseId: purchaseRef.id });
+  } catch (err) {
+    console.error('[Stripe] confirm-purchase error:', err.message);
+    return res.status(err.statusCode || 500).json({ success: false, error: err.message });
+  }
+});
 
 /**
  * POST /api/stripe/create-payment-intent
  * Body: { plan: 'monthly' | 'annual', uid: string, email: string }
  * Creates a Stripe PaymentIntent and returns { clientSecret }.
  */
-app.post('/api/stripe/create-payment-intent', async (req, res) => {
+app.post('/api/stripe/create-payment-intent', requireFirebaseAuth, async (req, res) => {
   if (!stripe) {
     return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
   }
 
-  const { plan, uid, email } = req.body;
+  const { plan } = req.body;
+  const uid = req.authUser.uid;
+  const email = req.authUser.email;
 
   if (!plan || !PLAN_PRICES[plan]) {
     return res.status(400).json({ success: false, error: 'plan must be "monthly" or "annual"' });
@@ -618,6 +968,337 @@ const AI_SYSTEM_PROMPT = `You are Voya, a luxury travel concierge AI. Help trave
 curated journeys and experiences. When a user describes their dream trip, respond in 2-3 short
 sentences recommending a travel style, destination or mood — keep it aspirational and elegant.
 Do not invent specific prices, hotel names, or booking details. Do not use markdown.`;
+
+let phase7Stripe = null;
+try {
+  if (process.env.STRIPE_SECRET_KEY) {
+    const Stripe = require('stripe');
+    phase7Stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  }
+} catch (error) {
+  console.warn('[Stripe Phase 7] Stripe SDK unavailable:', error.message);
+}
+
+const DEFAULT_EXPERIENCE_PRICE_CENTS = Number(process.env.EXPERIENCE_PRICE_CENTS || 1900);
+const DEFAULT_EXPERIENCE_CURRENCY = (process.env.EXPERIENCE_CURRENCY || 'usd').toLowerCase();
+
+function requireStripe(res) {
+  if (!phase7Stripe) {
+    res.status(503).json({ error: 'Stripe is not configured on the server.' });
+    return null;
+  }
+  return phase7Stripe;
+}
+
+async function requireFirebaseAuth(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    const match = header.match(/^Bearer\s+(.+)$/i);
+    if (!match) return res.status(401).json({ error: 'Missing Firebase ID token.' });
+    req.authUser = await admin.auth().verifyIdToken(match[1]);
+    return next();
+  } catch (error) {
+    console.warn('[Stripe Phase 7] Firebase token verification failed:', error.message);
+    return res.status(401).json({ error: 'Invalid Firebase ID token.' });
+  }
+}
+
+function getPurchasesCollection() {
+  return admin.firestore().collection('purchases');
+}
+
+function purchaseIdFor(uid, experienceId) {
+  return `${uid}_${experienceId}`;
+}
+
+function amountForExperience(data) {
+  const candidates = [data.priceCents, data.amountCents, data.purchasePriceCents, data.price];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+      return candidate < 500 ? Math.round(candidate * 100) : Math.round(candidate);
+    }
+  }
+  return DEFAULT_EXPERIENCE_PRICE_CENTS;
+}
+
+function currencyForExperience(data) {
+  return String(data.currency || DEFAULT_EXPERIENCE_CURRENCY).toLowerCase();
+}
+
+async function ensureStripeCustomer(uid, email, name) {
+  const stripe = phase7Stripe;
+  if (!stripe) throw new Error('STRIPE_NOT_CONFIGURED');
+  const userRef = admin.firestore().collection('users').doc(uid);
+  const snap = await userRef.get();
+  const userData = snap.exists ? snap.data() || {} : {};
+  if (typeof userData.stripeCustomerId === 'string' && userData.stripeCustomerId) {
+    return userData.stripeCustomerId;
+  }
+  const customer = await stripe.customers.create({
+    email: email || undefined,
+    name: name || undefined,
+    metadata: { firebaseUid: uid },
+  });
+  await userRef.set({
+    uid,
+    email: email || userData.email || null,
+    stripeCustomerId: customer.id,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return customer.id;
+}
+
+async function getDefaultPaymentMethodId(uid, customer) {
+  const userSnap = await admin.firestore().collection('users').doc(uid).get();
+  const userData = userSnap.exists ? userSnap.data() || {} : {};
+  if (typeof userData.defaultPaymentMethodId === 'string' && userData.defaultPaymentMethodId) {
+    return userData.defaultPaymentMethodId;
+  }
+  const defaultMethod = customer.invoice_settings && customer.invoice_settings.default_payment_method;
+  return typeof defaultMethod === 'string' ? defaultMethod : null;
+}
+
+async function assertOwnPaymentMethod(stripe, paymentMethodId, customerId) {
+  const method = await stripe.paymentMethods.retrieve(paymentMethodId);
+  const methodCustomer = typeof method.customer === 'string' ? method.customer : method.customer && method.customer.id;
+  if (methodCustomer && methodCustomer !== customerId) {
+    const error = new Error('PAYMENT_METHOD_FORBIDDEN');
+    error.statusCode = 403;
+    throw error;
+  }
+  return method;
+}
+
+async function recordExperiencePurchase(paymentIntent) {
+  const uid = paymentIntent.metadata && paymentIntent.metadata.userId;
+  const experienceId = paymentIntent.metadata && paymentIntent.metadata.experienceId;
+  if (!uid || !experienceId) throw new Error('PaymentIntent missing purchase metadata.');
+  const purchaseId = purchaseIdFor(uid, experienceId);
+  await getPurchasesCollection().doc(purchaseId).set({
+    purchaseId,
+    userId: uid,
+    experienceId,
+    creatorId: paymentIntent.metadata.creatorId || null,
+    stripeCustomerId: typeof paymentIntent.customer === 'string' ? paymentIntent.customer : null,
+    stripePaymentIntentId: paymentIntent.id,
+    stripePaymentMethodId: typeof paymentIntent.payment_method === 'string' ? paymentIntent.payment_method : null,
+    amount: paymentIntent.amount,
+    currency: paymentIntent.currency,
+    status: paymentIntent.status,
+    purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return purchaseId;
+}
+
+app.post('/api/stripe/customer', requireFirebaseAuth, async (req, res) => {
+  const stripe = requireStripe(res);
+  if (!stripe) return;
+  try {
+    const customerId = await ensureStripeCustomer(req.authUser.uid, req.authUser.email, req.authUser.name);
+    res.json({ customerId });
+  } catch (error) {
+    console.error('[Stripe Phase 7] customer failed:', error);
+    res.status(500).json({ error: 'Could not create Stripe customer.' });
+  }
+});
+
+app.post('/api/stripe/setup-intent', requireFirebaseAuth, async (req, res) => {
+  const stripe = requireStripe(res);
+  if (!stripe) return;
+  try {
+    const customerId = await ensureStripeCustomer(req.authUser.uid, req.authUser.email, req.authUser.name);
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+      metadata: { userId: req.authUser.uid },
+    });
+    res.json({ clientSecret: setupIntent.client_secret });
+  } catch (error) {
+    console.error('[Stripe Phase 7] setup intent failed:', error);
+    res.status(500).json({ error: 'Could not start card setup.' });
+  }
+});
+
+app.get('/api/stripe/payment-methods', requireFirebaseAuth, async (req, res) => {
+  const stripe = requireStripe(res);
+  if (!stripe) return;
+  try {
+    const customerId = await ensureStripeCustomer(req.authUser.uid, req.authUser.email, req.authUser.name);
+    const [customer, methods] = await Promise.all([
+      stripe.customers.retrieve(customerId),
+      stripe.paymentMethods.list({ customer: customerId, type: 'card' }),
+    ]);
+    const defaultPaymentMethodId = await getDefaultPaymentMethodId(req.authUser.uid, customer);
+    res.json({
+      paymentMethods: methods.data.map((method) => ({
+        id: method.id,
+        brand: method.card ? method.card.brand : 'card',
+        last4: method.card ? method.card.last4 : '',
+        expMonth: method.card ? method.card.exp_month : 0,
+        expYear: method.card ? method.card.exp_year : 0,
+        isDefault: method.id === defaultPaymentMethodId,
+      })),
+    });
+  } catch (error) {
+    console.error('[Stripe Phase 7] list payment methods failed:', error);
+    res.status(500).json({ error: 'Could not load payment methods.' });
+  }
+});
+
+app.post('/api/stripe/payment-methods/default', requireFirebaseAuth, async (req, res) => {
+  const stripe = requireStripe(res);
+  if (!stripe) return;
+  try {
+    const { paymentMethodId } = req.body || {};
+    if (typeof paymentMethodId !== 'string' || !paymentMethodId) {
+      return res.status(400).json({ error: 'Missing payment method.' });
+    }
+    const customerId = await ensureStripeCustomer(req.authUser.uid, req.authUser.email, req.authUser.name);
+    await assertOwnPaymentMethod(stripe, paymentMethodId, customerId);
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    await admin.firestore().collection('users').doc(req.authUser.uid).set({
+      defaultPaymentMethodId: paymentMethodId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Stripe Phase 7] set default payment method failed:', error);
+    res.status(error.statusCode || 500).json({ error: 'Could not update default card.' });
+  }
+});
+
+app.delete('/api/stripe/payment-methods/:paymentMethodId', requireFirebaseAuth, async (req, res) => {
+  const stripe = requireStripe(res);
+  if (!stripe) return;
+  try {
+    const { paymentMethodId } = req.params;
+    const customerId = await ensureStripeCustomer(req.authUser.uid, req.authUser.email, req.authUser.name);
+    await assertOwnPaymentMethod(stripe, paymentMethodId, customerId);
+    await stripe.paymentMethods.detach(paymentMethodId);
+    const userRef = admin.firestore().collection('users').doc(req.authUser.uid);
+    const userSnap = await userRef.get();
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
+    if (userData.defaultPaymentMethodId === paymentMethodId) {
+      await userRef.set({
+        defaultPaymentMethodId: admin.firestore.FieldValue.delete(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Stripe Phase 7] remove payment method failed:', error);
+    res.status(error.statusCode || 500).json({ error: 'Could not remove card.' });
+  }
+});
+
+app.get('/api/stripe/purchases/:experienceId', requireFirebaseAuth, async (req, res) => {
+  try {
+    const purchaseSnap = await getPurchasesCollection()
+      .doc(purchaseIdFor(req.authUser.uid, req.params.experienceId))
+      .get();
+    const data = purchaseSnap.exists ? purchaseSnap.data() || {} : {};
+    res.json({ purchased: data.status === 'succeeded' });
+  } catch (error) {
+    console.error('[Stripe Phase 7] purchase lookup failed:', error);
+    res.status(500).json({ error: 'Could not check purchase.' });
+  }
+});
+
+app.post('/api/stripe/purchases/create-payment-intent', requireFirebaseAuth, async (req, res) => {
+  const stripe = requireStripe(res);
+  if (!stripe) return;
+  try {
+    const { experienceId, paymentMethodId } = req.body || {};
+    if (typeof experienceId !== 'string' || !experienceId) {
+      return res.status(400).json({ error: 'Missing experience.' });
+    }
+    const purchaseId = purchaseIdFor(req.authUser.uid, experienceId);
+    const purchaseSnap = await getPurchasesCollection().doc(purchaseId).get();
+    if (purchaseSnap.exists && (purchaseSnap.data() || {}).status === 'succeeded') {
+      return res.json({
+        alreadyPurchased: true,
+        clientSecret: '',
+        paymentIntentId: '',
+        paymentMethodId: '',
+        amount: 0,
+        currency: DEFAULT_EXPERIENCE_CURRENCY,
+      });
+    }
+    const experienceSnap = await admin.firestore().collection('creatorExperiences').doc(experienceId).get();
+    if (!experienceSnap.exists) {
+      return res.status(404).json({ error: 'Experience not found.' });
+    }
+    const experience = experienceSnap.data() || {};
+    if (experience.published !== true || (experience.status && experience.status !== 'published')) {
+      return res.status(403).json({ error: 'Experience is not available for purchase.' });
+    }
+    const customerId = await ensureStripeCustomer(req.authUser.uid, req.authUser.email, req.authUser.name);
+    const customer = await stripe.customers.retrieve(customerId);
+    const selectedPaymentMethodId = typeof paymentMethodId === 'string' && paymentMethodId
+      ? paymentMethodId
+      : await getDefaultPaymentMethodId(req.authUser.uid, customer);
+    if (!selectedPaymentMethodId) {
+      return res.status(400).json({ error: 'Add a payment method before purchasing.' });
+    }
+    await assertOwnPaymentMethod(stripe, selectedPaymentMethodId, customerId);
+    const amount = amountForExperience(experience);
+    const currency = currencyForExperience(experience);
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency,
+      customer: customerId,
+      payment_method: selectedPaymentMethodId,
+      payment_method_types: ['card'],
+      metadata: {
+        type: 'experience_purchase',
+        userId: req.authUser.uid,
+        experienceId,
+        creatorId: experience.creatorId || '',
+        purchaseId,
+      },
+    }, {
+      idempotencyKey: `experience_purchase_${purchaseId}`,
+    });
+    res.json({
+      alreadyPurchased: false,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      paymentMethodId: selectedPaymentMethodId,
+      amount,
+      currency,
+    });
+  } catch (error) {
+    console.error('[Stripe Phase 7] purchase intent failed:', error);
+    res.status(error.statusCode || 500).json({ error: 'Could not start purchase.' });
+  }
+});
+
+app.post('/api/stripe/purchases/confirm', requireFirebaseAuth, async (req, res) => {
+  const stripe = requireStripe(res);
+  if (!stripe) return;
+  try {
+    const { paymentIntentId } = req.body || {};
+    if (typeof paymentIntentId !== 'string' || !paymentIntentId) {
+      return res.status(400).json({ error: 'Missing payment confirmation.' });
+    }
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent.metadata || paymentIntent.metadata.userId !== req.authUser.uid) {
+      return res.status(403).json({ error: 'Payment confirmation does not belong to this user.' });
+    }
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(402).json({ error: 'Payment has not succeeded yet.' });
+    }
+    const purchaseId = await recordExperiencePurchase(paymentIntent);
+    res.json({ purchaseId, status: paymentIntent.status });
+  } catch (error) {
+    console.error('[Stripe Phase 7] purchase confirm failed:', error);
+    res.status(error.statusCode || 500).json({ error: 'Could not record purchase.' });
+  }
+});
 
 app.post('/api/ai/chat', async (req, res) => {
   const { query } = req.body;

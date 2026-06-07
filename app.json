@@ -44,6 +44,12 @@
         {
           "photosPermission": "Allow Marketplace to access your photos so you can upload journey and experience cover images."
         }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": ""
+        }
       ]
     ],
     "extra": {

@@ -70,6 +70,13 @@ export async function isExperienceUnlocked(id: string): Promise<boolean> {
   return unlocked.includes(id);
 }
 
+export async function markExperienceUnlocked(id: string): Promise<void> {
+  const raw = await AsyncStorage.getItem(KEY_UNLOCKED_IDS());
+  const unlocked: string[] = raw ? JSON.parse(raw) : [];
+  if (unlocked.includes(id)) return;
+  await AsyncStorage.setItem(KEY_UNLOCKED_IDS(), JSON.stringify([...unlocked, id]));
+}
+
 // ── Saved experiences ─────────────────────────────────────────────────────────
 
 export async function getSavedExperienceIds(): Promise<string[]> {

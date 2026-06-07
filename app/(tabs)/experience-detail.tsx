@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useConfirmPayment } from '@stripe/stripe-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -53,11 +54,17 @@ import {
   toggleSavedExperience,
   FREE_EXPERIENCE_LIMIT,
   setExperienceStoreUid,
+  markExperienceUnlocked,
 } from '../../constants/experienceStore';
 import {
   getFreeCreditCount,
   consumeCredit,
 } from '../../lib/freeCreditService';
+import {
+  confirmExperiencePurchase,
+  createExperiencePurchaseIntent,
+  hasPurchasedExperience,
+} from '../../lib/paymentService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HERO_HEIGHT = 340;
@@ -178,10 +185,14 @@ function PaywallBanner({
   sectionName,
   freeRemaining,
   onUseFreeCredit,
+  onPurchase,
+  purchasing,
 }: {
   sectionName: string;
   freeRemaining: number;
   onUseFreeCredit: () => void;
+  onPurchase: () => void;
+  purchasing: boolean;
 }) {
   return (
     <View style={paywallStyles.banner}>
@@ -215,9 +226,37 @@ function PaywallBanner({
         </TouchableOpacity>
       )}
 
+      <TouchableOpacity
+        style={[
+          paywallStyles.memberCta,
+          { backgroundColor: 'transparent', borderWidth: 1, borderColor: LuxuryColors.gold },
+          purchasing && { opacity: 0.55 },
+        ]}
+        onPress={onPurchase}
+        activeOpacity={0.85}
+        disabled={purchasing}
+      >
+        {purchasing ? (
+          <ActivityIndicator color={LuxuryColors.gold} />
+        ) : (
+          <>
+            <Ionicons name="card-outline" size={14} color={LuxuryColors.gold} />
+            <Text style={[paywallStyles.memberCtaText, { color: LuxuryColors.gold }]}>Purchase this experience</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => router.push('/payment-methods')}
+        activeOpacity={0.75}
+        style={{ marginTop: LuxurySpacing.sm }}
+      >
+        <Text style={[paywallStyles.exhaustedNote, { color: LuxuryColors.textSecondary }]}>Manage payment methods</Text>
+      </TouchableOpacity>
+
       {freeRemaining === 0 && (
         <Text style={paywallStyles.exhaustedNote}>
-          You've used all {FREE_EXPERIENCE_LIMIT} free views. Join the club for unlimited access.
+          You've used all {FREE_EXPERIENCE_LIMIT} free views. Join the club for unlimited access or purchase this guide once.
         </Text>
       )}
     </View>
@@ -343,6 +382,8 @@ export default function ExperienceDetailScreen() {
   const [isSaved, setIsSaved] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
   const [isMember, setIsMember] = useState(false);
+  const [purchasing, setPurchasing] = useState(false);
+  const { confirmPayment } = useConfirmPayment();
 
   // ── Membership check: members always have full access ───────────────
   useEffect(() => {
@@ -369,9 +410,10 @@ export default function ExperienceDetailScreen() {
 
     async function load() {
       try {
-        const [exp, unlocked, remaining, savedIds] = await Promise.all([
+        const [exp, unlocked, purchased, remaining, savedIds] = await Promise.all([
           getExperienceById(experienceId as string),
           isExperienceUnlocked(experienceId as string),
+          hasPurchasedExperience(experienceId as string).catch(() => false),
           getFreeCreditCount(),
           getSavedExperienceIds(),
         ]);
@@ -382,7 +424,10 @@ export default function ExperienceDetailScreen() {
           setNotFound(true);
         } else {
           setExperience(exp);
-          setIsUnlocked(unlocked);
+          setIsUnlocked(unlocked || purchased);
+          if (purchased && !unlocked) {
+            markExperienceUnlocked(experienceId as string).catch(() => {});
+          }
           setFreeRemaining(remaining);
           setIsSaved(savedIds.includes(experienceId as string));
           // P2.2: fire-and-forget view increment
@@ -412,6 +457,42 @@ export default function ExperienceDetailScreen() {
       Alert.alert('Error', 'Could not unlock experience. Try again.');
     }
   }, [experienceId, isUnlocked]);
+
+  const handlePurchase = useCallback(async () => {
+    if (!experienceId || isUnlocked || purchasing) return;
+    try {
+      setPurchasing(true);
+      const intent = await createExperiencePurchaseIntent(experienceId as string);
+      if (!intent.alreadyPurchased) {
+        const result = await confirmPayment(intent.clientSecret, {
+          paymentMethodType: 'Card',
+          paymentMethodData: {
+            paymentMethodId: intent.paymentMethodId,
+          },
+        });
+        if (result.error) {
+          throw new Error(result.error.message || 'Payment could not be confirmed.');
+        }
+        await confirmExperiencePurchase(intent.paymentIntentId);
+      }
+      await markExperienceUnlocked(experienceId as string);
+      setIsUnlocked(true);
+      incrementExperienceUnlocks(experienceId as string);
+      Alert.alert('Unlocked', 'This experience is now available in full.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not complete purchase.';
+      if (/payment method|card/i.test(message)) {
+        Alert.alert('Add a card', message, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Payment Methods', onPress: () => router.push('/payment-methods') },
+        ]);
+      } else {
+        Alert.alert('Purchase failed', message);
+      }
+    } finally {
+      setPurchasing(false);
+    }
+  }, [confirmPayment, experienceId, isUnlocked, purchasing]);
 
   // ── Save toggle ─────────────────────────────────────────────────────
   const handleToggleSave = useCallback(async () => {
@@ -665,6 +746,8 @@ export default function ExperienceDetailScreen() {
                       sectionName={`${remainingDays.length} more day${remainingDays.length > 1 ? 's' : ''}`}
                       freeRemaining={freeRemaining}
                       onUseFreeCredit={handleUseFreeCredit}
+                      onPurchase={handlePurchase}
+                      purchasing={purchasing}
                     />
                   )
                 )}
@@ -708,6 +791,8 @@ export default function ExperienceDetailScreen() {
                 sectionName="map and accommodation details"
                 freeRemaining={freeRemaining}
                 onUseFreeCredit={handleUseFreeCredit}
+                onPurchase={handlePurchase}
+                purchasing={purchasing}
               />
             )}
           </View>
@@ -734,6 +819,8 @@ export default function ExperienceDetailScreen() {
                 sectionName="restaurants and cafés"
                 freeRemaining={freeRemaining}
                 onUseFreeCredit={handleUseFreeCredit}
+                onPurchase={handlePurchase}
+                purchasing={purchasing}
               />
             )}
           </View>
@@ -760,6 +847,8 @@ export default function ExperienceDetailScreen() {
                 sectionName="hidden gems and insider spots"
                 freeRemaining={freeRemaining}
                 onUseFreeCredit={handleUseFreeCredit}
+                onPurchase={handlePurchase}
+                purchasing={purchasing}
               />
             )}
           </View>

@@ -1,3 +1,6 @@
+import { getAuth } from 'firebase/auth';
+import { getFirebaseApp } from './firebase';
+
 /**
  * stripeService.ts
  *
@@ -53,9 +56,17 @@ async function createPaymentIntent(
   uid: string,
   email: string,
 ): Promise<string> {
+  const token = await getAuth(getFirebaseApp()).currentUser?.getIdToken();
+  if (!token) {
+    throw new Error('Please sign in before purchasing a membership.');
+  }
+
   const response = await fetch(`${getApiBase()}/api/stripe/create-payment-intent`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ plan, uid, email }),
   });
 
