@@ -157,6 +157,31 @@ export default function CreateJourneyScreen() {
     const auth = getAuth(getFirebaseApp());
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       const uid = user?.uid ?? null;
+      // Clear account-scoped state immediately on UID boundary changes.
+      setCreatorProfile(null);
+      setAccessStatus(null);
+      setTitle('');
+      setDestination('');
+      setCountry('');
+      setCity('');
+      setRegion('');
+      setDuration('');
+      setBestTime('');
+      setBudget('$$');
+      setDailyBudget('');
+      setLocalCoverPreviewUri('');
+      setImageUrl('');
+      setDescription('');
+      setPlaces('');
+      setRestaurants('');
+      setExperiences('');
+      setItineraryDays([{ day: 1, activitiesText: '' }]);
+      setPublishing(false);
+      setSaving(false);
+      setSubmitting(false);
+      setImageUploading(false);
+      setChecking(true);
+
       setAuthUid(uid);
       if (!uid) {
         setAccessStatus('no-auth');
@@ -171,7 +196,6 @@ export default function CreateJourneyScreen() {
         setAccessStatus('not-creator');
       }
       setChecking(false);
-      unsubscribe();
     });
     return unsubscribe;
   }, []);
@@ -273,9 +297,10 @@ export default function CreateJourneyScreen() {
   // ── Build payload ────────────────────────────────────────────────────
   function buildPayload(): JourneyUploadPayload {
     const imageUri = remoteImageOrPlaceholder(imageUrl);
+    const creatorId = creatorProfile?.id ?? '';
 
     return {
-      creatorId: authUid ?? '',
+      creatorId,
       creatorName: creatorProfile?.name ?? '',
       title: title.trim(),
       destination: resolvedDestination(),

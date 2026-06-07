@@ -73,7 +73,9 @@ interface HiddenGemDraft { name: string; description: string; mapsLink: string; 
 
 type AccessStatus = 'no-auth' | 'not-creator' | 'approved';
 
-const DRAFT_KEY = '@createExp/draft';
+const draftKeyForUid = (uid: string | null) => `@createExp/draft:${uid ?? 'anon'}`;
+
+const emptyDayPlan = [{ day: 1, title: '', description: '' }];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -167,6 +169,38 @@ export default function CreateExperienceScreen() {
     const auth = getAuth(getFirebaseApp());
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       const uid = user?.uid ?? null;
+      // Clear account-scoped state immediately on UID boundary changes.
+      setCreatorProfile(null);
+      setAccessStatus(null);
+      setDraftRestored(false);
+      setTitle('');
+      setCountry('');
+      setCity('');
+      setTravelStyle('adventure');
+      setDuration('');
+      setBudget('$$');
+      setCoverImage('');
+      setLocalCoverPreviewUri('');
+      setDescription('');
+      setWhoIsItFor('');
+      setHighlights([]);
+      setCreatorNotes('');
+      setTipsText('');
+      setBestTimeToVisit('');
+      setWarnings('');
+      setGoogleMapsUrl('');
+      setAppleMapsUrl('');
+      setFreePreview(false);
+      setDailyPlan(emptyDayPlan);
+      setHotels([]);
+      setRestaurants([]);
+      setHiddenGems([]);
+      setLoadingExisting(false);
+      setSaving(false);
+      setPublishing(false);
+      setImageUploading(false);
+      setChecking(true);
+
       setAuthUid(uid);
       console.log('[CreateExp] onAuthStateChanged uid:', uid);
       if (!uid) {
@@ -185,7 +219,6 @@ export default function CreateExperienceScreen() {
         setAccessStatus('not-creator');
       }
       setChecking(false);
-      unsubscribe();
     });
     return unsubscribe;
   }, []);
@@ -249,9 +282,10 @@ export default function CreateExperienceScreen() {
   // ── Restore draft on mount (create mode only) ────────────────────────
   useEffect(() => {
     if (isEditMode) return;
+    if (!authUid) return;
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(DRAFT_KEY);
+        const raw = await AsyncStorage.getItem(draftKeyForUid(authUid));
         if (!raw) return;
         const d = JSON.parse(raw);
         if (d.title) setTitle(d.title);
@@ -280,16 +314,16 @@ export default function CreateExperienceScreen() {
         // silently ignore corrupted draft
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode]);
+  }, [authUid, isEditMode]);
 
   // ── Auto-save draft (debounced, create mode only) ────────────────────
   useEffect(() => {
     if (isEditMode) return;
+    if (!authUid) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       AsyncStorage.setItem(
-        DRAFT_KEY,
+        draftKeyForUid(authUid),
         JSON.stringify({
           title, country, city, travelStyle, duration, budget,
           coverImage, description, whoIsItFor, highlights,
@@ -303,6 +337,7 @@ export default function CreateExperienceScreen() {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
   }, [
+    authUid,
     isEditMode, title, country, city, travelStyle, duration, budget,
     coverImage, description, whoIsItFor, highlights,
     creatorNotes, tipsText, bestTimeToVisit, warnings,
@@ -312,13 +347,18 @@ export default function CreateExperienceScreen() {
 
   // ── Load existing experience in edit mode ────────────────────────────
   useEffect(() => {
-    if (!editId || !isEditMode) return;
+    if (!editId || !isEditMode || !creatorProfile?.id) return;
     let cancelled = false;
     const load = async () => {
       setLoadingExisting(true);
       try {
         const exp = await getExperienceById(editId);
         if (!cancelled && exp) {
+          if (exp.creatorId !== creatorProfile.id) {
+            Alert.alert('Access Denied', 'This experience does not belong to your creator account.');
+            router.back();
+            return;
+          }
           setTitle(exp.title);
           setCountry(exp.country);
           setCity(exp.city);
@@ -351,7 +391,7 @@ export default function CreateExperienceScreen() {
     };
     load();
     return () => { cancelled = true; };
-  }, [editId, isEditMode]);
+  }, [creatorProfile?.id, editId, isEditMode]);
 
   // ── Itinerary helpers ────────────────────────────────────────────────
   const addDay = useCallback(() => {
@@ -415,8 +455,9 @@ export default function CreateExperienceScreen() {
 
   // ── Build payload ─────────────────────────────────────────────────────
   function buildPayload(): ExperienceUploadPayload {
+    const creatorId = creatorProfile?.id ?? '';
     return {
-      creatorId: authUid ?? '',
+      creatorId,
       creatorType: creatorProfile?.creatorType ?? 'community',
       creatorName: creatorProfile?.name ?? '',
       title: title.trim(),
@@ -477,7 +518,7 @@ export default function CreateExperienceScreen() {
       Alert.alert(
         'Draft Saved',
         'Your experience has been saved as a draft.',
-        [{ text: 'OK', onPress: () => { AsyncStorage.removeItem(DRAFT_KEY).catch(() => {}); router.back(); } }]
+                [{ text: 'OK', onPress: () => { AsyncStorage.removeItem(draftKeyForUid(authUid)).catch(() => {}); router.back(); } }]
       );
     } catch (e: unknown) {
       Alert.alert('Save Failed', e instanceof Error ? e.message : 'Unknown error');
@@ -511,7 +552,7 @@ export default function CreateExperienceScreen() {
               Alert.alert(
                 'Published!',
                 'Your experience is now live and visible to travelers.',
-                [{ text: 'OK', onPress: () => { AsyncStorage.removeItem(DRAFT_KEY).catch(() => {}); router.back(); } }]
+                [{ text: 'OK', onPress: () => { AsyncStorage.removeItem(draftKeyForUid(authUid)).catch(() => {}); router.back(); } }]
               );
             } catch (e: unknown) {
               Alert.alert('Publish Failed', e instanceof Error ? e.message : 'Unknown error');
@@ -569,7 +610,7 @@ export default function CreateExperienceScreen() {
           <View style={styles.draftBanner}>
             <Ionicons name="document-text-outline" size={16} color={LuxuryColors.gold} />
             <Text style={styles.draftBannerText}>Draft restored — your last unsaved progress has been loaded.</Text>
-            <TouchableOpacity onPress={() => { setDraftRestored(false); AsyncStorage.removeItem(DRAFT_KEY).catch(() => {}); }} hitSlop={8}>
+            <TouchableOpacity onPress={() => { setDraftRestored(false); AsyncStorage.removeItem(draftKeyForUid(authUid)).catch(() => {}); }} hitSlop={8}>
               <Ionicons name="close" size={16} color={LuxuryColors.textTertiary} />
             </TouchableOpacity>
           </View>

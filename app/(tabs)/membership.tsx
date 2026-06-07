@@ -57,9 +57,12 @@ export default function MembershipScreen() {
       if (!user) {
         setCurrentUid(null);
         setCurrentEmail(null);
+        setMemberName(null);
         setIsMember(false);
         return;
       }
+      setMemberName(null);
+      setIsMember(false);
       setCurrentUid(user.uid);
       setCurrentEmail(user.email);
 
