@@ -22,13 +22,10 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   documentId,
   increment,
   limit,
-  startAfter,
   runTransaction,
-  type QueryDocumentSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFirestoreDb, isFirebaseConfigured } from './firebase';
@@ -366,13 +363,13 @@ export async function getPublishedExperiences(): Promise<CreatorExperience[]> {
     const db = getFirestoreDb();
     const q = query(
       collection(db, COLLECTION),
-      where('published', '==', true),
-      orderBy('createdAt', 'desc')
+      where('published', '==', true)
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) =>
-      mapDoc(d.id, d.data() as Record<string, unknown>)
-    );
+    return snap.docs
+      .map((d) => mapDoc(d.id, d.data() as Record<string, unknown>))
+      .filter((experience) => experience.status === 'published')
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   } catch {
     return [];
   }
@@ -463,7 +460,23 @@ export const EXPERIENCES_PAGE_SIZE = 20;
 
 export interface ExperiencesPage {
   items: CreatorExperience[];
-  cursor: QueryDocumentSnapshot | null;
+  cursor: number | null;
+}
+
+async function getPublishedExperiencesSorted(): Promise<CreatorExperience[]> {
+  if (!isFirebaseConfigured()) return [];
+  try {
+    const db = getFirestoreDb();
+    const snap = await getDocs(
+      query(collection(db, COLLECTION), where('published', '==', true))
+    );
+    return snap.docs
+      .map((d) => mapDoc(d.id, d.data() as Record<string, unknown>))
+      .filter((experience) => experience.status === 'published')
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -472,48 +485,22 @@ export interface ExperiencesPage {
 export async function getPublishedExperiencesPage(
   pageSize = EXPERIENCES_PAGE_SIZE
 ): Promise<ExperiencesPage> {
-  if (!isFirebaseConfigured()) return { items: [], cursor: null };
-  try {
-    const db = getFirestoreDb();
-    const q = query(
-      collection(db, COLLECTION),
-      where('published', '==', true),
-      orderBy('createdAt', 'desc'),
-      limit(pageSize)
-    );
-    const snap = await getDocs(q);
-    const items = snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
-    const cursor = snap.docs[snap.docs.length - 1] ?? null;
-    return { items, cursor: snap.docs.length < pageSize ? null : cursor };
-  } catch {
-    return { items: [], cursor: null };
-  }
+  const items = await getPublishedExperiencesSorted();
+  const pageItems = items.slice(0, pageSize);
+  return { items: pageItems, cursor: items.length > pageSize ? pageSize : null };
 }
 
 /**
  * Returns the next page of published experiences after `cursor`.
  */
 export async function getMorePublishedExperiences(
-  cursor: QueryDocumentSnapshot,
+  cursor: number,
   pageSize = EXPERIENCES_PAGE_SIZE
 ): Promise<ExperiencesPage> {
-  if (!isFirebaseConfigured()) return { items: [], cursor: null };
-  try {
-    const db = getFirestoreDb();
-    const q = query(
-      collection(db, COLLECTION),
-      where('published', '==', true),
-      orderBy('createdAt', 'desc'),
-      startAfter(cursor),
-      limit(pageSize)
-    );
-    const snap = await getDocs(q);
-    const items = snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
-    const nextCursor = snap.docs[snap.docs.length - 1] ?? null;
-    return { items, cursor: snap.docs.length < pageSize ? null : nextCursor };
-  } catch {
-    return { items: [], cursor: null };
-  }
+  const items = await getPublishedExperiencesSorted();
+  const pageItems = items.slice(cursor, cursor + pageSize);
+  const nextCursor = cursor + pageItems.length;
+  return { items: pageItems, cursor: nextCursor < items.length ? nextCursor : null };
 }
 
 /**
