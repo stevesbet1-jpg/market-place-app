@@ -116,15 +116,10 @@ export default function TripsScreen() {
           ]);
           if (cancelled) return;
 
-          console.log('[Trips] loaded saved journey ids:', (saved as string[]).length, saved);
-          console.log('[Trips] loaded saved experience ids:', (savedExpIds as string[]).length, savedExpIds);
-
           const savedJourneyDetails = await getJourneysByIds(saved as string[]);
           // Fetch saved experience objects directly by ID — works for drafts and published alike
           const savedExpDetails = await getExperiencesByIds(savedExpIds as string[]);
           if (cancelled) return;
-
-          console.log('[Trips] loaded saved experience details:', savedExpDetails.length, savedExpDetails.map(e => e.id));
 
           let myPublished: CreatorExperience[] = [];
           if (authUid) {
