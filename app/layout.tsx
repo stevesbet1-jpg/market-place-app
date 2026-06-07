@@ -128,6 +128,10 @@ function DeepLinkHandler({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   // ─── Run Firebase diagnostics + pre-warm auth on startup ───────
   useEffect(() => {
+    if (!STRIPE_PUBLISHABLE_KEY) {
+      console.warn('[Stripe] EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY missing. Set it in the app environment before confirming payments.');
+    }
+
     if (__DEV__) {
       console.log('[App] ⚠️  Running in Expo DEV mode. Firebase requests may be slower due to Metro proxy.');
       console.log('[App]    For real delivery speed testing, build a production binary: npx eas build --platform ios');

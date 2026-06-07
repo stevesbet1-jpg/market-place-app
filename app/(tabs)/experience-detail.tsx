@@ -9,8 +9,8 @@
  * Lock logic:
  *   Free users preview: Hero, Overview, Creator Notes, Day 1
  *   Full access (Day 2+, Map, Restaurants, Hidden Gems) requires:
- *     - A free view credit (consumed on first open, persisted locally)
- *     - OR future membership / purchase (paywall CTA shown otherwise)
+ *     - Club membership
+ *     - OR one-time purchase for this experience ID
  *
  * DO NOT TOUCH: Tab Bar, Explore, Trips, AI, Membership, Profile,
  *               Creator Dashboard, Payments.
@@ -49,17 +49,10 @@ import { checkMembership } from '../../lib/membershipService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import {
-  isExperienceUnlocked,
   getSavedExperienceIds,
   toggleSavedExperience,
-  FREE_EXPERIENCE_LIMIT,
   setExperienceStoreUid,
-  markExperienceUnlocked,
 } from '../../constants/experienceStore';
-import {
-  getFreeCreditCount,
-  consumeCredit,
-} from '../../lib/freeCreditService';
 import {
   confirmExperiencePurchase,
   createExperiencePurchaseIntent,
@@ -183,14 +176,10 @@ function BulletItem({ text }: { text: string }) {
 
 function PaywallBanner({
   sectionName,
-  freeRemaining,
-  onUseFreeCredit,
   onPurchase,
   purchasing,
 }: {
   sectionName: string;
-  freeRemaining: number;
-  onUseFreeCredit: () => void;
   onPurchase: () => void;
   purchasing: boolean;
 }) {
@@ -201,30 +190,17 @@ function PaywallBanner({
       </View>
       <Text style={paywallStyles.title}>Premium Content</Text>
       <Text style={paywallStyles.desc}>
-        {sectionName} is exclusive content from this creator.
+        Unlock this full journey to view {sectionName} and every premium section in this experience.
       </Text>
 
-      {freeRemaining > 0 ? (
-        <TouchableOpacity
-          style={paywallStyles.freeCta}
-          onPress={onUseFreeCredit}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="gift-outline" size={14} color={LuxuryColors.background} />
-          <Text style={paywallStyles.freeCtaText}>
-            Unlock free ({freeRemaining} of {FREE_EXPERIENCE_LIMIT} remaining)
-          </Text>
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          style={paywallStyles.memberCta}
-          onPress={() => router.push('/(tabs)/membership')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="diamond" size={12} color={LuxuryColors.background} />
-          <Text style={paywallStyles.memberCtaText}>Unlock with Club</Text>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={paywallStyles.memberCta}
+        onPress={() => router.push('/(tabs)/membership')}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="diamond" size={12} color={LuxuryColors.background} />
+        <Text style={paywallStyles.memberCtaText}>Unlock with Club</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={[
@@ -253,12 +229,6 @@ function PaywallBanner({
       >
         <Text style={[paywallStyles.exhaustedNote, { color: LuxuryColors.textSecondary }]}>Manage payment methods</Text>
       </TouchableOpacity>
-
-      {freeRemaining === 0 && (
-        <Text style={paywallStyles.exhaustedNote}>
-          You've used all {FREE_EXPERIENCE_LIMIT} free views. Join the club for unlimited access or purchase this guide once.
-        </Text>
-      )}
     </View>
   );
 }
@@ -377,26 +347,47 @@ export default function ExperienceDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [freeRemaining, setFreeRemaining] = useState(FREE_EXPERIENCE_LIMIT);
   const [isSaved, setIsSaved] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
-  const [isMember, setIsMember] = useState(false);
+  const [isClubMember, setIsClubMember] = useState(false);
+  const [hasPurchasedCurrentExperience, setHasPurchasedCurrentExperience] = useState(false);
+  const [accessLoading, setAccessLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
   const { confirmPayment } = useConfirmPayment();
 
-  // ── Membership check: members always have full access ───────────────
+  // ── Access check: club membership or this exact experience purchase ──
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
+    let cancelled = false;
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setExperienceStoreUid(user?.uid ?? null);
-      if (!user) { setIsMember(false); return; }
-      const active = await checkMembership(user.uid);
-      setIsMember(active);
-      if (active) setIsUnlocked(true); // members bypass free credit gate
+      setAccessLoading(true);
+
+      if (!user) {
+        if (cancelled) return;
+        setIsClubMember(false);
+        setHasPurchasedCurrentExperience(false);
+        setAccessLoading(false);
+        return;
+      }
+
+      try {
+        const [active, purchased] = await Promise.all([
+          checkMembership(user.uid).catch(() => false),
+          experienceId ? hasPurchasedExperience(experienceId as string).catch(() => false) : Promise.resolve(false),
+        ]);
+        if (cancelled) return;
+        setIsClubMember(active);
+        setHasPurchasedCurrentExperience(purchased);
+      } finally {
+        if (!cancelled) setAccessLoading(false);
+      }
     });
-    return unsubscribe;
-  }, []);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [experienceId]);
 
   // ── Load experience + unlock state ─────────────────────────────────
   useEffect(() => {
@@ -410,11 +401,8 @@ export default function ExperienceDetailScreen() {
 
     async function load() {
       try {
-        const [exp, unlocked, purchased, remaining, savedIds] = await Promise.all([
+        const [exp, savedIds] = await Promise.all([
           getExperienceById(experienceId as string),
-          isExperienceUnlocked(experienceId as string),
-          hasPurchasedExperience(experienceId as string).catch(() => false),
-          getFreeCreditCount(),
           getSavedExperienceIds(),
         ]);
 
@@ -424,11 +412,6 @@ export default function ExperienceDetailScreen() {
           setNotFound(true);
         } else {
           setExperience(exp);
-          setIsUnlocked(unlocked || purchased);
-          if (purchased && !unlocked) {
-            markExperienceUnlocked(experienceId as string).catch(() => {});
-          }
-          setFreeRemaining(remaining);
           setIsSaved(savedIds.includes(experienceId as string));
           // P2.2: fire-and-forget view increment
           incrementExperienceViews(experienceId as string);
@@ -444,22 +427,10 @@ export default function ExperienceDetailScreen() {
     return () => { cancelled = true; };
   }, [experienceId]);
 
-  // ── Consume a free credit ───────────────────────────────────────────
-  const handleUseFreeCredit = useCallback(async () => {
-    if (!experienceId || isUnlocked) return;
-    try {
-      const newRemaining = await consumeCredit(experienceId);
-      setIsUnlocked(true);
-      setFreeRemaining(newRemaining);
-      // P2.3: fire-and-forget unlock increment
-      incrementExperienceUnlocks(experienceId as string);
-    } catch {
-      Alert.alert('Error', 'Could not unlock experience. Try again.');
-    }
-  }, [experienceId, isUnlocked]);
+  const hasPremiumAccess = isClubMember || hasPurchasedCurrentExperience;
 
   const handlePurchase = useCallback(async () => {
-    if (!experienceId || isUnlocked || purchasing) return;
+    if (!experienceId || hasPremiumAccess || purchasing) return;
     try {
       setPurchasing(true);
       const intent = await createExperiencePurchaseIntent(experienceId as string);
@@ -475,10 +446,9 @@ export default function ExperienceDetailScreen() {
         }
         await confirmExperiencePurchase(intent.paymentIntentId);
       }
-      await markExperienceUnlocked(experienceId as string);
-      setIsUnlocked(true);
+      setHasPurchasedCurrentExperience(true);
       incrementExperienceUnlocks(experienceId as string);
-      Alert.alert('Unlocked', 'This experience is now available in full.');
+      Alert.alert('Unlocked', 'This full journey is now available.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not complete purchase.';
       if (/payment method|card/i.test(message)) {
@@ -492,7 +462,7 @@ export default function ExperienceDetailScreen() {
     } finally {
       setPurchasing(false);
     }
-  }, [confirmPayment, experienceId, isUnlocked, purchasing]);
+  }, [confirmPayment, experienceId, hasPremiumAccess, purchasing]);
 
   // ── Save toggle ─────────────────────────────────────────────────────
   const handleToggleSave = useCallback(async () => {
@@ -513,7 +483,7 @@ export default function ExperienceDetailScreen() {
   }, [experienceId, savingToggle]);
 
   // ── Loading ─────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading || accessLoading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={LuxuryColors.gold} size="large" />
@@ -739,13 +709,11 @@ export default function ExperienceDetailScreen() {
 
                 {/* Days 2+ require unlock */}
                 {remainingDays.length > 0 && (
-                  isUnlocked ? (
+                  hasPremiumAccess ? (
                     remainingDays.map((day) => <DayCard key={day.day} entry={day} />)
                   ) : (
                     <PaywallBanner
                       sectionName={`${remainingDays.length} more day${remainingDays.length > 1 ? 's' : ''}`}
-                      freeRemaining={freeRemaining}
-                      onUseFreeCredit={handleUseFreeCredit}
                       onPurchase={handlePurchase}
                       purchasing={purchasing}
                     />
@@ -761,7 +729,7 @@ export default function ExperienceDetailScreen() {
           <View style={detailStyles.section}>
             <SectionTitle title="Places & Map" icon="map-outline" />
 
-            {isUnlocked ? (
+            {hasPremiumAccess ? (
               <>
                 {/* Key places derived from hotels */}
                 {experience.hotels.length > 0 && (
@@ -789,8 +757,6 @@ export default function ExperienceDetailScreen() {
             ) : (
               <PaywallBanner
                 sectionName="map and accommodation details"
-                freeRemaining={freeRemaining}
-                onUseFreeCredit={handleUseFreeCredit}
                 onPurchase={handlePurchase}
                 purchasing={purchasing}
               />
@@ -803,7 +769,7 @@ export default function ExperienceDetailScreen() {
           <View style={detailStyles.section}>
             <SectionTitle title="Restaurants & Cafés" icon="restaurant-outline" />
 
-            {isUnlocked ? (
+            {hasPremiumAccess ? (
               experience.restaurants.length > 0 ? (
                 experience.restaurants.map((r, i) => (
                   <RestaurantCard key={i} restaurant={r} />
@@ -817,8 +783,6 @@ export default function ExperienceDetailScreen() {
             ) : (
               <PaywallBanner
                 sectionName="restaurants and cafés"
-                freeRemaining={freeRemaining}
-                onUseFreeCredit={handleUseFreeCredit}
                 onPurchase={handlePurchase}
                 purchasing={purchasing}
               />
@@ -831,7 +795,7 @@ export default function ExperienceDetailScreen() {
           <View style={detailStyles.section}>
             <SectionTitle title="Hidden Gems" icon="sparkles-outline" />
 
-            {isUnlocked ? (
+            {hasPremiumAccess ? (
               experience.hiddenGems.length > 0 ? (
                 experience.hiddenGems.map((gem, i) => (
                   <HiddenGemCard key={i} gem={gem} />
@@ -845,8 +809,6 @@ export default function ExperienceDetailScreen() {
             ) : (
               <PaywallBanner
                 sectionName="hidden gems and insider spots"
-                freeRemaining={freeRemaining}
-                onUseFreeCredit={handleUseFreeCredit}
                 onPurchase={handlePurchase}
                 purchasing={purchasing}
               />

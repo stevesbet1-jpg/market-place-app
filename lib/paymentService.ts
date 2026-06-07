@@ -1,8 +1,6 @@
 import { getAuth } from 'firebase/auth';
 import { getFirebaseApp } from './firebase';
 
-const DEFAULT_API_BASE_URL = 'https://market-place-app-1.onrender.com';
-
 export interface SavedPaymentMethod {
   id: string;
   brand: string;
@@ -27,15 +25,15 @@ export interface PurchaseIntentResponse {
 
 export interface PurchaseRecordResponse {
   purchaseId: string;
-  status: 'succeeded' | 'processing';
+  status: 'paid' | 'processing';
 }
 
 function getApiBase(): string {
-  return (
-    process.env.EXPO_PUBLIC_PAYMENT_API_URL ||
-    process.env.EXPO_PUBLIC_RESET_API_URL ||
-    DEFAULT_API_BASE_URL
-  ).replace(/\/$/, '');
+  const configuredUrl = process.env.EXPO_PUBLIC_PAYMENT_API_URL;
+  if (!configuredUrl) {
+    throw new Error('Payment API URL is not configured. Set EXPO_PUBLIC_PAYMENT_API_URL to your backend base URL.');
+  }
+  return configuredUrl.replace(/\/$/, '');
 }
 
 async function getIdToken(): Promise<string> {

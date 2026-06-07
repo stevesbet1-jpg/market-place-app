@@ -464,7 +464,18 @@ if (STRIPE_SECRET_KEY) {
     console.warn('[Server] ⚠️  stripe package not found — run: npm install stripe');
   }
 } else {
-  console.warn('[Server] ⚠️  STRIPE_SECRET_KEY not set — payment endpoints disabled');
+  console.warn('[Server] ⚠️  STRIPE_SECRET_KEY missing — payment endpoints disabled. Set STRIPE_SECRET_KEY in the backend environment.');
+}
+
+const STRIPE_NOT_CONFIGURED_ERROR = 'Stripe not configured on server: missing STRIPE_SECRET_KEY in backend environment.';
+
+function respondStripeNotConfigured(res) {
+  console.error('[Stripe] STRIPE_SECRET_KEY missing. Set STRIPE_SECRET_KEY in the backend environment before using payment endpoints.');
+  return res.status(503).json({
+    success: false,
+    code: 'stripe/missing-secret-key',
+    error: STRIPE_NOT_CONFIGURED_ERROR,
+  });
 }
 
 /** Plan → amount in USD cents */
@@ -500,6 +511,11 @@ async function requireFirebaseUser(req, res) {
 
 function purchaseDocId(uid, experienceId) {
   return `${uid}_${experienceId}`;
+}
+
+function isPaidPurchaseRecord(data) {
+  if (!data) return false;
+  return data.paid === true || data.status === 'paid' || data.status === 'succeeded';
 }
 
 function sanitizeCardPaymentMethod(paymentMethod, defaultPaymentMethodId) {
@@ -582,7 +598,7 @@ async function getPublishedExperience(experienceId) {
 }
 
 app.get('/api/stripe/payment-methods', async (req, res) => {
-  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+  if (!stripe) return respondStripeNotConfigured(res);
 
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
@@ -605,7 +621,7 @@ app.get('/api/stripe/payment-methods', async (req, res) => {
 });
 
 app.post('/api/stripe/setup-intent', async (req, res) => {
-  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+  if (!stripe) return respondStripeNotConfigured(res);
 
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
@@ -627,7 +643,7 @@ app.post('/api/stripe/setup-intent', async (req, res) => {
 });
 
 app.post('/api/stripe/payment-methods/default', async (req, res) => {
-  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+  if (!stripe) return respondStripeNotConfigured(res);
 
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
@@ -663,7 +679,7 @@ app.post('/api/stripe/payment-methods/default', async (req, res) => {
 });
 
 app.delete('/api/stripe/payment-methods/:paymentMethodId', async (req, res) => {
-  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+  if (!stripe) return respondStripeNotConfigured(res);
 
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
@@ -695,7 +711,7 @@ app.delete('/api/stripe/payment-methods/:paymentMethodId', async (req, res) => {
 });
 
 app.post('/api/stripe/purchase-intent', async (req, res) => {
-  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+  if (!stripe) return respondStripeNotConfigured(res);
 
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
@@ -712,7 +728,7 @@ app.post('/api/stripe/purchase-intent', async (req, res) => {
     const adminFirestore = admin.firestore();
     const purchaseRef = adminFirestore.doc(`purchases/${purchaseDocId(user.uid, experienceId)}`);
     const existingPurchase = await purchaseRef.get();
-    if (existingPurchase.exists && existingPurchase.data()?.status === 'succeeded') {
+    if (existingPurchase.exists && isPaidPurchaseRecord(existingPurchase.data())) {
       return res.status(409).json({ success: false, code: 'duplicate_purchase', error: 'Experience already purchased' });
     }
 
@@ -751,7 +767,7 @@ app.post('/api/stripe/purchase-intent', async (req, res) => {
 });
 
 app.post('/api/stripe/confirm-purchase', async (req, res) => {
-  if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+  if (!stripe) return respondStripeNotConfigured(res);
 
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
@@ -788,17 +804,20 @@ app.post('/api/stripe/confirm-purchase', async (req, res) => {
 
     await adminFirestore.runTransaction(async (tx) => {
       const purchaseSnap = await tx.get(purchaseRef);
-      if (purchaseSnap.exists && purchaseSnap.data()?.status === 'succeeded') return;
+      if (purchaseSnap.exists && isPaidPurchaseRecord(purchaseSnap.data())) return;
 
       tx.set(purchaseRef, {
-        userId: user.uid,
+        purchaseId: purchaseRef.id,
+        uid: user.uid,
         experienceId,
         creatorId,
         stripePaymentIntentId: paymentIntent.id,
         amount: paymentIntent.amount,
         currency: paymentIntent.currency,
-        status: 'succeeded',
+        status: 'paid',
+        paid: true,
         createdAt: now,
+        updatedAt: now,
       });
       tx.set(userRef, {
         uid: user.uid,
@@ -825,7 +844,7 @@ app.post('/api/stripe/confirm-purchase', async (req, res) => {
  */
 app.post('/api/stripe/create-payment-intent', requireFirebaseAuth, async (req, res) => {
   if (!stripe) {
-    return res.status(503).json({ success: false, error: 'Stripe not configured on server' });
+    return respondStripeNotConfigured(res);
   }
 
   const { plan } = req.body;
@@ -871,8 +890,8 @@ app.post(
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     if (!stripe || !STRIPE_WEBHOOK_SECRET) {
-      console.warn('[Stripe] Webhook received but Stripe/webhook secret not configured');
-      return res.status(503).send('Stripe not configured');
+      console.warn('[Stripe] Webhook received but Stripe is not fully configured. Required env: STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.');
+      return res.status(503).send('Stripe not configured: missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET');
     }
 
     const sig = req.headers['stripe-signature'];
@@ -969,11 +988,11 @@ curated journeys and experiences. When a user describes their dream trip, respon
 sentences recommending a travel style, destination or mood — keep it aspirational and elegant.
 Do not invent specific prices, hotel names, or booking details. Do not use markdown.`;
 
-let phase7Stripe = null;
+let phase7Stripe = stripe;
 try {
-  if (process.env.STRIPE_SECRET_KEY) {
+  if (!phase7Stripe && STRIPE_SECRET_KEY) {
     const Stripe = require('stripe');
-    phase7Stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    phase7Stripe = new Stripe(STRIPE_SECRET_KEY);
   }
 } catch (error) {
   console.warn('[Stripe Phase 7] Stripe SDK unavailable:', error.message);
@@ -984,7 +1003,7 @@ const DEFAULT_EXPERIENCE_CURRENCY = (process.env.EXPERIENCE_CURRENCY || 'usd').t
 
 function requireStripe(res) {
   if (!phase7Stripe) {
-    res.status(503).json({ error: 'Stripe is not configured on the server.' });
+    respondStripeNotConfigured(res);
     return null;
   }
   return phase7Stripe;
@@ -1076,7 +1095,7 @@ async function recordExperiencePurchase(paymentIntent) {
   const purchaseId = purchaseIdFor(uid, experienceId);
   await getPurchasesCollection().doc(purchaseId).set({
     purchaseId,
-    userId: uid,
+    uid,
     experienceId,
     creatorId: paymentIntent.metadata.creatorId || null,
     stripeCustomerId: typeof paymentIntent.customer === 'string' ? paymentIntent.customer : null,
@@ -1084,10 +1103,11 @@ async function recordExperiencePurchase(paymentIntent) {
     stripePaymentMethodId: typeof paymentIntent.payment_method === 'string' ? paymentIntent.payment_method : null,
     amount: paymentIntent.amount,
     currency: paymentIntent.currency,
-    status: paymentIntent.status,
-    purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+    status: 'paid',
+    paid: true,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
+  });
   return purchaseId;
 }
 
@@ -1201,7 +1221,7 @@ app.get('/api/stripe/purchases/:experienceId', requireFirebaseAuth, async (req, 
       .doc(purchaseIdFor(req.authUser.uid, req.params.experienceId))
       .get();
     const data = purchaseSnap.exists ? purchaseSnap.data() || {} : {};
-    res.json({ purchased: data.status === 'succeeded' });
+    res.json({ purchased: isPaidPurchaseRecord(data) });
   } catch (error) {
     console.error('[Stripe Phase 7] purchase lookup failed:', error);
     res.status(500).json({ error: 'Could not check purchase.' });
@@ -1218,7 +1238,7 @@ app.post('/api/stripe/purchases/create-payment-intent', requireFirebaseAuth, asy
     }
     const purchaseId = purchaseIdFor(req.authUser.uid, experienceId);
     const purchaseSnap = await getPurchasesCollection().doc(purchaseId).get();
-    if (purchaseSnap.exists && (purchaseSnap.data() || {}).status === 'succeeded') {
+    if (purchaseSnap.exists && isPaidPurchaseRecord(purchaseSnap.data() || {})) {
       return res.json({
         alreadyPurchased: true,
         clientSecret: '',
@@ -1293,7 +1313,7 @@ app.post('/api/stripe/purchases/confirm', requireFirebaseAuth, async (req, res) 
       return res.status(402).json({ error: 'Payment has not succeeded yet.' });
     }
     const purchaseId = await recordExperiencePurchase(paymentIntent);
-    res.json({ purchaseId, status: paymentIntent.status });
+    res.json({ purchaseId, status: 'paid' });
   } catch (error) {
     console.error('[Stripe Phase 7] purchase confirm failed:', error);
     res.status(error.statusCode || 500).json({ error: 'Could not record purchase.' });
