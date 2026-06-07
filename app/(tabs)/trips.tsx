@@ -165,6 +165,8 @@ export default function TripsScreen() {
     return [...matching, ...others];
   }, [budgetPref, allExperiences]);
 
+  const hasPublishedExperiences = allExperiences.length > 0 || myPublishedExperiences.length > 0;
+
   const savedJourneys = savedJourneyDetails;
 
   const handleBudgetFilter = async (b: BudgetLevel | null) => {
@@ -380,7 +382,7 @@ export default function TripsScreen() {
       ) : null}
 
       {/* ── Journey cards ── */}
-      {featuredExperiences.length === 0 ? (
+      {!hasPublishedExperiences ? (
         <View style={styles.emptyJourneys}>
           <Ionicons name="map-outline" size={36} color={LuxuryColors.textTertiary} />
           <Text style={styles.emptyJourneysTitle}>No creator journeys published yet.</Text>
