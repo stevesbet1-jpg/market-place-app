@@ -5,8 +5,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { ThemeProvider, DarkTheme } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
-import { StripeProvider } from '@stripe/stripe-react-native';
 import { LuxuryColors } from '../constants/luxuryTheme';
+import { StripeAppProvider } from '../lib/StripeAppProvider';
 import { getFirebaseApp, printFirebaseDiagnostics, runFirebaseAuthDiagnostics, printFirebaseConsoleChecklist } from '../lib/firebase';
 import { getAuth } from 'firebase/auth';
 
@@ -160,7 +160,7 @@ export default function RootLayout() {
     // style on SafeAreaProvider paints the native window background dark,
     // eliminating the white strips iOS shows in the status-bar and home-
     // indicator areas before React Native's own views render.
-    <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.com.marketplace.travel">
+    <StripeAppProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.com.marketplace.travel">
     <SafeAreaProvider initialMetrics={initialWindowMetrics} style={{ flex: 1, backgroundColor: LuxuryColors.background }}>
       {/* StatusBar must live inside SafeAreaProvider so insets are available */}
       <StatusBar style="light" backgroundColor={LuxuryColors.background} translucent={false} />
@@ -182,7 +182,7 @@ export default function RootLayout() {
         </View>
       </ThemeProvider>
     </SafeAreaProvider>
-    </StripeProvider>
+    </StripeAppProvider>
   );
 }
 

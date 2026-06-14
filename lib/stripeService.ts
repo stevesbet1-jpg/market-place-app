@@ -1,5 +1,9 @@
 import { getAuth } from 'firebase/auth';
 import { getFirebaseApp } from './firebase';
+import {
+  initMembershipPaymentSheet,
+  presentMembershipPaymentSheet,
+} from './stripePaymentSheet';
 
 /**
  * stripeService.ts
@@ -18,8 +22,6 @@ import { getFirebaseApp } from './firebase';
  *  - EXPO_PUBLIC_RESET_API_URL pointing at the Render backend
  *  - StripeProvider wrapping the app root (see app/layout.tsx)
  */
-
-import { initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -98,7 +100,7 @@ export async function purchaseMembership(
   try {
     const clientSecret = await createPaymentIntent(plan, uid, email);
 
-    const initResult = await initPaymentSheet({
+    const initResult = await initMembershipPaymentSheet({
       merchantDisplayName: 'Marketplace Travel',
       paymentIntentClientSecret: clientSecret,
       defaultBillingDetails: { email },
@@ -110,7 +112,7 @@ export async function purchaseMembership(
       return { success: false, cancelled: false, error: initResult.error.message };
     }
 
-    const presentResult = await presentPaymentSheet();
+    const presentResult = await presentMembershipPaymentSheet();
 
     if (presentResult.error) {
       const cancelled = presentResult.error.code === 'Canceled';

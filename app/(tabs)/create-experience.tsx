@@ -116,7 +116,7 @@ function AccessGateView({ status, onBack }: { status: AccessStatus; onBack: () =
       icon: 'create-outline',
       color: LuxuryColors.gold,
       title: 'Become a Creator First',
-      body: 'Go to your Profile to activate your free creator account instantly — no approval needed.',
+      body: 'Open creator setup to activate your creator account before publishing experiences.',
     },
     approved: {
       icon: 'checkmark-circle',

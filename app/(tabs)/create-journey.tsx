@@ -106,7 +106,7 @@ function AccessGateView({
       icon: 'create-outline',
       color: LuxuryColors.gold,
       title: 'Become a Creator First',
-      body: 'Go to your Profile to activate your free creator account instantly — no approval needed.',
+      body: 'Open creator setup to activate your creator account before publishing journeys.',
     },
     approved: {
       icon: 'checkmark-circle',
@@ -118,10 +118,10 @@ function AccessGateView({
 
   const m = messages[status];
   const isNoAuth = status === 'no-auth';
-  const ctaLabel = isNoAuth ? 'Sign In' : 'Go to Profile';
+  const ctaLabel = isNoAuth ? 'Sign In' : 'Creator Setup';
   const ctaAction = isNoAuth
     ? () => router.replace('/(auth)/login')
-    : () => router.push('/(tabs)/profile');
+    : () => router.push('/(tabs)/creator-subscription');
 
   return (
     <View style={[gateStyles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>

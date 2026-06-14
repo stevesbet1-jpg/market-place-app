@@ -1,342 +1,351 @@
-/**
- * experience-detail.tsx
- *
- * Premium Experience Detail Page.
- *
- * Route params:
- *   id — Firestore document ID of a CreatorExperience
- *
- * Lock logic:
- *   Free users preview: Hero, Overview, Creator Notes, Day 1
- *   Full access (Day 2+, Map, Restaurants, Hidden Gems) requires:
- *     - Club membership
- *     - OR one-time purchase for this experience ID
- *
- * DO NOT TOUCH: Tab Bar, Explore, Trips, AI, Membership, Profile,
- *               Creator Dashboard, Payments.
- */
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  Image,
-  ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
-  StyleSheet,
   Alert,
+  Animated,
   Dimensions,
+  Image,
+  Modal,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  type ImageSourcePropType,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useConfirmPayment } from '@stripe/stripe-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
-  LuxuryColors,
-  LuxurySpacing,
   LuxuryBorderRadius,
+  LuxuryColors,
   LuxuryFontSize,
   LuxuryShadow,
+  LuxurySpacing,
 } from '../../constants/luxuryTheme';
-import type { CreatorExperience, DailyPlanEntry, TravelStyle, Restaurant, HiddenGem, Hotel } from '../../constants/creatorExperienceModel';
+import type {
+  CreatorExperience,
+  DailyPlanEntry,
+  HiddenGem,
+  Hotel,
+  Restaurant,
+} from '../../constants/creatorExperienceModel';
 import { travelStyleLabel } from '../../constants/creatorExperienceModel';
-import { getExperienceById, incrementExperienceViews, incrementExperienceUnlocks } from '../../lib/creatorExperienceService';
 import { getFirebaseApp } from '../../lib/firebase';
 import { checkMembership } from '../../lib/membershipService';
 import { safeOpenUrl } from '../../lib/linkingUtils';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import {
-  getSavedExperienceIds,
-  toggleSavedExperience,
-  setExperienceStoreUid,
-} from '../../constants/experienceStore';
+  getExperienceById,
+  incrementExperienceUnlocks,
+  incrementExperienceViews,
+} from '../../lib/creatorExperienceService';
 import {
   confirmExperiencePurchase,
   createExperiencePurchaseIntent,
   hasPurchasedExperience,
 } from '../../lib/paymentService';
+import {
+  getSavedExperienceIds,
+  setExperienceStoreUid,
+  toggleSavedExperience,
+} from '../../constants/experienceStore';
+import { useExperienceConfirmPayment } from '../../lib/useExperienceConfirmPayment';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const HERO_HEIGHT = 340;
+const CONTENT_WIDTH = SCREEN_WIDTH - LuxurySpacing.lg * 2;
+const MEMORY_TILE_WIDTH = (CONTENT_WIDTH - LuxurySpacing.md) / 2;
+const CYAN = '#8AE6FF';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type HighlightCard = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value: string;
+  caption: string;
+};
+
+type InsightCard = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+};
+
+type MemoryTile = {
+  id: string;
+  label: string;
+  caption: string;
+  source: ImageSourcePropType | null;
+  tall: boolean;
+};
+
+type RouteStop = {
+  id: string;
+  label: string;
+  subtitle: string;
+};
+
+type TimelineItem = {
+  id: string;
+  day: number;
+  dateLabel: string;
+  title: string;
+  description: string;
+  source: ImageSourcePropType | null;
+};
+
+function coverSource(experience: CreatorExperience): ImageSourcePropType | null {
+  if (isValidRemoteImageUrl(experience.coverImage)) {
+    return { uri: experience.coverImage!.trim() };
+  }
+  return null;
+}
 
 function deriveInitials(name: string): string {
   return name
     .split(' ')
-    .map((w) => w[0] ?? '')
+    .map((word) => word[0] ?? '')
     .join('')
     .slice(0, 2)
     .toUpperCase();
 }
 
-function budgetLabel(b: string): string {
-  switch (b) {
-    case '$': return 'Budget';
-    case '$$': return 'Mid-range';
-    case '$$$': return 'Premium';
-    case '$$$$': return 'Ultra-luxury';
-    default: return b;
-  }
+function durationDays(duration: string): number {
+  const match = duration.match(/\d+/);
+  if (!match) return 5;
+  const parsed = Number.parseInt(match[0], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
 }
 
-function bestSeason(exp: CreatorExperience): string {
-  // Derive a plausible season from the description or country name
-  const text = (exp.description + ' ' + exp.country + ' ' + exp.city).toLowerCase();
-  if (/ski|snow|winter|alps|iceland/.test(text)) return 'Winter (Dec – Feb)';
-  if (/spring|cherry|bloom|flower/.test(text)) return 'Spring (Mar – May)';
-  if (/monsoon|rainy|wet season/.test(text)) return 'Dry Season (Nov – Apr)';
-  if (/beach|summer|ocean|sea|tropical/.test(text)) return 'May – October';
+function estimateSpend(experience: CreatorExperience): string {
+  const baseByBudget: Record<CreatorExperience['budget'], number> = {
+    $: 130,
+    $$: 260,
+    $$$: 520,
+    $$$$: 980,
+  };
+  return formatCompactCurrency(baseByBudget[experience.budget] * durationDays(experience.duration));
+}
+
+function formatCompactCurrency(value: number): string {
+  if (value >= 1000) {
+    return `$${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`;
+  }
+  return `$${Math.round(value)}`;
+}
+
+function deriveSeason(experience: CreatorExperience): string {
+  const explicit = experience.bestTimeToVisit?.trim();
+  if (explicit) return explicit;
+  const text = `${experience.description} ${experience.country} ${experience.city}`.toLowerCase();
+  if (/ski|snow|winter|alps|iceland/.test(text)) return 'Winter';
+  if (/spring|cherry|bloom|flower/.test(text)) return 'Spring';
+  if (/monsoon|rainy|wet season/.test(text)) return 'Dry Season';
+  if (/beach|summer|ocean|sea|tropical/.test(text)) return 'Summer';
   return 'Year-round';
 }
 
-function whoItsFor(style: TravelStyle): string {
-  switch (style) {
-    case 'luxury':    return 'Discerning travelers seeking premium experiences';
-    case 'adventure': return 'Active explorers and adventure seekers';
-    case 'budget':    return 'Budget-conscious travelers';
-    case 'family':    return 'Families with children';
-    case 'food':      return 'Food enthusiasts and culinary explorers';
+function tripRangeLabel(experience: CreatorExperience): string {
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const lower = deriveSeason(experience).toLowerCase();
+  const monthIndex = months.findIndex((month) => lower.includes(month));
+  const start = new Date();
+  if (monthIndex >= 0) {
+    start.setMonth(monthIndex);
   }
+  start.setDate(12);
+  const end = new Date(start);
+  end.setDate(start.getDate() + Math.max(durationDays(experience.duration) - 1, 0));
+  const fmt = (date: Date) => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${fmt(start)} - ${fmt(end)}`;
 }
 
-/**
- * Splits an activities array into morning / afternoon / evening thirds.
- * Returns an object with up to 3 keys. Falls back to a flat list if < 3 items.
- */
-function splitTimeOfDay(activities: string[]): {
-  morning: string[];
-  afternoon: string[];
-  evening: string[];
-} {
-  const n = activities.length;
-  if (n === 0) return { morning: [], afternoon: [], evening: [] };
-  if (n < 3) return { morning: activities, afternoon: [], evening: [] };
-  const third = Math.ceil(n / 3);
-  return {
-    morning: activities.slice(0, third),
-    afternoon: activities.slice(third, third * 2),
-    evening: activities.slice(third * 2),
-  };
+function buildStory(experience: CreatorExperience): string {
+  const days = durationDays(experience.duration);
+  const highlights = experience.highlights.slice(0, 3).join(', ');
+  const hiddenGems = experience.hiddenGems.slice(0, 2).map((gem) => gem.name).join(', ');
+  const details = [highlights, hiddenGems].filter(Boolean).join(', ');
+  if (details) {
+    return `${days} unforgettable days exploring ${experience.city}'s skyline, culture, and signature moments, stitched together with ${details} and a premium sense of flow from sunrise to late night.`;
+  }
+  return `${days} unforgettable days exploring ${experience.city}'s skyline, luxury stays, local discoveries, and beautifully paced cultural moments.`;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StyleTag({ style }: { style: TravelStyle }) {
-  const label = travelStyleLabel(style);
-  return (
-    <View style={tagStyles.tag}>
-      <Text style={tagStyles.tagText}>{label}</Text>
-    </View>
-  );
+function buildRouteStops(experience: CreatorExperience, hasPremiumAccess: boolean): RouteStop[] {
+  const hotelStops = experience.hotels.slice(0, 2).map((hotel) => hotel.name);
+  const restaurantStops = experience.restaurants.slice(0, 2).map((restaurant) => restaurant.name);
+  const gemStops = experience.hiddenGems.slice(0, 2).map((gem) => gem.name);
+  const base = [experience.city, ...hotelStops, ...restaurantStops, ...gemStops].filter(Boolean);
+  const unique = base.filter((label, index) => base.indexOf(label) === index);
+  return unique.slice(0, hasPremiumAccess ? 5 : 3).map((label, index) => ({
+    id: `${label}-${index}`,
+    label,
+    subtitle: index === 0 ? 'Arrival' : index === unique.length - 1 ? 'Final stop' : `Stop ${index + 1}`,
+  }));
 }
 
-function SectionTitle({ title, icon }: { title: string; icon: keyof typeof Ionicons.glyphMap }) {
-  return (
-    <View style={detailStyles.sectionHeader}>
-      <Ionicons name={icon} size={18} color={LuxuryColors.gold} />
-      <Text style={detailStyles.sectionTitle}>{title}</Text>
-    </View>
-  );
+function buildTimeline(
+  experience: CreatorExperience,
+  source: ImageSourcePropType | null,
+  hasPremiumAccess: boolean,
+): TimelineItem[] {
+  const itinerary = experience.dailyPlan.length > 0
+    ? experience.dailyPlan
+    : [{ day: 1, title: `Arrival in ${experience.city}`, description: experience.description || 'A curated first impression of the destination.' }];
+
+  return itinerary.slice(0, hasPremiumAccess ? itinerary.length : 1).map((entry, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() + index);
+    return {
+      id: `day-${entry.day}`,
+      day: entry.day,
+      dateLabel: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      title: entry.title?.trim() || `Day ${entry.day}`,
+      description: entry.description?.trim() || 'A beautifully paced sequence of moments unfolds.',
+      source,
+    };
+  });
 }
 
-function InfoPill({
+function buildHighlights(experience: CreatorExperience): HighlightCard[] {
+  return [
+    {
+      icon: 'trophy-outline',
+      title: 'Best Moment',
+      value: experience.highlights[0] ?? experience.dailyPlan[0]?.title ?? `Golden hour in ${experience.city}`,
+      caption: 'The memory that defined the trip',
+    },
+    {
+      icon: 'location-outline',
+      title: 'Favorite Spot',
+      value: experience.hiddenGems[0]?.name ?? experience.city,
+      caption: 'Most revisited destination moment',
+    },
+    {
+      icon: 'restaurant-outline',
+      title: 'Best Restaurant',
+      value: experience.restaurants[0]?.name ?? 'Private chef table',
+      caption: 'Most memorable meal',
+    },
+    {
+      icon: 'camera-outline',
+      title: 'Most Photographed',
+      value: experience.highlights[1] ?? experience.hiddenGems[0]?.name ?? experience.city,
+      caption: 'The frame everyone kept',
+    },
+    {
+      icon: 'heart-outline',
+      title: 'User Favorite',
+      value: experience.savedCount > 0 ? `${experience.savedCount} saves` : 'Loved by early explorers',
+      caption: 'Audience sentiment snapshot',
+    },
+  ];
+}
+
+function buildInsights(experience: CreatorExperience, memoryCount: number): InsightCard[] {
+  const days = durationDays(experience.duration);
+  return [
+    { icon: 'walk-outline', label: 'Distance Walked', value: `${(experience.hiddenGems.length * 3.8 + days * 2.1).toFixed(0)} km` },
+    { icon: 'camera-outline', label: 'Photos Taken', value: String(memoryCount) },
+    { icon: 'wallet-outline', label: 'Budget Used', value: estimateSpend(experience) },
+    { icon: 'map-outline', label: 'Locations Visited', value: String(Math.max(experience.hiddenGems.length + experience.restaurants.length + experience.hotels.length, 1)) },
+    { icon: 'sunny-outline', label: 'Average Weather', value: deriveSeason(experience) },
+  ];
+}
+
+function buildAchievements(experience: CreatorExperience): string[] {
+  const badges = ['City Explorer', 'Luxury Traveler'];
+  const text = `${experience.city} ${experience.country} ${experience.description} ${experience.warnings}`.toLowerCase();
+  if (/desert|dune/.test(text)) badges.push('Desert Adventurer');
+  if (/food|chef|dining|restaurant/.test(text) || experience.restaurants.length >= 3) badges.push('Taste Curator');
+  if (experience.hiddenGems.length >= 3) badges.push('Photo Master');
+  return badges.slice(0, 4);
+}
+
+function buildMemoryTiles(experience: CreatorExperience, source: ImageSourcePropType | null): MemoryTile[] {
+  const labels = [
+    ...experience.hiddenGems.map((gem) => gem.name),
+    ...experience.restaurants.map((restaurant) => restaurant.name),
+    ...experience.hotels.map((hotel) => hotel.name),
+    ...experience.highlights,
+    experience.city,
+    experience.country,
+  ].filter(Boolean);
+
+  const unique = labels.filter((label, index) => labels.indexOf(label) === index).slice(0, 6);
+  return unique.map((label, index) => ({
+    id: `memory-${index}-${label}`,
+    label,
+    caption: index % 2 === 0 ? 'Saved to the highlight reel' : 'A frame worth keeping forever',
+    source,
+    tall: index % 3 !== 1,
+  }));
+}
+
+function GradientFallback({
   icon,
-  label,
-  value,
+  title,
+  subtitle,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
+  title: string;
+  subtitle: string;
 }) {
   return (
-    <View style={detailStyles.infoPill}>
-      <Ionicons name={icon} size={14} color={LuxuryColors.gold} />
-      <View style={{ marginLeft: LuxurySpacing.xs }}>
-        <Text style={detailStyles.infoPillLabel}>{label}</Text>
-        <Text style={detailStyles.infoPillValue}>{value}</Text>
+    <LinearGradient colors={['#11243F', '#09131F']} style={styles.fallbackGradient}>
+      <View style={styles.fallbackIconWrap}>
+        <Ionicons name={icon} size={26} color={CYAN} />
       </View>
-    </View>
+      <Text style={styles.fallbackTitle}>{title}</Text>
+      <Text style={styles.fallbackSubtitle}>{subtitle}</Text>
+    </LinearGradient>
   );
 }
 
-function BulletItem({ text }: { text: string }) {
-  return (
-    <View style={detailStyles.bulletRow}>
-      <View style={detailStyles.bulletDot} />
-      <Text style={detailStyles.bulletText}>{text}</Text>
-    </View>
-  );
-}
-
-// ─── Paywall Banner ───────────────────────────────────────────────────────────
-
-function PaywallBanner({
-  sectionName,
+function UnlockCard({
   onPurchase,
   purchasing,
 }: {
-  sectionName: string;
   onPurchase: () => void;
   purchasing: boolean;
 }) {
   return (
-    <View style={paywallStyles.banner}>
-      <View style={paywallStyles.iconCircle}>
-        <Ionicons name="lock-closed" size={22} color={LuxuryColors.gold} />
+    <LinearGradient colors={['rgba(19,45,72,0.94)', 'rgba(7,17,32,0.98)']} style={styles.unlockCard}>
+      <View style={styles.unlockIconWrap}>
+        <Ionicons name="diamond-outline" size={18} color={CYAN} />
       </View>
-      <Text style={paywallStyles.title}>Premium Content</Text>
-      <Text style={paywallStyles.desc}>
-        Unlock this full journey to view {sectionName} and every premium section in this experience.
-      </Text>
-
-      <TouchableOpacity
-        style={paywallStyles.memberCta}
-        onPress={() => router.push('/(tabs)/membership')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="diamond" size={12} color={LuxuryColors.background} />
-        <Text style={paywallStyles.memberCtaText}>Unlock with Club</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[
-          paywallStyles.memberCta,
-          { backgroundColor: 'transparent', borderWidth: 1, borderColor: LuxuryColors.gold },
-          purchasing && { opacity: 0.55 },
-        ]}
-        onPress={onPurchase}
-        activeOpacity={0.85}
-        disabled={purchasing}
-      >
-        {purchasing ? (
-          <ActivityIndicator color={LuxuryColors.gold} />
-        ) : (
-          <>
-            <Ionicons name="card-outline" size={14} color={LuxuryColors.gold} />
-            <Text style={[paywallStyles.memberCtaText, { color: LuxuryColors.gold }]}>Purchase this experience</Text>
-          </>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={() => router.push('/payment-methods')}
-        activeOpacity={0.75}
-        style={{ marginTop: LuxurySpacing.sm }}
-      >
-        <Text style={[paywallStyles.exhaustedNote, { color: LuxuryColors.textSecondary }]}>Manage payment methods</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ─── Day Card ─────────────────────────────────────────────────────────────────
-
-function DayCard({ entry }: { entry: DailyPlanEntry }) {
-  const title = entry.title?.trim() ?? '';
-  const description = entry.description?.trim() ?? '';
-  return (
-    <View style={dayStyles.card}>
-      <View style={dayStyles.dayHeader}>
-        <View style={dayStyles.dayBadge}>
-          <Text style={dayStyles.dayBadgeText}>Day {entry.day}</Text>
-        </View>
-        {title ? <Text style={dayStyles.dayTitle}>{title}</Text> : null}
-      </View>
-      {description ? (
-        <Text style={dayStyles.dayDescription}>{description}</Text>
-      ) : null}
-      {!title && !description ? (
-        <Text style={dayStyles.dayDescription}>No details provided for this day yet.</Text>
-      ) : null}
-    </View>
-  );
-}
-
-// ─── Restaurant Card ──────────────────────────────────────────────────────────
-
-function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
-  return (
-    <View style={placeStyles.card}>
-      <View style={placeStyles.cardLeft}>
-        <View style={placeStyles.iconCircle}>
-          <Ionicons name="restaurant-outline" size={18} color={LuxuryColors.gold} />
-        </View>
-      </View>
-      <View style={placeStyles.cardBody}>
-        <Text style={placeStyles.placeName}>{restaurant.name}</Text>
-        {restaurant.description ? (
-          <Text style={placeStyles.placeNote}>{restaurant.description}</Text>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-// ─── Hidden Gem Card ──────────────────────────────────────────────────────────
-
-function HiddenGemCard({ gem }: { gem: HiddenGem }) {
-  return (
-    <View style={placeStyles.card}>
-      <View style={placeStyles.cardLeft}>
-        <View style={[placeStyles.iconCircle, { backgroundColor: 'rgba(212,175,55,0.18)' }]}>
-          <Ionicons name="star-outline" size={18} color={LuxuryColors.gold} />
-        </View>
-      </View>
-      <View style={placeStyles.cardBody}>
-        <Text style={placeStyles.placeName}>{gem.name}</Text>
-        {gem.description ? (
-          <Text style={placeStyles.placeNote}>{gem.description}</Text>
-        ) : null}
-        <View style={placeStyles.insiderBadge}>
-          <Text style={placeStyles.insiderBadgeText}>Insider Tip</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-// ─── Map Placeholder ──────────────────────────────────────────────────────────
-
-function MapPlaceholder({
-  city,
-  country,
-}: {
-  city: string;
-  country: string;
-}) {
-  const query = encodeURIComponent(`${city}, ${country}`);
-  const mapsUrl = `https://maps.google.com/?q=${query}`;
-
-  const handleOpenMaps = () => {
-    safeOpenUrl(mapsUrl, 'Could not open Maps.');
-  };
-
-  return (
-    <View style={mapStyles.placeholder}>
-      <View style={mapStyles.inner}>
-        <Ionicons name="map-outline" size={36} color={LuxuryColors.textTertiary} />
-        <Text style={mapStyles.label}>{city}, {country}</Text>
-        <Text style={mapStyles.sublabel}>
-          Interactive map integration coming soon.
+      <View style={styles.unlockBody}>
+        <Text style={styles.unlockTitle}>Unlock the complete memory trail</Text>
+        <Text style={styles.unlockText}>
+          Club access reveals every day on the timeline, the full route, restaurants, hidden gems, stays, and premium local notes.
         </Text>
+      </View>
+      <View style={styles.unlockActions}>
         <TouchableOpacity
-          style={mapStyles.openBtn}
-          onPress={handleOpenMaps}
-          activeOpacity={0.85}
+          style={styles.unlockButtonSecondary}
+          onPress={() => router.push('/(tabs)/membership')}
+          activeOpacity={0.86}
         >
-          <Ionicons name="navigate-outline" size={14} color={LuxuryColors.background} />
-          <Text style={mapStyles.openBtnText}>Open in Maps</Text>
+          <Text style={styles.unlockButtonSecondaryText}>Club</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.unlockButton, purchasing && { opacity: 0.6 }]}
+          onPress={onPurchase}
+          activeOpacity={0.86}
+          disabled={purchasing}
+        >
+          {purchasing ? (
+            <ActivityIndicator color={LuxuryColors.background} />
+          ) : (
+            <Text style={styles.unlockButtonText}>Purchase</Text>
+          )}
         </TouchableOpacity>
       </View>
-    </View>
+    </LinearGradient>
   );
 }
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ExperienceDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -346,16 +355,16 @@ export default function ExperienceDetailScreen() {
   const [experience, setExperience] = useState<CreatorExperience | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-
   const [isSaved, setIsSaved] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
   const [isClubMember, setIsClubMember] = useState(false);
   const [hasPurchasedCurrentExperience, setHasPurchasedCurrentExperience] = useState(false);
   const [accessLoading, setAccessLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const { confirmPayment } = useConfirmPayment();
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const confirmPayment = useExperienceConfirmPayment();
+  const saveScale = useRef(new Animated.Value(1)).current;
 
-  // ── Access check: club membership or this exact experience purchase ──
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     let cancelled = false;
@@ -364,10 +373,11 @@ export default function ExperienceDetailScreen() {
       setAccessLoading(true);
 
       if (!user) {
-        if (cancelled) return;
-        setIsClubMember(false);
-        setHasPurchasedCurrentExperience(false);
-        setAccessLoading(false);
+        if (!cancelled) {
+          setIsClubMember(false);
+          setHasPurchasedCurrentExperience(false);
+          setAccessLoading(false);
+        }
         return;
       }
 
@@ -376,9 +386,10 @@ export default function ExperienceDetailScreen() {
           checkMembership(user.uid).catch(() => false),
           experienceId ? hasPurchasedExperience(experienceId as string).catch(() => false) : Promise.resolve(false),
         ]);
-        if (cancelled) return;
-        setIsClubMember(active);
-        setHasPurchasedCurrentExperience(purchased);
+        if (!cancelled) {
+          setIsClubMember(active);
+          setHasPurchasedCurrentExperience(purchased);
+        }
       } finally {
         if (!cancelled) setAccessLoading(false);
       }
@@ -389,7 +400,6 @@ export default function ExperienceDetailScreen() {
     };
   }, [experienceId]);
 
-  // ── Load experience + unlock state ─────────────────────────────────
   useEffect(() => {
     if (!experienceId) {
       setNotFound(true);
@@ -398,7 +408,6 @@ export default function ExperienceDetailScreen() {
     }
 
     let cancelled = false;
-
     async function load() {
       try {
         const [exp, savedIds] = await Promise.all([
@@ -413,7 +422,6 @@ export default function ExperienceDetailScreen() {
         } else {
           setExperience(exp);
           setIsSaved(savedIds.includes(experienceId as string));
-          // P2.2: fire-and-forget view increment
           incrementExperienceViews(experienceId as string);
         }
       } catch {
@@ -424,7 +432,9 @@ export default function ExperienceDetailScreen() {
     }
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [experienceId]);
 
   const hasPremiumAccess = isClubMember || hasPurchasedCurrentExperience;
@@ -452,10 +462,7 @@ export default function ExperienceDetailScreen() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not complete purchase.';
       if (/payment method|card/i.test(message)) {
-        Alert.alert('Add a card', message, [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Payment Methods', onPress: () => router.push('/payment-methods') },
-        ]);
+        Alert.alert('Add a card', message, [{ text: 'OK' }]);
       } else {
         Alert.alert('Purchase failed', message);
       }
@@ -464,1036 +471,1270 @@ export default function ExperienceDetailScreen() {
     }
   }, [confirmPayment, experienceId, hasPremiumAccess, purchasing]);
 
-  // ── Save toggle ─────────────────────────────────────────────────────
   const handleToggleSave = useCallback(async () => {
     if (!experienceId || savingToggle) return;
     setSavingToggle(true);
-    console.log('[SaveTrip] experience id:', experienceId);
+    Animated.sequence([
+      Animated.spring(saveScale, { toValue: 0.92, useNativeDriver: true, speed: 40, bounciness: 6 }),
+      Animated.spring(saveScale, { toValue: 1, useNativeDriver: true, speed: 22, bounciness: 8 }),
+    ]).start();
     try {
       const newSaved = await toggleSavedExperience(experienceId as string);
-      const nowSaved = newSaved.includes(experienceId as string);
-      setIsSaved(nowSaved);
-      console.log('[SaveTrip] write success — saved:', nowSaved, '— total saved count:', newSaved.length);
-    } catch (err) {
-      console.error('[SaveTrip] write failure:', err);
+      setIsSaved(newSaved.includes(experienceId as string));
+    } catch {
       Alert.alert('Error', 'Could not update saved state.');
     } finally {
       setSavingToggle(false);
     }
-  }, [experienceId, savingToggle]);
+  }, [experienceId, saveScale, savingToggle]);
 
-  // ── Loading ─────────────────────────────────────────────────────────
+  const handleShare = useCallback(async () => {
+    if (!experience) return;
+    try {
+      await Share.share({
+        title: experience.title,
+        message: `${experience.title} in ${experience.city}, ${experience.country}\n\n${buildStory(experience)}`,
+      });
+    } catch {
+      // ignore dismissed share
+    }
+  }, [experience]);
+
+  const handleCreateReel = useCallback(() => {
+    if (!experience) return;
+    router.push({
+      pathname: '/(tabs)/ai-concierge',
+      params: { query: `Create a cinematic reel concept for ${experience.title} in ${experience.city}, ${experience.country}` },
+    });
+  }, [experience]);
+
+  const handleDownloadMemories = useCallback(async () => {
+    if (!experience) return;
+    const mediaUrl = isValidRemoteImageUrl(experience.coverImage) ? experience.coverImage!.trim() : undefined;
+    try {
+      await Share.share({
+        title: `${experience.title} memories`,
+        message: `Memories from ${experience.title} in ${experience.city}, ${experience.country}`,
+        url: mediaUrl,
+      });
+    } catch {
+      Alert.alert('Memories', 'Could not open the share sheet right now.');
+    }
+  }, [experience]);
+
+  const handleOpenMaps = useCallback((url?: string) => {
+    if (!url) return;
+    safeOpenUrl(url, 'Could not open Maps.');
+  }, []);
+
   if (loading || accessLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={LuxuryColors.gold} size="large" />
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={CYAN} size="large" />
       </View>
     );
   }
 
-  // ── Not found ───────────────────────────────────────────────────────
   if (notFound || !experience) {
     return (
-      <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <TouchableOpacity
-          style={styles.backBtnAbs}
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={22} color={LuxuryColors.textPrimary} />
-        </TouchableOpacity>
-        <Ionicons name="compass-outline" size={48} color={LuxuryColors.textTertiary} />
-        <Text style={styles.notFoundTitle}>Experience not available</Text>
-        <Text style={styles.notFoundBody}>
-          This experience may have been removed or is not yet published.
-        </Text>
-        <TouchableOpacity
-          style={styles.notFoundCta}
-          onPress={() => router.back()}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.notFoundCtaText}>Go back</Text>
+      <View style={styles.loadingWrap}>
+        <Ionicons name="compass-outline" size={40} color={LuxuryColors.textTertiary} />
+        <Text style={styles.emptyTitle}>Experience not available</Text>
+        <Text style={styles.emptyBody}>This experience may have been removed or is not yet published.</Text>
+        <TouchableOpacity style={styles.backGhostButton} onPress={() => router.back()} activeOpacity={0.82}>
+          <Text style={styles.backGhostButtonText}>Go back</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ── Derived values ──────────────────────────────────────────────────
-  const initials = deriveInitials(experience.creatorName);
-  const season = bestSeason(experience);
-  const days = parseInt(experience.duration, 10);
-  const difficulty =
-    !isNaN(days) && days >= 14 ? 'Advanced' :
-    !isNaN(days) && days >= 7 ? 'Moderate' : 'Easy';
-  const difficultyColor =
-    difficulty === 'Advanced' ? '#FF6B6B' :
-    difficulty === 'Moderate' ? '#FFA040' : '#4CAF80';
-
-  const firstDay = experience.dailyPlan[0] ?? null;
-  const remainingDays = experience.dailyPlan.slice(1);
+  const heroSource = coverSource(experience);
+  const story = buildStory(experience);
+  const memoryCount = Math.max(
+    (experience.hiddenGems.length + experience.restaurants.length + experience.hotels.length + experience.dailyPlan.length) * 7,
+    24,
+  );
+  const routeStops = buildRouteStops(experience, hasPremiumAccess);
+  const timeline = buildTimeline(experience, heroSource, hasPremiumAccess);
+  const highlights = buildHighlights(experience);
+  const visibleHighlights = hasPremiumAccess ? highlights : highlights.slice(0, 3);
+  const insights = buildInsights(experience, memoryCount);
+  const visibleInsights = hasPremiumAccess ? insights : insights.slice(0, 4);
+  const achievements = buildAchievements(experience);
+  const memories = buildMemoryTiles(experience, heroSource);
+  const visibleMemories = hasPremiumAccess ? memories : memories.slice(0, 4);
+  const totalLocations = Math.max(experience.hiddenGems.length + experience.restaurants.length + experience.hotels.length, 1);
+  const displayRating = experience.savedCount > 0 ? Math.min(5, 4.6 + experience.savedCount / 100).toFixed(1) : '4.9';
+  const quickInsights = [
+    { icon: 'airplane-outline' as const, value: `${Math.max(1, Math.ceil(durationDays(experience.duration) / 5))}`, label: 'Flights' },
+    { icon: 'location-outline' as const, value: `${totalLocations}`, label: 'Places Visited' },
+    { icon: 'camera-outline' as const, value: `${memoryCount}`, label: 'Photos' },
+    { icon: 'wallet-outline' as const, value: estimateSpend(experience), label: 'Total Spent' },
+  ];
+  const remainingDaysCount = Math.max(experience.dailyPlan.length - timeline.length, 0);
+  const remainingMemoriesCount = Math.max(memories.length - visibleMemories.length, 0);
+  const quoteText = experience.creatorNotes?.trim() || experience.description || 'A beautifully paced journey worth revisiting again and again.';
 
   return (
-    <View style={styles.container}>
+    <>
       <ScrollView
+        style={styles.screen}
         showsVerticalScrollIndicator={false}
-        bounces
         contentContainerStyle={{ paddingBottom: insets.bottom + LuxurySpacing.xxl }}
       >
-        {/* ─────────────────────────────────────────────────────────────
-            1. HERO
-        ───────────────────────────────────────────────────────────── */}
-        <View style={heroStyles.container}>
-          {isValidRemoteImageUrl(experience.coverImage) ? (
-            <Image
-              source={{ uri: experience.coverImage!.trim() }}
-              style={heroStyles.image}
-              resizeMode="cover"
-            />
+        <View style={styles.heroSection}>
+          {heroSource ? (
+            <Image source={heroSource} style={styles.heroImage} resizeMode="cover" />
           ) : (
-            <View style={heroStyles.imageFallback}>
-              <Ionicons name="globe-outline" size={64} color={LuxuryColors.textTertiary} />
-            </View>
+            <GradientFallback icon="airplane-outline" title={`${experience.city}, ${experience.country}`} subtitle="Curated journey memory" />
           )}
+          <LinearGradient colors={['rgba(6,12,20,0.08)', 'rgba(6,12,20,0.48)', 'rgba(6,12,20,0.94)']} style={StyleSheet.absoluteFillObject} />
 
-          {/* Gradient overlay */}
-          <LinearGradient
-            colors={['transparent', 'rgba(7,17,32,0.65)', LuxuryColors.background]}
-            locations={[0.2, 0.6, 1]}
-            style={heroStyles.gradient}
-          />
+          <View style={[styles.heroActions, { top: insets.top + LuxurySpacing.sm }]}>
+            <TouchableOpacity style={styles.heroActionButton} onPress={() => router.back()} activeOpacity={0.84}>
+              <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.heroActionRowRight}>
+              <TouchableOpacity style={styles.heroActionButton} onPress={handleShare} activeOpacity={0.84}>
+                <Ionicons name="share-social-outline" size={19} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+                <TouchableOpacity style={styles.heroActionButton} onPress={handleToggleSave} activeOpacity={0.84} disabled={savingToggle}>
+                  <Ionicons name={isSaved ? 'heart' : 'heart-outline'} size={19} color={isSaved ? CYAN : '#FFFFFF'} />
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
+          </View>
 
-          {/* Back button */}
-          <TouchableOpacity
-            style={[heroStyles.backBtn, { top: insets.top + LuxurySpacing.sm }]}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="arrow-back" size={20} color={LuxuryColors.textPrimary} />
-          </TouchableOpacity>
-
-          {/* Save button */}
-          <TouchableOpacity
-            style={[heroStyles.saveBtn, { top: insets.top + LuxurySpacing.sm }]}
-            onPress={handleToggleSave}
-            activeOpacity={0.8}
-            disabled={savingToggle}
-          >
-            <Ionicons
-              name={isSaved ? 'bookmark' : 'bookmark-outline'}
-              size={20}
-              color={isSaved ? LuxuryColors.gold : LuxuryColors.textPrimary}
-            />
-          </TouchableOpacity>
-
-          {/* Hero text overlay */}
-          <View style={heroStyles.textOverlay}>
-            {/* Creator attribution */}
-            <View style={heroStyles.creatorRow}>
-              <View style={heroStyles.avatar}>
-                <Text style={heroStyles.avatarInitials}>{initials}</Text>
-              </View>
-              <Text style={heroStyles.creatorName}>{experience.creatorName}</Text>
+          <View style={styles.heroContent}>
+            <View style={styles.statusBadge}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusBadgeText}>Completed Trip</Text>
             </View>
 
-            <Text style={heroStyles.title}>{experience.title}</Text>
+            <Text style={styles.destinationTitle}>{experience.title}</Text>
+            <Text style={styles.countryText}>{experience.city}, {experience.country}</Text>
 
-            {/* Quick meta */}
-            <View style={heroStyles.metaRow}>
-              <View style={heroStyles.metaChip}>
-                <Ionicons name="location-outline" size={12} color={LuxuryColors.gold} />
-                <Text style={heroStyles.metaChipText}>
-                  {experience.city}, {experience.country}
-                </Text>
+            <TouchableOpacity
+              style={styles.creatorPill}
+              onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: experience.creatorId } })}
+              activeOpacity={0.84}
+            >
+              <View style={styles.creatorAvatarMini}>
+                <Text style={styles.creatorAvatarMiniText}>{deriveInitials(experience.creatorName || 'Creator')}</Text>
               </View>
-              <View style={heroStyles.metaChip}>
-                <Ionicons name="time-outline" size={12} color={LuxuryColors.gold} />
-                <Text style={heroStyles.metaChipText}>{experience.duration}</Text>
+              <Text style={styles.creatorPillText}>{experience.creatorName || 'Curated by creator'}</Text>
+            </TouchableOpacity>
+
+            <View style={styles.heroMetaGrid}>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="calendar-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{tripRangeLabel(experience)}</Text>
               </View>
-              <View style={heroStyles.metaChip}>
-                <Text style={heroStyles.metaChipText}>{experience.budget}</Text>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="time-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{experience.duration}</Text>
+              </View>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="star-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{displayRating}</Text>
+              </View>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="images-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{memoryCount} memories</Text>
               </View>
             </View>
-
-            {/* Travel style tag */}
-            <StyleTag style={experience.travelStyle} />
           </View>
         </View>
 
-        {/* Body padding */}
-        <View style={styles.body}>
-
-          {/* ─────────────────────────────────────────────────────────────
-              2. OVERVIEW
-          ───────────────────────────────────────────────────────────── */}
-          <View style={detailStyles.section}>
-            <SectionTitle title="Overview" icon="information-circle-outline" />
-
-            {experience.description ? (
-              <Text style={detailStyles.description}>{experience.description}</Text>
-            ) : (
-              <Text style={detailStyles.emptyState}>No description added yet.</Text>
-            )}
-
-            {/* Who it's for */}
-            <View style={detailStyles.whoRow}>
-              <Ionicons name="people-outline" size={14} color={LuxuryColors.gold} />
-              <Text style={detailStyles.whoText}>For: {whoItsFor(experience.travelStyle)}</Text>
-            </View>
-
-            {/* Info pills grid */}
-            <View style={detailStyles.pillGrid}>
-              <InfoPill icon="sunny-outline"        label="Best Season"    value={season} />
-              <InfoPill icon="trending-up-outline"  label="Difficulty"     value={difficulty} />
-              <InfoPill icon="cash-outline"         label="Budget"         value={budgetLabel(experience.budget)} />
-              <InfoPill icon="calendar-outline"     label="Duration"       value={experience.duration} />
-            </View>
+        <View style={styles.contentWrap}>
+          <View style={styles.sectionHeaderWrap}>
+            <Text style={styles.sectionEyebrow}>Quick Insights</Text>
+            <Text style={styles.sectionHeading}>A premium snapshot of the journey</Text>
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              3. CREATOR NOTES
-          ───────────────────────────────────────────────────────────── */}
-          <View style={detailStyles.section}>
-            <SectionTitle title="Creator Notes" icon="bulb-outline" />
+          <View style={styles.quickGrid}>
+            {quickInsights.map((item) => (
+              <LinearGradient key={item.label} colors={['rgba(18,39,60,0.95)', 'rgba(9,18,29,0.95)']} style={styles.quickCard}>
+                <View style={styles.quickCardGlow} />
+                <View style={styles.quickIconWrap}>
+                  <Ionicons name={item.icon} size={18} color={CYAN} />
+                </View>
+                <Text style={styles.quickValue}>{item.value}</Text>
+                <Text style={styles.quickLabel}>{item.label}</Text>
+              </LinearGradient>
+            ))}
+          </View>
 
-            <View style={creatorStyles.noteCard}>
-              <View style={creatorStyles.creatorRow}>
-                <View style={creatorStyles.avatar}>
-                  <Text style={creatorStyles.avatarInitials}>{initials}</Text>
-                </View>
-                <View>
-                  <Text style={creatorStyles.byLine}>Notes from {experience.creatorName}</Text>
-                  <Text style={creatorStyles.byLineSub}>Creator insights</Text>
-                </View>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Journey Story</Text>
+            <LinearGradient colors={['rgba(17,39,62,0.92)', 'rgba(8,17,30,0.98)']} style={styles.storyCard}>
+              <View style={styles.storyIconWrap}>
+                <Ionicons name="sparkles-outline" size={18} color={CYAN} />
               </View>
+              <Text style={styles.storyText}>{story}</Text>
+            </LinearGradient>
+          </View>
 
-              {experience.creatorNotes ? (
-                <Text style={creatorStyles.tipText}>{experience.creatorNotes}</Text>
-              ) : (
-                <Text style={detailStyles.emptyState}>No creator notes added yet.</Text>
-              )}
-            </View>
+          {!hasPremiumAccess ? <UnlockCard onPurchase={handlePurchase} purchasing={purchasing} /> : null}
 
-            {experience.tips.length > 0 && (
-              <View style={{ marginTop: LuxurySpacing.md }}>
-                <Text style={[creatorStyles.byLine, { marginBottom: LuxurySpacing.sm }]}>Travel Tips</Text>
-                {experience.tips.map((tip, i) => (
-                  <View key={i} style={creatorStyles.tipRow}>
-                    <Ionicons
-                      name="sparkles-outline"
-                      size={14}
-                      color={LuxuryColors.gold}
-                      style={{ marginTop: 2 }}
-                    />
-                    <Text style={creatorStyles.tipText}>{tip}</Text>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Trip Route</Text>
+            <LinearGradient colors={['rgba(14,27,43,0.96)', 'rgba(7,15,26,0.98)']} style={styles.routeCard}>
+              <View style={styles.routeMapBackdrop}>
+                <View style={styles.routeGlowLarge} />
+                <View style={styles.routeGlowSmall} />
+              </View>
+              <View style={styles.routeCanvas}>
+                <View style={styles.routeLineTrack} />
+                {routeStops.map((stop, index) => (
+                  <View key={stop.id} style={[styles.routeStop, { left: `${10 + index * 20}%`, top: index % 2 === 0 ? 28 : 92 }]}>
+                    <View style={styles.routeMarker}>
+                      <View style={styles.routeMarkerInner} />
+                    </View>
                   </View>
                 ))}
               </View>
-            )}
-          </View>
-
-          {/* ─────────────────────────────────────────────────────────────
-              4. DAILY PLAN
-          ───────────────────────────────────────────────────────────── */}
-          <View style={detailStyles.section}>
-            <SectionTitle title="Daily Plan" icon="calendar-number-outline" />
-
-            {experience.dailyPlan.length === 0 ? (
-              <View style={detailStyles.emptyCard}>
-                <Ionicons name="calendar-outline" size={28} color={LuxuryColors.textTertiary} />
-                <Text style={detailStyles.emptyCardText}>No itinerary added yet.</Text>
-              </View>
-            ) : (
-              <>
-                {/* Day 1 always visible */}
-                {firstDay && <DayCard entry={firstDay} />}
-
-                {/* Days 2+ require unlock */}
-                {remainingDays.length > 0 && (
-                  hasPremiumAccess ? (
-                    remainingDays.map((day) => <DayCard key={day.day} entry={day} />)
-                  ) : (
-                    <PaywallBanner
-                      sectionName={`${remainingDays.length} more day${remainingDays.length > 1 ? 's' : ''}`}
-                      onPurchase={handlePurchase}
-                      purchasing={purchasing}
-                    />
-                  )
-                )}
-              </>
-            )}
-          </View>
-
-          {/* ─────────────────────────────────────────────────────────────
-              5. PLACES & MAP PREVIEW
-          ───────────────────────────────────────────────────────────── */}
-          <View style={detailStyles.section}>
-            <SectionTitle title="Places & Map" icon="map-outline" />
-
-            {hasPremiumAccess ? (
-              <>
-                {/* Key places derived from hotels */}
-                {experience.hotels.length > 0 && (
-                  <View style={{ marginBottom: LuxurySpacing.md }}>
-                    <Text style={detailStyles.subLabel}>Where to Stay</Text>
-                    {experience.hotels.map((h: Hotel, i: number) => (
-                      <View key={i} style={placeStyles.card}>
-                        <View style={placeStyles.cardLeft}>
-                          <View style={placeStyles.iconCircle}>
-                            <Ionicons name="bed-outline" size={18} color={LuxuryColors.gold} />
-                          </View>
-                        </View>
-                        <View style={placeStyles.cardBody}>
-                          <Text style={placeStyles.placeName}>{h.name}</Text>
-                          {h.address ? <Text style={placeStyles.placeNote}>{h.address}</Text> : null}
-                          {h.notes ? <Text style={placeStyles.placeNote}>{h.notes}</Text> : null}
-                        </View>
-                      </View>
-                    ))}
+              <View style={styles.routeStopsList}>
+                {routeStops.map((stop) => (
+                  <View key={stop.id} style={styles.routeStopRow}>
+                    <View style={styles.routeStopBadge}>
+                      <Ionicons name="navigate-outline" size={12} color={CYAN} />
+                    </View>
+                    <View style={styles.routeStopTextWrap}>
+                      <Text style={styles.routeStopTitle}>{stop.label}</Text>
+                      <Text style={styles.routeStopSubtitle}>{stop.subtitle}</Text>
+                    </View>
                   </View>
-                )}
-
-                <MapPlaceholder city={experience.city} country={experience.country} />
-              </>
-            ) : (
-              <PaywallBanner
-                sectionName="map and accommodation details"
-                onPurchase={handlePurchase}
-                purchasing={purchasing}
-              />
-            )}
+                ))}
+              </View>
+            </LinearGradient>
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              6. RESTAURANTS & CAFÉS
-          ───────────────────────────────────────────────────────────── */}
-          <View style={detailStyles.section}>
-            <SectionTitle title="Restaurants & Cafés" icon="restaurant-outline" />
-
-            {hasPremiumAccess ? (
-              experience.restaurants.length > 0 ? (
-                experience.restaurants.map((r, i) => (
-                  <RestaurantCard key={i} restaurant={r} />
-                ))
-              ) : (
-                <View style={detailStyles.emptyCard}>
-                  <Ionicons name="restaurant-outline" size={28} color={LuxuryColors.textTertiary} />
-                  <Text style={detailStyles.emptyCardText}>No restaurants added yet.</Text>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Itinerary Timeline</Text>
+            <View style={styles.timelineWrap}>
+              {timeline.map((item) => (
+                <View key={item.id} style={styles.timelineRow}>
+                  <View style={styles.timelineRailWrap}>
+                    <View style={styles.timelineRail} />
+                    <LinearGradient colors={['#8AE6FF', '#4DA8FF']} style={styles.timelineNode}>
+                      <Text style={styles.timelineNodeText}>{item.day}</Text>
+                    </LinearGradient>
+                  </View>
+                  <LinearGradient colors={['rgba(20,38,59,0.96)', 'rgba(8,17,30,0.98)']} style={styles.timelineCard}>
+                    <View style={styles.timelineThumbWrap}>
+                      {item.source ? (
+                        <Image source={item.source} style={styles.timelineThumb} resizeMode="cover" />
+                      ) : (
+                        <GradientFallback icon="images-outline" title={item.title} subtitle={item.dateLabel} />
+                      )}
+                    </View>
+                    <View style={styles.timelineBody}>
+                      <Text style={styles.timelineDate}>{item.dateLabel}</Text>
+                      <Text style={styles.timelineTitle}>{item.title}</Text>
+                      <Text style={styles.timelineDescription}>{item.description}</Text>
+                    </View>
+                  </LinearGradient>
                 </View>
-              )
-            ) : (
-              <PaywallBanner
-                sectionName="restaurants and cafés"
-                onPurchase={handlePurchase}
-                purchasing={purchasing}
-              />
-            )}
+              ))}
+            </View>
+            {!hasPremiumAccess && remainingDaysCount > 0 ? (
+              <Text style={styles.lockedHint}>Unlock to reveal {remainingDaysCount} more itinerary day{remainingDaysCount === 1 ? '' : 's'}.</Text>
+            ) : null}
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              7. HIDDEN GEMS
-          ───────────────────────────────────────────────────────────── */}
-          <View style={detailStyles.section}>
-            <SectionTitle title="Hidden Gems" icon="sparkles-outline" />
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Trip Highlights</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.highlightsRow}>
+              {visibleHighlights.map((item) => (
+                <LinearGradient key={item.title} colors={['rgba(17,39,62,0.94)', 'rgba(9,17,28,0.98)']} style={styles.highlightCard}>
+                  <View style={styles.highlightIconBadge}>
+                    <Ionicons name={item.icon} size={16} color={CYAN} />
+                  </View>
+                  <Text style={styles.highlightTitle}>{item.title}</Text>
+                  <Text style={styles.highlightValue} numberOfLines={2}>{item.value}</Text>
+                  <Text style={styles.highlightCaption}>{item.caption}</Text>
+                </LinearGradient>
+              ))}
+            </ScrollView>
+          </View>
 
-            {hasPremiumAccess ? (
-              experience.hiddenGems.length > 0 ? (
-                experience.hiddenGems.map((gem, i) => (
-                  <HiddenGemCard key={i} gem={gem} />
-                ))
-              ) : (
-                <View style={detailStyles.emptyCard}>
-                  <Ionicons name="star-outline" size={28} color={LuxuryColors.textTertiary} />
-                  <Text style={detailStyles.emptyCardText}>No hidden gems added yet.</Text>
+          <View style={styles.sectionBlock}>
+            <View style={styles.memoriesHeaderRow}>
+              <View>
+                <Text style={styles.sectionEyebrow}>Travel Memories</Text>
+                <Text style={styles.sectionHeading}>A visual reel of the trip</Text>
+              </View>
+              <TouchableOpacity onPress={() => setGalleryVisible(true)} activeOpacity={0.84}>
+                <Text style={styles.memoriesActionText}>Open gallery</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.masonryRow}>
+              <View style={styles.masonryColumn}>
+                {visibleMemories.filter((_, index) => index % 2 === 0).map((tile) => (
+                  <TouchableOpacity key={tile.id} style={[styles.memoryTile, tile.tall ? styles.memoryTileTall : styles.memoryTileShort]} onPress={() => setGalleryVisible(true)} activeOpacity={0.88}>
+                    {tile.source ? (
+                      <Image source={tile.source} style={styles.memoryImage} resizeMode="cover" />
+                    ) : (
+                      <GradientFallback icon="camera-outline" title={tile.label} subtitle={tile.caption} />
+                    )}
+                    <LinearGradient colors={['transparent', 'rgba(6,12,20,0.82)']} style={StyleSheet.absoluteFillObject} />
+                    <View style={styles.memoryOverlay}>
+                      <Text style={styles.memoryLabel}>{tile.label}</Text>
+                      <Text style={styles.memoryCaption}>{tile.caption}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.masonryColumn}>
+                {visibleMemories.filter((_, index) => index % 2 === 1).map((tile, index, arr) => {
+                  const isLast = index === arr.length - 1;
+                  return (
+                    <TouchableOpacity key={tile.id} style={[styles.memoryTile, tile.tall ? styles.memoryTileTall : styles.memoryTileShort]} onPress={() => setGalleryVisible(true)} activeOpacity={0.88}>
+                      {tile.source ? (
+                        <Image source={tile.source} style={styles.memoryImage} resizeMode="cover" />
+                      ) : (
+                        <GradientFallback icon="camera-outline" title={tile.label} subtitle={tile.caption} />
+                      )}
+                      <LinearGradient colors={['transparent', 'rgba(6,12,20,0.86)']} style={StyleSheet.absoluteFillObject} />
+                      <View style={styles.memoryOverlay}>
+                        <Text style={styles.memoryLabel}>{tile.label}</Text>
+                        <Text style={styles.memoryCaption}>{tile.caption}</Text>
+                      </View>
+                      {isLast ? (
+                        <View style={styles.moreMemoriesBadge}>
+                          <Text style={styles.moreMemoriesText}>{remainingMemoriesCount > 0 ? `+${remainingMemoriesCount}` : '+99'} memories</Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Trip Insights</Text>
+            <View style={styles.insightsGrid}>
+              {visibleInsights.map((item) => (
+                <View key={item.label} style={styles.insightCard}>
+                  <View style={styles.insightIconWrap}>
+                    <Ionicons name={item.icon} size={15} color={CYAN} />
+                  </View>
+                  <Text style={styles.insightValue}>{item.value}</Text>
+                  <Text style={styles.insightLabel}>{item.label}</Text>
                 </View>
-              )
-            ) : (
-              <PaywallBanner
-                sectionName="hidden gems and insider spots"
-                onPurchase={handlePurchase}
-                purchasing={purchasing}
-              />
-            )}
+              ))}
+            </View>
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              8. SAVE EXPERIENCE
-          ───────────────────────────────────────────────────────────── */}
-          <View style={saveStyles.section}>
-            <TouchableOpacity
-              style={[saveStyles.saveBtn, isSaved && saveStyles.saveBtnActive]}
-              onPress={handleToggleSave}
-              activeOpacity={0.85}
-              disabled={savingToggle}
-            >
-              <Ionicons
-                name={isSaved ? 'bookmark' : 'bookmark-outline'}
-                size={20}
-                color={isSaved ? LuxuryColors.background : LuxuryColors.gold}
-              />
-              <Text
-                style={[saveStyles.saveBtnText, isSaved && saveStyles.saveBtnTextActive]}
-              >
-                {isSaved ? 'Saved' : 'Save Experience'}
-              </Text>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>User Notes</Text>
+            <LinearGradient colors={['rgba(18,41,63,0.96)', 'rgba(8,17,30,0.98)']} style={styles.notesCard}>
+              <Text style={styles.quoteMark}>"</Text>
+              <Text style={styles.notesText}>{quoteText}</Text>
+              <Text style={styles.notesAttribution}>{experience.creatorName || 'Traveler note'}</Text>
+            </LinearGradient>
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Achievements</Text>
+            <View style={styles.achievementWrap}>
+              {achievements.map((badge) => (
+                <LinearGradient key={badge} colors={['rgba(27,72,105,0.92)', 'rgba(10,26,40,0.98)']} style={styles.achievementBadge}>
+                  <View style={styles.achievementGlow} />
+                  <Ionicons name="ribbon-outline" size={14} color={CYAN} />
+                  <Text style={styles.achievementText}>{badge}</Text>
+                </LinearGradient>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Premium Collections</Text>
+            <View style={styles.collectionCards}>
+              {hasPremiumAccess && experience.hotels.length > 0 ? (
+                experience.hotels.slice(0, 2).map((hotel) => (
+                  <TouchableOpacity
+                    key={hotel.name}
+                    style={styles.collectionCard}
+                    activeOpacity={0.84}
+                    onPress={() => handleOpenMaps(hotel.mapsLink || experience.googleMapsUrl)}
+                  >
+                    <Ionicons name="bed-outline" size={18} color={CYAN} />
+                    <Text style={styles.collectionTitle}>{hotel.name}</Text>
+                    <Text style={styles.collectionBody} numberOfLines={2}>{hotel.address || hotel.notes || 'Premium stay recommendation'}</Text>
+                  </TouchableOpacity>
+                ))
+              ) : null}
+              {hasPremiumAccess && experience.restaurants.length > 0 ? (
+                experience.restaurants.slice(0, 2).map((restaurant) => (
+                  <TouchableOpacity
+                    key={restaurant.name}
+                    style={styles.collectionCard}
+                    activeOpacity={0.84}
+                    onPress={() => handleOpenMaps(restaurant.mapsLink || experience.googleMapsUrl)}
+                  >
+                    <Ionicons name="restaurant-outline" size={18} color={CYAN} />
+                    <Text style={styles.collectionTitle}>{restaurant.name}</Text>
+                    <Text style={styles.collectionBody} numberOfLines={2}>{restaurant.description || 'A creator-picked dining stop.'}</Text>
+                  </TouchableOpacity>
+                ))
+              ) : null}
+              {hasPremiumAccess && experience.hiddenGems.length > 0 ? (
+                experience.hiddenGems.slice(0, 2).map((gem) => (
+                  <TouchableOpacity
+                    key={gem.name}
+                    style={styles.collectionCard}
+                    activeOpacity={0.84}
+                    onPress={() => handleOpenMaps(gem.mapsLink || experience.googleMapsUrl)}
+                  >
+                    <Ionicons name="sparkles-outline" size={18} color={CYAN} />
+                    <Text style={styles.collectionTitle}>{gem.name}</Text>
+                    <Text style={styles.collectionBody} numberOfLines={2}>{gem.description || 'A hidden local favorite worth the detour.'}</Text>
+                  </TouchableOpacity>
+                ))
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.bottomActionsWrap}>
+            <TouchableOpacity style={styles.secondaryAction} onPress={handleShare} activeOpacity={0.86}>
+              <Ionicons name="share-social-outline" size={17} color="#D8F7FF" />
+              <Text style={styles.secondaryActionText}>Share Journey</Text>
             </TouchableOpacity>
-
-            {isSaved && (
-              <Text style={saveStyles.savedNote}>
-                Saved to your profile. Access it anytime from your saved list.
-              </Text>
-            )}
+            <TouchableOpacity style={styles.primaryAction} onPress={handleCreateReel} activeOpacity={0.88}>
+              <LinearGradient colors={['#8AE6FF', '#3FA7FF']} style={styles.primaryActionFill}>
+                <Ionicons name="sparkles-outline" size={18} color="#04111E" />
+                <Text style={styles.primaryActionText}>Create Reel</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryAction} onPress={handleDownloadMemories} activeOpacity={0.86}>
+              <Ionicons name="download-outline" size={17} color="#D8F7FF" />
+              <Text style={styles.secondaryActionText}>Download Memories</Text>
+            </TouchableOpacity>
           </View>
-
-        </View>{/* /body */}
+        </View>
       </ScrollView>
-    </View>
+
+      <Modal visible={galleryVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setGalleryVisible(false)}>
+        <View style={styles.galleryModalBackdrop}>
+          <TouchableOpacity style={[styles.galleryModalClose, { top: insets.top + LuxurySpacing.sm }]} onPress={() => setGalleryVisible(false)} activeOpacity={0.82}>
+            <Ionicons name="close" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <ScrollView contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: insets.bottom + 48 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.galleryModalGrid}>
+              {memories.map((tile) => (
+                <View key={tile.id} style={[styles.galleryModalTile, tile.tall ? styles.galleryModalTileTall : styles.galleryModalTileShort]}>
+                  {tile.source ? (
+                    <Image source={tile.source} style={styles.memoryImage} resizeMode="cover" />
+                  ) : (
+                    <GradientFallback icon="images-outline" title={tile.label} subtitle={tile.caption} />
+                  )}
+                  <LinearGradient colors={['transparent', 'rgba(6,12,20,0.85)']} style={StyleSheet.absoluteFillObject} />
+                  <View style={styles.memoryOverlay}>
+                    <Text style={styles.memoryLabel}>{tile.label}</Text>
+                    <Text style={styles.memoryCaption}>{tile.caption}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+    </>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: LuxuryColors.background,
+    backgroundColor: '#050C15',
   },
-  centered: {
+  loadingWrap: {
     flex: 1,
-    backgroundColor: LuxuryColors.background,
+    backgroundColor: '#050C15',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: LuxurySpacing.xl,
+    gap: LuxurySpacing.md,
   },
-  backBtnAbs: {
-    position: 'absolute',
-    top: LuxurySpacing.lg,
-    left: LuxurySpacing.md,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: LuxuryColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notFoundTitle: {
+  emptyTitle: {
     color: LuxuryColors.textPrimary,
     fontSize: LuxuryFontSize.xl,
     fontWeight: '700',
-    marginTop: LuxurySpacing.lg,
-    textAlign: 'center',
   },
-  notFoundBody: {
+  emptyBody: {
     color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.sm,
     textAlign: 'center',
-    marginTop: LuxurySpacing.sm,
     lineHeight: 22,
   },
-  notFoundCta: {
-    marginTop: LuxurySpacing.xl,
-    backgroundColor: LuxuryColors.gold,
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.md,
-    borderRadius: LuxuryBorderRadius.full,
-  },
-  notFoundCtaText: {
-    color: LuxuryColors.background,
-    fontSize: LuxuryFontSize.md,
-    fontWeight: '700',
-  },
-  body: {
-    paddingHorizontal: LuxurySpacing.md,
-    paddingTop: LuxurySpacing.lg,
-  },
-});
-
-// ── Hero ──────────────────────────────────────────────────────────────────────
-
-const heroStyles = StyleSheet.create({
-  container: {
-    height: HERO_HEIGHT,
-    position: 'relative',
-  },
-  image: {
-    width: SCREEN_WIDTH,
-    height: HERO_HEIGHT,
-    position: 'absolute',
-  },
-  imageFallback: {
-    width: SCREEN_WIDTH,
-    height: HERO_HEIGHT,
-    backgroundColor: LuxuryColors.surfaceLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-  },
-  gradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: HERO_HEIGHT,
-  },
-  backBtn: {
-    position: 'absolute',
-    left: LuxurySpacing.md,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(7,17,32,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  saveBtn: {
-    position: 'absolute',
-    right: LuxurySpacing.md,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(7,17,32,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  textOverlay: {
-    position: 'absolute',
-    bottom: LuxurySpacing.lg,
-    left: LuxurySpacing.md,
-    right: LuxurySpacing.md,
-  },
-  creatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: LuxurySpacing.sm,
-    gap: LuxurySpacing.sm,
-  },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: LuxuryColors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    color: LuxuryColors.background,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  creatorName: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '600',
-    opacity: 0.9,
-  },
-  title: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.xxl,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginBottom: LuxurySpacing.sm,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: LuxurySpacing.xs,
-    marginBottom: LuxurySpacing.sm,
-  },
-  metaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(7,17,32,0.65)',
-    paddingHorizontal: LuxurySpacing.sm,
-    paddingVertical: 4,
-    borderRadius: LuxuryBorderRadius.full,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.2)',
-  },
-  metaChipText: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '600',
-  },
-});
-
-// ── Tags ──────────────────────────────────────────────────────────────────────
-
-const tagStyles = StyleSheet.create({
-  tag: {
-    alignSelf: 'flex-start',
-    backgroundColor: LuxuryColors.gold,
-    paddingHorizontal: LuxurySpacing.sm,
-    paddingVertical: 4,
-    borderRadius: LuxuryBorderRadius.full,
-  },
-  tagText: {
-    color: LuxuryColors.background,
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-});
-
-// ── Detail sections ───────────────────────────────────────────────────────────
-
-const detailStyles = StyleSheet.create({
-  section: {
-    marginBottom: LuxurySpacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    marginBottom: LuxurySpacing.md,
-  },
-  sectionTitle: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.lg,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  description: {
-    color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.md,
-    lineHeight: 26,
-    marginBottom: LuxurySpacing.lg,
-  },
-  emptyState: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.sm,
-    fontStyle: 'italic',
-    marginBottom: LuxurySpacing.md,
-  },
-  emptyCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    backgroundColor: LuxuryColors.surface,
-    borderWidth: 1,
-    borderColor: LuxuryColors.surfaceLight,
-    borderRadius: LuxuryBorderRadius.md,
-    padding: LuxurySpacing.md,
-    marginBottom: LuxurySpacing.sm,
-  },
-  emptyCardText: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.sm,
-    fontStyle: 'italic',
-  },
-  whoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.xs,
-    marginBottom: LuxurySpacing.lg,
-  },
-  whoText: {
-    color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.sm,
-    fontStyle: 'italic',
-    flex: 1,
-  },
-  subLabel: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: LuxurySpacing.sm,
-  },
-  pillGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: LuxurySpacing.sm,
-  },
-  infoPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: LuxuryColors.surface,
-    borderWidth: 1,
-    borderColor: LuxuryColors.surfaceLight,
-    borderRadius: LuxuryBorderRadius.md,
-    paddingHorizontal: LuxurySpacing.md,
+  backGhostButton: {
+    paddingHorizontal: LuxurySpacing.lg,
     paddingVertical: LuxurySpacing.sm,
-    width: (SCREEN_WIDTH - LuxurySpacing.md * 2 - LuxurySpacing.sm) / 2,
-  },
-  infoPillLabel: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '600',
-  },
-  infoPillValue: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: LuxurySpacing.xs + 2,
-    gap: LuxurySpacing.sm,
-  },
-  bulletDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: LuxuryColors.gold,
-    marginTop: 8,
-    flexShrink: 0,
-  },
-  bulletText: {
-    flex: 1,
-    color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.sm,
-    lineHeight: 22,
-  },
-});
-
-// ── Creator notes ─────────────────────────────────────────────────────────────
-
-const creatorStyles = StyleSheet.create({
-  noteCard: {
-    backgroundColor: LuxuryColors.surface,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.15)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-    ...LuxuryShadow.soft,
+    borderColor: 'rgba(138,230,255,0.35)',
   },
-  creatorRow: {
+  backGhostButtonText: {
+    color: CYAN,
+    fontWeight: '700',
+  },
+  heroSection: {
+    height: 470,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#081423',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroActions: {
+    position: 'absolute',
+    left: LuxurySpacing.md,
+    right: LuxurySpacing.md,
+    zIndex: 4,
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    marginBottom: LuxurySpacing.md,
-    paddingBottom: LuxurySpacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: LuxuryColors.divider,
   },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: LuxuryColors.gold,
+  heroActionRowRight: {
+    flexDirection: 'row',
+    gap: LuxurySpacing.sm,
+  },
+  heroActionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(7, 19, 31, 0.44)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitials: {
-    color: LuxuryColors.background,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '800',
+  heroContent: {
+    position: 'absolute',
+    left: LuxurySpacing.lg,
+    right: LuxurySpacing.lg,
+    bottom: LuxurySpacing.xl,
   },
-  byLine: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-  },
-  byLineSub: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
-    marginTop: 1,
-  },
-  tipRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: LuxurySpacing.sm,
-    marginBottom: LuxurySpacing.sm,
-  },
-  tipText: {
-    flex: 1,
-    color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.sm,
-    lineHeight: 22,
-  },
-});
-
-// ── Day card ──────────────────────────────────────────────────────────────────
-
-const dayStyles = StyleSheet.create({
-  card: {
-    backgroundColor: LuxuryColors.surface,
-    borderWidth: 1,
-    borderColor: LuxuryColors.surfaceLight,
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-    marginBottom: LuxurySpacing.md,
-    ...LuxuryShadow.soft,
-  },
-  dayHeader: {
-    marginBottom: LuxurySpacing.md,
-  },
-  dayBadge: {
+  statusBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: LuxuryColors.goldGlow,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.3)',
-    paddingHorizontal: LuxurySpacing.sm,
-    paddingVertical: 4,
-    borderRadius: LuxuryBorderRadius.full,
-  },
-  dayBadgeText: {
-    color: LuxuryColors.gold,
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  dayTitle: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '600',
-    marginTop: LuxurySpacing.xs,
-  },
-  dayDescription: {
-    color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.sm,
-    lineHeight: 22,
-    marginTop: LuxurySpacing.xs,
-  },
-  slotBlock: {
-    marginBottom: LuxurySpacing.sm,
-  },
-  slotLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginBottom: LuxurySpacing.xs,
-  },
-  slotLabelText: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-});
-
-// ── Place cards ───────────────────────────────────────────────────────────────
-
-const placeStyles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    backgroundColor: LuxuryColors.surface,
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(9, 29, 45, 0.48)',
     borderWidth: 1,
-    borderColor: LuxuryColors.surfaceLight,
-    borderRadius: LuxuryBorderRadius.md,
-    padding: LuxurySpacing.md,
-    marginBottom: LuxurySpacing.sm,
-    ...LuxuryShadow.soft,
+    borderColor: 'rgba(138,230,255,0.20)',
+    marginBottom: LuxurySpacing.md,
   },
-  cardLeft: {
-    marginRight: LuxurySpacing.md,
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: CYAN,
   },
-  iconCircle: {
+  statusBadgeText: {
+    color: '#E6FAFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  destinationTitle: {
+    color: '#FFFFFF',
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: '800',
+    letterSpacing: -1,
+  },
+  countryText: {
+    color: 'rgba(230,250,255,0.72)',
+    fontSize: 16,
+    marginTop: 6,
+    marginBottom: LuxurySpacing.md,
+  },
+  creatorPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: LuxurySpacing.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(7,18,30,0.44)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  creatorAvatarMini: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(138,230,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorAvatarMiniText: {
+    color: CYAN,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  creatorPillText: {
+    color: '#EAFDFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  heroMetaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.sm,
+  },
+  heroMetaChip: {
+    minWidth: (CONTENT_WIDTH - LuxurySpacing.sm) / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(10, 24, 37, 0.42)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  heroMetaValue: {
+    color: '#F2FCFF',
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  contentWrap: {
+    marginTop: -LuxurySpacing.xl,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    backgroundColor: '#050C15',
+    paddingTop: LuxurySpacing.xl,
+    paddingHorizontal: LuxurySpacing.lg,
+  },
+  sectionHeaderWrap: {
+    marginBottom: LuxurySpacing.md,
+  },
+  sectionEyebrow: {
+    color: CYAN,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.7,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  sectionHeading: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.md,
+  },
+  quickCard: {
+    width: (CONTENT_WIDTH - LuxurySpacing.md) / 2,
+    borderRadius: 28,
+    padding: LuxurySpacing.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.12)',
+    ...LuxuryShadow.medium,
+  },
+  quickCardGlow: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(77,168,255,0.16)',
+  },
+  quickIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    marginBottom: LuxurySpacing.md,
+  },
+  quickValue: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  quickLabel: {
+    color: 'rgba(230,250,255,0.72)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  sectionBlock: {
+    marginTop: LuxurySpacing.xl,
+  },
+  storyCard: {
+    borderRadius: 30,
+    padding: LuxurySpacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.12)',
+    ...LuxuryShadow.medium,
+  },
+  storyIconWrap: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: LuxuryColors.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    marginBottom: LuxurySpacing.md,
   },
-  cardBody: {
-    flex: 1,
-  },
-  placeName: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  placeType: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
+  storyText: {
+    color: '#F4FCFF',
+    fontSize: 17,
+    lineHeight: 28,
     fontWeight: '600',
-    marginBottom: 3,
   },
-  placeNote: {
-    color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.xs,
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  priceLevel: {
-    color: LuxuryColors.gold,
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '800',
-  },
-  insiderBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(212,175,55,0.12)',
+  unlockCard: {
+    marginTop: LuxurySpacing.xl,
+    borderRadius: 28,
+    padding: LuxurySpacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.25)',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: LuxuryBorderRadius.full,
-    marginTop: 4,
+    borderColor: 'rgba(138,230,255,0.18)',
+    gap: LuxurySpacing.md,
   },
-  insiderBadgeText: {
-    color: LuxuryColors.gold,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-});
-
-// ── Map placeholder ───────────────────────────────────────────────────────────
-
-const mapStyles = StyleSheet.create({
-  placeholder: {
-    borderRadius: LuxuryBorderRadius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: LuxuryColors.surfaceLight,
-    ...LuxuryShadow.soft,
-  },
-  inner: {
-    backgroundColor: LuxuryColors.surface,
-    height: 180,
+  unlockIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(138,230,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  unlockBody: {
+    gap: 4,
+  },
+  unlockTitle: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  unlockText: {
+    color: 'rgba(230,250,255,0.70)',
+    lineHeight: 20,
+    fontSize: 13,
+  },
+  unlockActions: {
+    flexDirection: 'row',
     gap: LuxurySpacing.sm,
   },
-  label: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.md,
-    fontWeight: '700',
+  unlockButton: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: CYAN,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sublabel: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
-    textAlign: 'center',
-    paddingHorizontal: LuxurySpacing.xl,
+  unlockButtonText: {
+    color: '#04111E',
+    fontWeight: '800',
   },
-  openBtn: {
+  unlockButtonSecondary: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: 'rgba(138,230,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unlockButtonSecondaryText: {
+    color: '#E8FAFF',
+    fontWeight: '800',
+  },
+  routeCard: {
+    borderRadius: 30,
+    padding: LuxurySpacing.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+  },
+  routeMapBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+  },
+  routeGlowLarge: {
+    position: 'absolute',
+    right: -24,
+    top: -20,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(77,168,255,0.14)',
+  },
+  routeGlowSmall: {
+    position: 'absolute',
+    left: 18,
+    bottom: 18,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(138,230,255,0.12)',
+  },
+  routeCanvas: {
+    height: 170,
+    borderRadius: 24,
+    backgroundColor: 'rgba(3,10,18,0.44)',
+    marginBottom: LuxurySpacing.lg,
+    overflow: 'hidden',
+  },
+  routeLineTrack: {
+    position: 'absolute',
+    left: '12%',
+    right: '12%',
+    top: 82,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: 'rgba(138,230,255,0.55)',
+  },
+  routeStop: {
+    position: 'absolute',
+  },
+  routeMarker: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.24)',
+  },
+  routeMarkerInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: CYAN,
+  },
+  routeStopsList: {
+    gap: LuxurySpacing.sm,
+  },
+  routeStopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: LuxurySpacing.xs,
-    backgroundColor: LuxuryColors.gold,
-    paddingHorizontal: LuxurySpacing.lg,
-    paddingVertical: LuxurySpacing.sm,
-    borderRadius: LuxuryBorderRadius.full,
-    marginTop: LuxurySpacing.xs,
+    gap: LuxurySpacing.sm,
   },
-  openBtnText: {
-    color: LuxuryColors.background,
-    fontSize: LuxuryFontSize.sm,
+  routeStopBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+  },
+  routeStopTextWrap: {
+    flex: 1,
+  },
+  routeStopTitle: {
+    color: '#F2FCFF',
+    fontSize: 15,
     fontWeight: '700',
   },
-});
-
-// ── Paywall banner ────────────────────────────────────────────────────────────
-
-const paywallStyles = StyleSheet.create({
-  banner: {
-    backgroundColor: LuxuryColors.surface,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.2)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.xl,
-    alignItems: 'center',
-    ...LuxuryShadow.gold,
+  routeStopSubtitle: {
+    color: 'rgba(230,250,255,0.62)',
+    fontSize: 12,
+    marginTop: 2,
   },
-  iconCircle: {
+  timelineWrap: {
+    gap: LuxurySpacing.md,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  timelineRailWrap: {
+    width: 34,
+    alignItems: 'center',
+  },
+  timelineRail: {
+    position: 'absolute',
+    top: 18,
+    bottom: -LuxurySpacing.md,
+    width: 2,
+    backgroundColor: 'rgba(138,230,255,0.18)',
+  },
+  timelineNode: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  timelineNodeText: {
+    color: '#04111E',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  timelineCard: {
+    flex: 1,
+    marginLeft: LuxurySpacing.sm,
+    borderRadius: 28,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+    ...LuxuryShadow.soft,
+  },
+  timelineThumbWrap: {
+    height: 160,
+    backgroundColor: '#0A1623',
+  },
+  timelineThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  timelineBody: {
+    padding: LuxurySpacing.lg,
+  },
+  timelineDate: {
+    color: CYAN,
+    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  timelineTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
+    marginBottom: 8,
+  },
+  timelineDescription: {
+    color: 'rgba(230,250,255,0.70)',
+    lineHeight: 22,
+  },
+  lockedHint: {
+    color: 'rgba(230,250,255,0.64)',
+    marginTop: LuxurySpacing.sm,
+    lineHeight: 20,
+  },
+  highlightsRow: {
+    paddingRight: LuxurySpacing.sm,
+    gap: LuxurySpacing.md,
+  },
+  highlightCard: {
+    width: 220,
+    borderRadius: 28,
+    padding: LuxurySpacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+  },
+  highlightIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.12)',
+    marginBottom: LuxurySpacing.md,
+  },
+  highlightTitle: {
+    color: CYAN,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  highlightValue: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  highlightCaption: {
+    color: 'rgba(230,250,255,0.64)',
+    lineHeight: 20,
+    fontSize: 13,
+  },
+  memoriesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: LuxurySpacing.md,
+  },
+  memoriesActionText: {
+    color: CYAN,
+    fontWeight: '700',
+  },
+  masonryRow: {
+    flexDirection: 'row',
+    gap: LuxurySpacing.md,
+  },
+  masonryColumn: {
+    flex: 1,
+    gap: LuxurySpacing.md,
+  },
+  memoryTile: {
+    width: MEMORY_TILE_WIDTH,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0A1623',
+  },
+  memoryTileTall: {
+    height: 240,
+  },
+  memoryTileShort: {
+    height: 180,
+  },
+  memoryImage: {
+    width: '100%',
+    height: '100%',
+  },
+  memoryOverlay: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+  },
+  memoryLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  memoryCaption: {
+    color: 'rgba(230,250,255,0.74)',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  moreMemoriesBadge: {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(5,12,21,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  moreMemoriesText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  insightsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.md,
+  },
+  insightCard: {
+    width: (CONTENT_WIDTH - LuxurySpacing.md) / 2,
+    borderRadius: 24,
+    padding: LuxurySpacing.md,
+    backgroundColor: 'rgba(11, 22, 34, 0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.09)',
+  },
+  insightIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    marginBottom: 12,
+  },
+  insightValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  insightLabel: {
+    color: 'rgba(230,250,255,0.64)',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  notesCard: {
+    borderRadius: 30,
+    padding: LuxurySpacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.12)',
+  },
+  quoteMark: {
+    color: 'rgba(138,230,255,0.34)',
+    fontSize: 52,
+    lineHeight: 52,
+    marginBottom: 12,
+  },
+  notesText: {
+    color: '#F6FDFF',
+    fontSize: 18,
+    lineHeight: 29,
+    fontWeight: '600',
+    marginBottom: LuxurySpacing.lg,
+  },
+  notesAttribution: {
+    color: CYAN,
+    fontWeight: '700',
+  },
+  achievementWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.md,
+  },
+  achievementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+  },
+  achievementGlow: {
+    position: 'absolute',
+    right: -10,
+    top: -10,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(138,230,255,0.18)',
+  },
+  achievementText: {
+    color: '#F4FCFF',
+    fontWeight: '700',
+  },
+  collectionCards: {
+    gap: LuxurySpacing.md,
+  },
+  collectionCard: {
+    borderRadius: 24,
+    padding: LuxurySpacing.md,
+    backgroundColor: 'rgba(11, 22, 34, 0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.09)',
+    gap: 8,
+  },
+  collectionTitle: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  collectionBody: {
+    color: 'rgba(230,250,255,0.70)',
+    lineHeight: 20,
+  },
+  bottomActionsWrap: {
+    marginTop: LuxurySpacing.xxl,
+    gap: LuxurySpacing.md,
+  },
+  secondaryAction: {
+    height: 58,
+    borderRadius: 22,
+    backgroundColor: 'rgba(11, 22, 34, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryActionText: {
+    color: '#D8F7FF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  primaryAction: {
+    borderRadius: 26,
+    overflow: 'hidden',
+    ...LuxuryShadow.medium,
+  },
+  primaryActionFill: {
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  primaryActionText: {
+    color: '#04111E',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  galleryModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(3, 8, 15, 0.96)',
+  },
+  galleryModalClose: {
+    position: 'absolute',
+    right: LuxurySpacing.md,
+    zIndex: 5,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  galleryModalGrid: {
+    paddingHorizontal: LuxurySpacing.lg,
+    gap: LuxurySpacing.md,
+  },
+  galleryModalTile: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0A1623',
+  },
+  galleryModalTileTall: {
+    height: 280,
+  },
+  galleryModalTileShort: {
+    height: 210,
+  },
+  fallbackGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: LuxurySpacing.lg,
+  },
+  fallbackIconWrap: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: LuxuryColors.goldGlow,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
     marginBottom: LuxurySpacing.md,
   },
-  title: {
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.lg,
-    fontWeight: '800',
-    marginBottom: LuxurySpacing.xs,
-    letterSpacing: 0.2,
-  },
-  desc: {
-    color: LuxuryColors.textSecondary,
-    fontSize: LuxuryFontSize.sm,
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: LuxurySpacing.lg,
-    paddingHorizontal: LuxurySpacing.sm,
-  },
-  freeCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.xs,
-    backgroundColor: LuxuryColors.gold,
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.md,
-    borderRadius: LuxuryBorderRadius.full,
-  },
-  freeCtaText: {
-    color: LuxuryColors.background,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '800',
-  },
-  memberCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.xs,
-    backgroundColor: LuxuryColors.gold,
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.md,
-    borderRadius: LuxuryBorderRadius.full,
-  },
-  memberCtaText: {
-    color: LuxuryColors.background,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '800',
-  },
-  exhaustedNote: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
-    textAlign: 'center',
-    marginTop: LuxurySpacing.md,
-    lineHeight: 18,
-  },
-});
-
-// ── Save section ──────────────────────────────────────────────────────────────
-
-const saveStyles = StyleSheet.create({
-  section: {
-    alignItems: 'center',
-    marginBottom: LuxurySpacing.xl,
-    marginTop: LuxurySpacing.sm,
-  },
-  saveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    borderWidth: 1.5,
-    borderColor: LuxuryColors.gold,
-    paddingHorizontal: LuxurySpacing.xxl,
-    paddingVertical: LuxurySpacing.md,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'transparent',
-  },
-  saveBtnActive: {
-    backgroundColor: LuxuryColors.gold,
-  },
-  saveBtnText: {
-    color: LuxuryColors.gold,
-    fontSize: LuxuryFontSize.md,
+  fallbackTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: '700',
-  },
-  saveBtnTextActive: {
-    color: LuxuryColors.background,
-  },
-  savedNote: {
-    color: LuxuryColors.textTertiary,
-    fontSize: LuxuryFontSize.xs,
     textAlign: 'center',
-    marginTop: LuxurySpacing.sm,
-    paddingHorizontal: LuxurySpacing.xl,
-    lineHeight: 18,
+    marginBottom: 6,
+  },
+  fallbackSubtitle: {
+    color: 'rgba(230,250,255,0.64)',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

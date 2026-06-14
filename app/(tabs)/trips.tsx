@@ -1,35 +1,32 @@
-﻿import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { View, Text, Image, ActivityIndicator, StyleSheet, ScrollView, Pressable, FlatList, TouchableOpacity } from 'react-native';
+﻿import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, Image, ActivityIndicator, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
-import type { BudgetLevel } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
-import { getJourneysByIds } from '../../lib/creatorJourneyService';
 import {
-  getPublishedExperiencesPage,
-  getMorePublishedExperiences,
+  deleteExperience,
+  getCreatorExperiences,
+  getExperienceById,
   getExperiencesByIds,
-  getPublishedExperiencesByCreator,
-  type ExperiencesPage,
 } from '../../lib/creatorExperienceService';
-import { formatSaves } from '../../constants/creators';
-import {
-  getFreeRemaining,
-  getSavedIds,
-  setBudgetPref,
-  getBudgetPref,
-  FREE_JOURNEY_LIMIT,
-  setJourneyStoreUid,
-} from '../../constants/journeyStore';
-import { getSavedExperienceIds, setExperienceStoreUid } from '../../constants/experienceStore';
-import type { CreatorExperience } from '../../constants/creatorExperienceModel';
+import { listPurchasedExperienceIds } from '../../lib/paymentService';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
-import { getFirebaseApp } from '../../lib/firebase';
+import { getFirebaseApp, getFirestoreDb } from '../../lib/firebase';
 import { getMyApprovedCreatorProfile } from '../../lib/creatorService';
+import {
+  DEFAULT_TRIP_INFO,
+  saveCreateTripDraft,
+  type CreateTripDraft,
+  type ExperienceDraft,
+  type ItineraryDayDraft,
+  type PhotoEntryDraft,
+  type TripInfoDraft,
+} from '../../constants/createTripDraftStore';
 
 type ImageKey = 'islands' | 'villas' | 'yacht' | 'desert' | 'mountain' | 'city' | 'temple' | 'bali' | 'seychelles' | 'zanzibar' | 'lakecomo' | 'alps';
 
@@ -55,92 +52,413 @@ function journeyImageSource(journey: CreatorJourney) {
   return null;
 }
 
-function experienceImageSource(experience: CreatorExperience) {
-  if (isValidRemoteImageUrl(experience.coverImage)) return { uri: experience.coverImage!.trim() };
+type ExploreRawDoc = {
+  id: string;
+  title?: unknown;
+  status?: unknown;
+  creatorId?: unknown;
+  creatorUid?: unknown;
+  userId?: unknown;
+  uid?: unknown;
+  authorId?: unknown;
+  createdBy?: unknown;
+  ownerId?: unknown;
+  city?: unknown;
+  country?: unknown;
+  duration?: unknown;
+  budget?: unknown;
+  travelStyle?: unknown;
+  coverImage?: unknown;
+  createdAt?: unknown;
+  published?: unknown;
+};
+
+function asOwnerString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function toMillis(value: unknown): number | null {
+  if (typeof value === 'number') return value;
+  if (value && typeof value === 'object' && 'toMillis' in (value as Record<string, unknown>)) {
+    const maybeFn = (value as { toMillis?: unknown }).toMillis;
+    if (typeof maybeFn === 'function') {
+      try {
+        const n = maybeFn.call(value);
+        return typeof n === 'number' ? n : null;
+      } catch {
+        return null;
+      }
+    }
+  }
   return null;
 }
 
-function experienceLocation(experience: CreatorExperience) {
-  const locationParts = [experience.city?.trim(), experience.country?.trim()].filter(Boolean);
-  return locationParts.length > 0 ? locationParts.join(', ') : 'Location TBA';
+function rawDocToJourney(doc: ExploreRawDoc): CreatorJourney {
+  const city = typeof doc.city === 'string' ? doc.city.trim() : '';
+  const country = typeof doc.country === 'string' ? doc.country.trim() : '';
+  const destination = city && country ? `${city}, ${country}` : country || city || 'Unknown destination';
+  const budget = doc.budget === '$' || doc.budget === '$$' || doc.budget === '$$$' || doc.budget === '$$$$' ? doc.budget : '$$';
+  const status = doc.status === 'draft' || doc.status === 'pending_review' || doc.status === 'published' || doc.status === 'rejected'
+    ? doc.status
+    : 'published';
+
+  return {
+    id: doc.id,
+    creatorId:
+      asOwnerString(doc.creatorId)
+      ?? asOwnerString(doc.creatorUid)
+      ?? asOwnerString(doc.userId)
+      ?? asOwnerString(doc.uid)
+      ?? asOwnerString(doc.authorId)
+      ?? asOwnerString(doc.createdBy)
+      ?? asOwnerString(doc.ownerId)
+      ?? '',
+    creatorName: '',
+    title: typeof doc.title === 'string' && doc.title.trim().length > 0 ? doc.title : 'Untitled journey',
+    destination,
+    region: typeof doc.travelStyle === 'string' && doc.travelStyle.trim().length > 0 ? doc.travelStyle.toUpperCase() : 'TRAVEL',
+    duration: typeof doc.duration === 'string' && doc.duration.trim().length > 0 ? doc.duration : 'N/A',
+    bestTime: '',
+    overview: '',
+    budget,
+    dailyBudget: '',
+    places: [],
+    restaurants: [],
+    experiences: [],
+    itinerary: [],
+    imageUri: typeof doc.coverImage === 'string' && isValidRemoteImageUrl(doc.coverImage)
+      ? doc.coverImage.trim()
+      : null,
+    rating: 0,
+    savedCount: 0,
+    status,
+    isDemo: false,
+    createdAt: toMillis(doc.createdAt),
+  };
 }
 
-function experienceDailyBudget(experience: CreatorExperience) {
-  return `${experience.budget}/day`;
+function docMatchesOwner(rawDoc: ExploreRawDoc, ownerIds: Set<string>): boolean {
+  const ownerCandidates = [
+    rawDoc.creatorId,
+    rawDoc.creatorUid,
+    rawDoc.userId,
+    rawDoc.uid,
+    rawDoc.authorId,
+    rawDoc.createdBy,
+    rawDoc.ownerId,
+  ];
+  return ownerCandidates
+    .map(asOwnerString)
+    .some((ownerValue): ownerValue is string => ownerValue !== null && ownerIds.has(ownerValue));
 }
-
-function deriveInitials(name: string): string {
-  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
-}
-
-const BUDGET_FILTERS: Array<BudgetLevel | null> = [null, '$', '$$', '$$$', '$$$$'];
 
 export default function TripsScreen() {
   const insets = useSafeAreaInsets();
 
-  const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
-  const [savedJourneyDetails, setSavedJourneyDetails] = useState<CreatorJourney[]>([]);
-  // Saved experience objects fetched directly by ID (not filtered from published list)
-  const [savedExperienceDetails, setSavedExperienceDetails] = useState<CreatorExperience[]>([]);
-  const [budgetPref, setBudgetPrefState] = useState<BudgetLevel | null>(null);
-  const [allExperiences, setAllExperiences] = useState<CreatorExperience[]>([]);
-  const [myPublishedExperiences, setMyPublishedExperiences] = useState<CreatorExperience[]>([]);
+  const [creatorJourneys, setCreatorJourneys] = useState<CreatorJourney[]>([]);
+  const [purchasedJourneys, setPurchasedJourneys] = useState<CreatorJourney[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expCursor, setExpCursor] = useState<ExperiencesPage['cursor']>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [authUid, setAuthUid] = useState<string | null>(null);
+  const [isCreator, setIsCreator] = useState(false);
+  const [creatorName, setCreatorName] = useState<string>('');
+  const [deletingJourneyId, setDeletingJourneyId] = useState<string | null>(null);
+
+  const asObject = (value: unknown): Record<string, unknown> | null => {
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  };
+
+  const toStringList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean);
+  };
+
+  const mapTripInfo = (value: unknown): TripInfoDraft => {
+    const raw = asObject(value);
+    if (!raw) return { ...DEFAULT_TRIP_INFO };
+    return {
+      ...DEFAULT_TRIP_INFO,
+      destination: typeof raw.destination === 'string' ? raw.destination : DEFAULT_TRIP_INFO.destination,
+      startDate: typeof raw.startDate === 'string' ? raw.startDate : DEFAULT_TRIP_INFO.startDate,
+      endDate: typeof raw.endDate === 'string' ? raw.endDate : DEFAULT_TRIP_INFO.endDate,
+      tripTitle: typeof raw.tripTitle === 'string' ? raw.tripTitle : DEFAULT_TRIP_INFO.tripTitle,
+      duration: typeof raw.duration === 'string' ? raw.duration : DEFAULT_TRIP_INFO.duration,
+      travelers: typeof raw.travelers === 'string' ? raw.travelers : DEFAULT_TRIP_INFO.travelers,
+      tripType: (['Luxury', 'Adventure', 'Food', 'Romantic', 'Family'].includes(String(raw.tripType))
+        ? String(raw.tripType)
+        : DEFAULT_TRIP_INFO.tripType) as TripInfoDraft['tripType'],
+      budget: typeof raw.budget === 'string' ? raw.budget : DEFAULT_TRIP_INFO.budget,
+      flightCost: typeof raw.flightCost === 'string' ? raw.flightCost : DEFAULT_TRIP_INFO.flightCost,
+      stayCost: typeof raw.stayCost === 'string' ? raw.stayCost : DEFAULT_TRIP_INFO.stayCost,
+      foodCost: typeof raw.foodCost === 'string' ? raw.foodCost : DEFAULT_TRIP_INFO.foodCost,
+      activitiesCost: typeof raw.activitiesCost === 'string' ? raw.activitiesCost : DEFAULT_TRIP_INFO.activitiesCost,
+      notes: typeof raw.notes === 'string' ? raw.notes : DEFAULT_TRIP_INFO.notes,
+      highlights: toStringList(raw.highlights),
+      coverUri: typeof raw.coverUri === 'string' ? raw.coverUri : DEFAULT_TRIP_INFO.coverUri,
+      galleryUris: toStringList(raw.galleryUris),
+    };
+  };
+
+  const mapItineraryDays = (value: unknown): ItineraryDayDraft[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item, index) => {
+        const raw = asObject(item);
+        if (!raw) return null;
+        return {
+          id: typeof raw.id === 'string' ? raw.id : `restored-day-${index + 1}`,
+          dayLabel: typeof raw.dayLabel === 'string' ? raw.dayLabel : `Day ${index + 1}`,
+          dateLabel: typeof raw.dateLabel === 'string' ? raw.dateLabel : '',
+          title: typeof raw.title === 'string' ? raw.title : '',
+          subtitle: typeof raw.subtitle === 'string' ? raw.subtitle : '',
+          imageUri: typeof raw.imageUri === 'string' ? raw.imageUri : '',
+          activities: toStringList(raw.activities),
+        };
+      })
+      .filter((item): item is ItineraryDayDraft => item !== null);
+  };
+
+  const mapPhotos = (value: unknown): PhotoEntryDraft[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item, index) => {
+        const raw = asObject(item);
+        if (!raw) return null;
+        const category = ['Places', 'Food', 'Activities'].includes(String(raw.category))
+          ? (String(raw.category) as PhotoEntryDraft['category'])
+          : 'Places';
+        return {
+          id: typeof raw.id === 'string' ? raw.id : `restored-photo-${index + 1}`,
+          uri: typeof raw.uri === 'string' ? raw.uri : '',
+          caption: typeof raw.caption === 'string' ? raw.caption : '',
+          category,
+        };
+      })
+      .filter((item): item is PhotoEntryDraft => item !== null && item.uri.trim().length > 0);
+  };
+
+  const mapExperiences = (value: unknown): ExperienceDraft[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item, index) => {
+        const raw = asObject(item);
+        if (!raw) return null;
+        const rating = typeof raw.rating === 'number' ? raw.rating : 0;
+        return {
+          id: typeof raw.id === 'string' ? raw.id : `restored-exp-${index + 1}`,
+          title: typeof raw.title === 'string' ? raw.title : '',
+          locationDate: typeof raw.locationDate === 'string' ? raw.locationDate : '',
+          rating,
+          imageUri: typeof raw.imageUri === 'string' ? raw.imageUri : '',
+        };
+      })
+      .filter((item): item is ExperienceDraft => item !== null && item.title.trim().length > 0);
+  };
 
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     return onAuthStateChanged(auth, (user) => {
       const uid = user?.uid ?? null;
       setAuthUid(uid);
-      setJourneyStoreUid(uid);
-      setExperienceStoreUid(uid);
     });
   }, []);
+
+  // Load purchased journeys independently of creator status
+  useEffect(() => {
+    if (!authUid) {
+      setPurchasedJourneys([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const ids = await listPurchasedExperienceIds();
+        if (ids.length === 0) {
+          if (!cancelled) setPurchasedJourneys([]);
+          return;
+        }
+        const exps = await getExperiencesByIds(ids);
+        const mapped = exps.map((exp) =>
+          rawDocToJourney({
+            id: exp.id,
+            title: exp.title,
+            status: exp.status,
+            creatorId: exp.creatorId,
+            city: exp.city,
+            country: exp.country,
+            duration: exp.duration,
+            budget: exp.budget,
+            travelStyle: exp.travelStyle,
+            coverImage: exp.coverImage,
+            createdAt: exp.createdAt,
+            published: exp.published,
+          })
+        );
+        if (!cancelled) setPurchasedJourneys(mapped);
+      } catch {
+        if (!cancelled) setPurchasedJourneys([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authUid]);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       setLoading(true);
 
-      async function loadAll() {
+      async function loadCreatorJourneys() {
         try {
-          const [remaining, saved, savedExpIds, pref, expPage] = await Promise.all([
-            getFreeRemaining(),
-            getSavedIds(),
-            getSavedExperienceIds(),
-            getBudgetPref(),
-            getPublishedExperiencesPage(),
-          ]);
-          if (cancelled) return;
+          if (!authUid) {
+            if (!cancelled) {
+              setCreatorJourneys([]);
+              setIsCreator(false);
+              setCreatorName('');
+              setLoading(false);
+            }
+            return;
+          }
 
-          const savedJourneyDetails = await getJourneysByIds(saved as string[]);
-          // Fetch saved experience objects directly by ID — works for drafts and published alike
-          const savedExpDetails = await getExperiencesByIds(savedExpIds as string[]);
-          if (cancelled) return;
+          const creatorProfile = await getMyApprovedCreatorProfile(authUid);
+          if (!creatorProfile) {
+            const ownExperiences = await getCreatorExperiences(authUid);
+            const ownJourneys = ownExperiences
+              .map((exp) => rawDocToJourney({
+                id: exp.id,
+                title: exp.title,
+                status: exp.status,
+                creatorId: exp.creatorId,
+                city: exp.city,
+                country: exp.country,
+                duration: exp.duration,
+                budget: exp.budget,
+                travelStyle: exp.travelStyle,
+                coverImage: exp.coverImage,
+                createdAt: exp.createdAt,
+                published: exp.published,
+              }))
+              .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
-          let myPublished: CreatorExperience[] = [];
-          if (authUid) {
-            try {
-              const creatorProfile = await getMyApprovedCreatorProfile(authUid);
-              if (creatorProfile?.id) {
-                myPublished = await getPublishedExperiencesByCreator(creatorProfile.id);
-              }
-            } catch {
-              myPublished = [];
+            if (!cancelled) {
+              setCreatorJourneys(ownJourneys);
+              setIsCreator(true);
+              setCreatorName('My');
+              setLoading(false);
+            }
+            return;
+          }
+
+          const ownerIds = new Set(
+            [creatorProfile.id, creatorProfile.userId, authUid]
+              .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+              .map((value) => value.trim())
+          );
+
+          const db = getFirestoreDb();
+          const publishedSnap = await getDocs(
+            query(collection(db, 'creatorExperiences'), where('published', '==', true))
+          );
+          const publishedRawDocs: ExploreRawDoc[] = publishedSnap.docs
+            .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) } as ExploreRawDoc))
+            .filter((doc) => doc.status === 'published');
+
+          for (const doc of publishedRawDocs) {
+            console.log('[MyJourneys:ExploreRawDoc]', {
+              id: doc.id,
+              title: doc.title,
+              status: doc.status,
+              creatorId: doc.creatorId,
+              creatorUid: doc.creatorUid,
+              userId: doc.userId,
+              uid: doc.uid,
+              authorId: doc.authorId,
+              createdBy: doc.createdBy,
+              ownerId: doc.ownerId,
+            });
+          }
+
+          const ownedPublishedDocs = publishedRawDocs.filter((doc) => docMatchesOwner(doc, ownerIds));
+
+          // Drafts are not on Explore; load creator-scoped docs and merge.
+          const creatorScopedGroups = await Promise.all(
+            [...ownerIds].map((ownerId) => getCreatorExperiences(ownerId))
+          );
+          // Keep ALL statuses from getCreatorExperiences so the Map id-dedup can
+          // collapse any doc that also appears in the published query.
+          const creatorScopedAll = creatorScopedGroups
+            .flat()
+            .map((exp) => {
+              const journey = rawDocToJourney({
+                id: exp.id,
+                title: exp.title,
+                status: exp.status,
+                creatorId: exp.creatorId,
+                city: exp.city,
+                country: exp.country,
+                duration: exp.duration,
+                budget: exp.budget,
+                travelStyle: exp.travelStyle,
+                coverImage: exp.coverImage,
+                createdAt: exp.createdAt,
+                published: exp.published,
+              });
+              console.log('[MyJourneys:creatorScopedQuery]', {
+                source: 'getCreatorExperiences',
+                collection: 'creatorExperiences',
+                id: journey.id,
+                title: journey.title,
+                status: exp.status,
+                creatorId: exp.creatorId,
+              });
+              return journey;
+            });
+
+          const publishedJourneys = ownedPublishedDocs.map((doc) => {
+            const journey = rawDocToJourney(doc);
+            console.log('[MyJourneys:publishedQuery]', {
+              source: 'publishedExploreQuery',
+              collection: 'creatorExperiences',
+              id: journey.id,
+              title: journey.title,
+              status: doc.status,
+              creatorId: doc.creatorId,
+              creatorUid: doc.creatorUid,
+              userId: doc.userId,
+            });
+            return journey;
+          });
+
+          // Primary dedup: by document id (collapses same doc from multiple query paths).
+          const uniqueById = new Map<string, CreatorJourney>();
+          for (const journey of [...creatorScopedAll, ...publishedJourneys]) {
+            if (!uniqueById.has(journey.id)) {
+              uniqueById.set(journey.id, journey);
             }
           }
+
+          // Fallback dedup: by normalised title (catches genuinely separate docs
+          // that are logical duplicates with identical titles).
+          const uniqueJourneys = new Map<string, CreatorJourney>();
+          for (const journey of uniqueById.values()) {
+            const normTitle = journey.title.trim().toLowerCase();
+            if (!uniqueJourneys.has(normTitle)) {
+              uniqueJourneys.set(normTitle, journey);
+            } else {
+              console.warn('[MyJourneys:titleDedupe] dropping duplicate title', {
+                keptId: uniqueJourneys.get(normTitle)!.id,
+                droppedId: journey.id,
+                title: journey.title,
+              });
+            }
+          }
+
+          const journeys = [...uniqueJourneys.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
           if (cancelled) return;
 
-          setFreeRemaining(remaining as number);
-          setSavedJourneyDetails(savedJourneyDetails);
-          setSavedExperienceDetails(savedExpDetails);
-          setBudgetPrefState(pref as BudgetLevel | null);
-          setAllExperiences((expPage as ExperiencesPage).items);
-          setMyPublishedExperiences(myPublished);
-          setExpCursor((expPage as ExperiencesPage).cursor);
+          setCreatorJourneys(journeys);
+          setIsCreator(true);
+          setCreatorName(creatorProfile.name ?? 'Creator');
           setLoading(false);
         } catch (err) {
           console.error('[Trips] load error:', err);
@@ -148,52 +466,123 @@ export default function TripsScreen() {
         }
       }
 
-      loadAll();
+      loadCreatorJourneys();
       return () => { cancelled = true; };
     }, [authUid])
   );
 
-  const featuredExperiences = useMemo<CreatorExperience[]>(() => {
-    if (!budgetPref) return allExperiences;
-    const matching = allExperiences.filter((experience) => experience.budget === budgetPref);
-    const others = allExperiences.filter((experience) => experience.budget !== budgetPref);
-    return [...matching, ...others];
-  }, [budgetPref, allExperiences]);
+  const draftJourneys = creatorJourneys.filter((journey) => journey.status === 'draft');
+  const publishedJourneys = creatorJourneys.filter((journey) => journey.status === 'published');
 
-  const hasPublishedExperiences = allExperiences.length > 0 || myPublishedExperiences.length > 0;
-
-  const savedJourneys = savedJourneyDetails;
-
-  const handleBudgetFilter = async (b: BudgetLevel | null) => {
-    setBudgetPrefState(b);
-    await setBudgetPref(b);
-  };
-
-  const handleLoadMore = useCallback(async () => {
-    if (loadingMore || !expCursor) return;
-    setLoadingMore(true);
+  const handleEditJourney = useCallback(async (journey: CreatorJourney) => {
     try {
-      const moreExps = await getMorePublishedExperiences(expCursor);
-      if (moreExps) {
-        setAllExperiences((prev) => [...prev, ...moreExps.items]);
-        setExpCursor(moreExps.cursor);
+      const experience = await getExperienceById(journey.id);
+      if (!experience) {
+        Alert.alert('Trip Not Found', 'Could not load this trip for editing.');
+        return;
       }
-    } catch (err) {
-      console.error('[Trips] loadMore error:', err);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [loadingMore, expCursor]);
 
-  const handleCardPress = (journey: CreatorJourney) => {
-    if (freeRemaining === 0) {
-      router.push('/(tabs)/paywall');
-    } else {
-      router.push({ pathname: '/(tabs)/journey-detail', params: { id: journey.id } });
-    }
-  };
+      const tripData = asObject(experience.tripData);
+      const draftTripInfo = mapTripInfo(tripData?.tripInfo);
+      const draft: CreateTripDraft = {
+        tripInfo: {
+          ...draftTripInfo,
+          tripTitle: draftTripInfo.tripTitle || experience.title,
+          destination: draftTripInfo.destination || [experience.city, experience.country].filter(Boolean).join(', '),
+          duration: draftTripInfo.duration || experience.duration,
+          notes: draftTripInfo.notes || experience.description,
+          coverUri: draftTripInfo.coverUri || experience.coverImage,
+        },
+        itineraryDays: mapItineraryDays(tripData?.itineraryDays),
+        photos: mapPhotos(tripData?.photos ?? tripData?.galleryPhotos),
+        experiences: mapExperiences(tripData?.experiences),
+        updatedAt: Date.now(),
+      };
 
-  const isLocked = freeRemaining === 0;
+      await saveCreateTripDraft(draft);
+      router.push('/(tabs)/create-trip');
+    } catch {
+      Alert.alert('Edit Failed', 'Unable to open this trip for editing right now.');
+    }
+  }, []);
+
+  const handleDeleteJourney = useCallback((journey: CreatorJourney) => {
+    Alert.alert(
+      'Delete Trip',
+      `Delete "${journey.title}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingJourneyId(journey.id);
+              await deleteExperience(journey.id);
+              setCreatorJourneys((prev) => prev.filter((item) => item.id !== journey.id));
+            } catch {
+              Alert.alert('Delete Failed', 'Unable to delete this trip right now.');
+            } finally {
+              setDeletingJourneyId(null);
+            }
+          },
+        },
+      ]
+    );
+  }, []);
+
+  function renderJourneyCard(journey: CreatorJourney, showManageActions = false) {
+    return (
+      <View
+        key={journey.id}
+        style={styles.journeyCard}
+      >
+        <View style={styles.journeyMediaWrap}>
+          {journeyImageSource(journey) ? (
+            <Image
+              source={journeyImageSource(journey)!}
+              style={styles.journeyMedia}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.journeyMedia, { backgroundColor: LuxuryColors.surface }]} />
+          )}
+          <LinearGradient
+            colors={['transparent', 'rgba(7,17,32,0.88)'] as const}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.journeyOverlay}>
+            <Text style={styles.journeyRegion}>{journey.region}</Text>
+            <Text style={styles.journeyTitle} numberOfLines={1}>{journey.title}</Text>
+            <Text style={styles.journeyMeta} numberOfLines={1}>{journey.destination} · {journey.duration}</Text>
+          </View>
+        </View>
+        <Pressable
+          style={({ pressed }) => [styles.viewJourneyBtn, pressed && { opacity: 0.75 }]}
+          onPress={() => router.push({ pathname: '/(tabs)/experience-detail', params: { id: journey.id } })}
+        >
+          <Text style={styles.viewJourneyBtnText}>View Journey</Text>
+          <Ionicons name="arrow-forward" size={13} color={LuxuryColors.background} />
+        </Pressable>
+        {showManageActions ? (
+          <View style={styles.manageActionsRow}>
+            <Pressable style={styles.manageActionBtn} onPress={() => handleEditJourney(journey)}>
+              <Ionicons name="create-outline" size={14} color={LuxuryColors.textSecondary} />
+              <Text style={styles.manageActionText}>Edit</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.manageActionBtn, deletingJourneyId === journey.id && { opacity: 0.6 }]}
+              onPress={() => handleDeleteJourney(journey)}
+              disabled={deletingJourneyId === journey.id}
+            >
+              <Ionicons name="trash-outline" size={14} color="rgba(255,90,90,0.9)" />
+              <Text style={styles.manageDeleteText}>{deletingJourneyId === journey.id ? 'Deleting...' : 'Delete'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -213,315 +602,73 @@ export default function TripsScreen() {
     >
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + LuxurySpacing.xl }]}>
-        <Text style={styles.overline}>Travel Creator Marketplace</Text>
-        <Text style={styles.title}>My Trips</Text>
-        <Text style={styles.subtitle}>Curated journeys from world-class travel creators</Text>
+        <Text style={styles.overline}>Travel Creator Studio</Text>
+        <Text style={styles.title}>My Created Journeys</Text>
+        <Text style={styles.subtitle}>Draft and published journeys owned by your creator account</Text>
       </View>
 
-      {/* ── Free counter badge ── */}
-      <View style={styles.padH}>
-        <View style={[styles.trialBadge, isLocked && styles.trialBadgeLocked]}>
-          {/* Top row: icon + title + dots */}
-          <View style={styles.trialTopRow}>
-            <Ionicons
-              name={isLocked ? 'lock-closed-outline' : 'diamond-outline'}
-              size={13}
-              color={isLocked ? LuxuryColors.textTertiary : LuxuryColors.gold}
-            />
-            <Text style={[styles.trialBadgeText, isLocked && styles.trialBadgeTextLocked]}>
-              {isLocked
-                ? 'Unlock 20 Premium Journeys'
-                : `${freeRemaining} Complimentary ${freeRemaining === 1 ? 'Journey' : 'Journeys'} Remaining`}
-            </Text>
-            {!isLocked && (
-              <View style={styles.trialDots}>
-                {Array.from({ length: FREE_JOURNEY_LIMIT }).map((_, i) => (
-                  <View
-                    key={i}
-                    style={[styles.trialDot, i >= freeRemaining && styles.trialDotUsed]}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-          {/* Locked sub-content */}
-          {isLocked && (
-            <>
-              <Text style={styles.trialSubtext}>
-                Unlimited access to every creator's journey on the platform.
-              </Text>
-              <Pressable
-                style={styles.upgradeCta}
-                onPress={() => router.push('/(tabs)/paywall')}
-              >
-                <Text style={styles.upgradeCtaText}>Upgrade Membership</Text>
-                <Ionicons name="chevron-forward" size={11} color={LuxuryColors.background} />
-              </Pressable>
-            </>
-          )}
-        </View>
-      </View>
-
-      {/* ── Budget filter pills ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.budgetFilterRow}
-        style={styles.budgetFilterScroll}
-      >
-        {BUDGET_FILTERS.map((b) => {
-          const key = String(b);
-          const active = budgetPref === b;
-          return (
-            <Pressable
-              key={key}
-              style={[styles.budgetPill, active && styles.budgetPillActive]}
-              onPress={() => handleBudgetFilter(b)}
-            >
-              <Text style={[styles.budgetPillText, active && styles.budgetPillTextActive]}>
-                {b === null ? 'All Budgets' : b}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      {/* ── Saved Journeys ── */}
-      {savedJourneys.length > 0 ? (
-        <View style={styles.savedSection}>
-          <View style={styles.savedHeader}>
-            <Text style={styles.savedLabel}>Saved Journeys</Text>
-            <Text style={styles.savedCount}>{savedJourneys.length}</Text>
-          </View>
-          <FlatList
-            data={savedJourneys}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(j) => j.id}
-            contentContainerStyle={styles.savedList}
-            renderItem={({ item: journey }) => (
-              <Pressable
-                style={({ pressed }) => [styles.savedCard, pressed && { opacity: 0.85 }]}
-                onPress={() => handleCardPress(journey)}
-              >
-                {journeyImageSource(journey) ? (
-                  <Image
-                    source={journeyImageSource(journey)!}
-                    style={styles.savedCardImg}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[styles.savedCardImg, { backgroundColor: LuxuryColors.surface }]} />
-                )}
-                <LinearGradient
-                  colors={['transparent', 'rgba(7,17,32,0.88)'] as const}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.savedCardOverlay}>
-                  <Text style={styles.savedCardRegion}>{journey.region}</Text>
-                  <Text style={styles.savedCardName} numberOfLines={1}>{journey.title}</Text>
-                  <View style={styles.savedCardBudgeBadge}>
-                    <Text style={styles.savedCardBudgeText}>{journey.budget}</Text>
-                  </View>
-                </View>
-                {isLocked ? (
-                  <View style={styles.savedLockBadge}>
-                    <Ionicons name="lock-closed" size={9} color="rgba(255,255,255,0.75)" />
-                  </View>
-                ) : (
-                  <View style={styles.savedBookmarkBadge}>
-                    <Ionicons name="bookmark" size={9} color={LuxuryColors.gold} />
-                  </View>
-                )}
-              </Pressable>
-            )}
-          />
+      {!authUid ? (
+        <View style={styles.savedEmptyState}>
+          <Ionicons name="person-outline" size={18} color="rgba(212,175,55,0.40)" />
+          <Text style={styles.savedEmptyText}>Sign in to view your journeys</Text>
+          <Text style={styles.savedEmptySubtext}>Your creator drafts and published journeys will appear here</Text>
         </View>
       ) : (
-        <View style={styles.savedEmptyState}>
-          <Ionicons name="bookmark-outline" size={18} color="rgba(212,175,55,0.40)" />
-          <Text style={styles.savedEmptyText}>No saved journeys yet</Text>
-          <Text style={styles.savedEmptySubtext}>Tap the bookmark on any journey to save it</Text>
-        </View>
-      )}
-
-      {/* ── Saved Experiences ── */}
-      {savedExperienceDetails.length > 0 ? (
-        <View style={styles.savedSection}>
-          <View style={styles.savedHeader}>
-            <Text style={styles.savedLabel}>Saved Experiences</Text>
-            <Text style={styles.savedCount}>{savedExperienceDetails.length}</Text>
-          </View>
-          {savedExperienceDetails.map((exp) => (
-            <Pressable
-              key={exp.id}
-              style={styles.expCard}
-              onPress={() =>
-                router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
-              }
-            >
-              <View style={styles.expCardLeft}>
-                <Ionicons name="bookmark" size={18} color={LuxuryColors.gold} />
-              </View>
-              <View style={styles.expCardBody}>
-                <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
-                <Text style={styles.expCardMeta} numberOfLines={1}>
-                  {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
-                </Text>
-                <Text style={styles.expCardCreator}>by {exp.creatorName}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
-      {/* ── Journey cards ── */}
-      {!hasPublishedExperiences ? (
-        <View style={styles.emptyJourneys}>
-          <Ionicons name="map-outline" size={36} color={LuxuryColors.textTertiary} />
-          <Text style={styles.emptyJourneysTitle}>No creator journeys published yet.</Text>
-          <Text style={styles.emptyJourneysSub}>
-            Approved creators will publish their first journeys here soon.
-          </Text>
-        </View>
-      ) : null}
-
-      {/* ── My Published Experiences ── */}
-      {myPublishedExperiences.length > 0 && (
-        <View style={styles.expSection}>
-          <Text style={styles.expSectionTitle}>My Published Experiences</Text>
-          <Text style={styles.expSectionSub}>Experiences you published from your creator account</Text>
-          {myPublishedExperiences.map((exp) => (
-            <Pressable
-              key={exp.id}
-              style={styles.expCard}
-              onPress={() =>
-                router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
-              }
-            >
-              <View style={styles.expCardLeft}>
-                <Ionicons name="person-circle-outline" size={22} color={LuxuryColors.gold} />
-              </View>
-              <View style={styles.expCardBody}>
-                <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
-                <Text style={styles.expCardMeta} numberOfLines={1}>
-                  {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
-                </Text>
-                <Text style={styles.expCardCreator}>by {exp.creatorName}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
-            </Pressable>
-          ))}
-        </View>
-      )}
-
-      <View style={[styles.padH, styles.cardList]}>
-        {featuredExperiences.map((experience) => (
-          <Pressable
-            key={experience.id}
-            style={({ pressed }) => [
-              styles.journeyCard,
-              pressed && styles.journeyCardPressed,
-            ]}
-            onPress={() => router.push({ pathname: '/(tabs)/experience-detail', params: { id: experience.id } })}
-          >
-            {/* Hero image */}
-            <View style={styles.imageWrap}>
-              {experienceImageSource(experience) ? (
-                <Image
-                  source={experienceImageSource(experience)!}
-                  style={styles.heroImg}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.heroImg, { backgroundColor: LuxuryColors.surface }]} />
-              )}
-              <LinearGradient
-                colors={['transparent', 'rgba(7,17,32,0.80)'] as const}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.regionBadge}>
-                <Text style={styles.regionText}>{experienceLocation(experience)}</Text>
-              </View>
-              <View style={styles.durationBadge}>
-                <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.80)" />
-                <Text style={styles.durationText}>{experience.duration || 'Duration TBA'}</Text>
-              </View>
-              {isLocked && (
-                <View style={styles.premiumBadge}>
-                  <Ionicons name="diamond" size={8} color={LuxuryColors.gold} />
-                  <Text style={styles.premiumBadgeText}>Premium</Text>
+        <>
+          {/* ── Creator sections (visible only if user has an approved creator account) ── */}
+          {isCreator && (
+            <>
+              <View style={styles.savedSection}>
+                <View style={styles.savedHeader}>
+                  <Text style={styles.sectionLabel}>Draft Journeys</Text>
+                  <Text style={styles.savedCount}>{draftJourneys.length}</Text>
                 </View>
-              )}
+                {draftJourneys.length > 0 ? (
+                  draftJourneys.map((journey) => renderJourneyCard(journey, true))
+                ) : (
+                  <View style={styles.savedEmptyState}>
+                    <Ionicons name="document-text-outline" size={18} color="rgba(212,175,55,0.40)" />
+                    <Text style={styles.savedEmptyText}>No drafts yet</Text>
+                    <Text style={styles.savedEmptySubtext}>Draft journeys you create will appear here</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.savedSection}>
+                <View style={styles.savedHeader}>
+                  <Text style={styles.sectionLabel}>Published Journeys</Text>
+                  <Text style={styles.savedCount}>{publishedJourneys.length}</Text>
+                </View>
+                {publishedJourneys.length > 0 ? (
+                  publishedJourneys.map((journey) => renderJourneyCard(journey, true))
+                ) : (
+                  <View style={styles.savedEmptyState}>
+                    <Ionicons name="globe-outline" size={18} color="rgba(212,175,55,0.40)" />
+                    <Text style={styles.savedEmptyText}>No published journeys yet</Text>
+                    <Text style={styles.savedEmptySubtext}>{creatorName ? `${creatorName}, publish a journey to see it here` : 'Publish a journey to see it here'}</Text>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+
+          {/* ── Purchased journeys (visible to all logged-in users) ── */}
+          <View style={styles.savedSection}>
+            <View style={styles.savedHeader}>
+              <Text style={styles.sectionLabel}>Purchased Journeys</Text>
+              <Text style={styles.savedCount}>{purchasedJourneys.length}</Text>
             </View>
-
-            {/* Card body */}
-            <View style={styles.cardBody}>
-              {/* Creator row */}
-              <Pressable
-                style={styles.creatorRow}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: experience.creatorId } });
-                }}
-              >
-                <View style={styles.creatorAvatar}>
-                  <Text style={styles.creatorAvatarText}>
-                    {deriveInitials(experience.creatorName || 'Creator')}
-                  </Text>
-                </View>
-                <Text style={styles.creatorName} numberOfLines={1}>
-                  {experience.creatorName || 'Creator'}
-                </Text>
-              </Pressable>
-
-              <Text style={styles.journeyName}>{experience.title}</Text>
-
-              {/* Duration + season row */}
-              <View style={styles.metaRow}>
-                <Ionicons name="time-outline" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.metaText}>{experience.duration || 'Duration TBA'}</Text>
-                <View style={styles.metaDivider} />
-                <Ionicons name="sunny-outline" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.metaText}>{experience.bestTimeToVisit || 'Any season'}</Text>
-              </View>
-
-              {/* Budget + rating + saves + CTA */}
-              <View style={styles.cardFooter}>
-                <View style={styles.budgetChip}>
-                  <Text style={styles.budgetChipText}>{experienceDailyBudget(experience)}</Text>
-                </View>
-                <View style={styles.savesChip}>
-                  <Ionicons name="heart" size={9} color="rgba(212,175,55,0.60)" />
-                  <Text style={styles.savesText}>{formatSaves(experience.savedCount)}</Text>
-                </View>
-                <View style={styles.exploreLink}>
-                  <Text style={styles.exploreLinkText}>View Journey</Text>
-                  <Ionicons name="chevron-forward" size={11} color={LuxuryColors.gold} />
-                </View>
-              </View>
-            </View>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* ── Load More ── */}
-      {expCursor && (
-        <View style={{ alignItems: 'center', paddingVertical: LuxurySpacing.xl }}>
-          <TouchableOpacity
-            style={styles.loadMoreBtn}
-            onPress={handleLoadMore}
-            disabled={loadingMore}
-            activeOpacity={0.8}
-          >
-            {loadingMore ? (
-              <ActivityIndicator color={LuxuryColors.gold} size="small" />
+            {purchasedJourneys.length > 0 ? (
+              purchasedJourneys.map((journey) => renderJourneyCard(journey))
             ) : (
-              <Text style={styles.loadMoreText}>Load More</Text>
+              <View style={styles.savedEmptyState}>
+                <Ionicons name="bag-outline" size={18} color="rgba(212,175,55,0.40)" />
+                <Text style={styles.savedEmptyText}>No purchased journeys yet</Text>
+                <Text style={styles.savedEmptySubtext}>Journeys you unlock will appear here</Text>
+              </View>
             )}
-          </TouchableOpacity>
-        </View>
+          </View>
+        </>
       )}
 
       <View style={{ height: 64 + insets.bottom }} />
@@ -534,29 +681,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: LuxuryColors.background,
   },
-  emptyJourneys: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: LuxurySpacing.xxl,
-    paddingHorizontal: LuxurySpacing.xl,
-    gap: LuxurySpacing.sm,
-  },
-  emptyJourneysTitle: {
-    fontSize: LuxuryFontSize.lg,
-    fontWeight: '600',
-    color: LuxuryColors.textSecondary,
-    textAlign: 'center',
-    marginTop: LuxurySpacing.sm,
-  },
-  emptyJourneysSub: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   header: {
     paddingHorizontal: LuxurySpacing.xl,
-    paddingBottom: LuxurySpacing.lg,
+    paddingBottom: LuxurySpacing.md,
   },
   overline: {
     fontSize: 9,
@@ -577,120 +704,19 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textSecondary,
     letterSpacing: 0.2,
-  },
-  padH: {
-    paddingHorizontal: LuxurySpacing.xl,
-  },
-  trialBadge: {
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.20)',
-    borderRadius: LuxuryBorderRadius.xl,
-    paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: 12,
-    marginBottom: LuxurySpacing.lg,
-    gap: LuxurySpacing.sm,
-  },
-  trialTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-  },
-  trialBadgeLocked: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderColor: 'rgba(255,255,255,0.10)',
-  },
-  trialBadgeText: {
-    flex: 1,
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.gold,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  trialBadgeTextLocked: {
-    color: LuxuryColors.textSecondary,
-  },
-  trialDots: {
-    flexDirection: 'row',
-    gap: 5,
-  },
-  trialDot: {
-    width: 7,
-    height: 7,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: LuxuryColors.gold,
-  },
-  trialDotUsed: {
-    backgroundColor: 'rgba(212,175,55,0.25)',
-  },
-  upgradeLink: {
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-  trialSubtext: {
-    fontSize: 11,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 16,
-    letterSpacing: 0.1,
-  },
-  upgradeCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: LuxuryColors.gold,
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    alignSelf: 'flex-start',
-    marginTop: 4,
-  },
-  upgradeCtaText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: LuxuryColors.background,
-    letterSpacing: 0.4,
-  },
-  budgetFilterScroll: {
-    marginBottom: LuxurySpacing.lg,
-  },
-  budgetFilterRow: {
-    paddingHorizontal: LuxurySpacing.xl,
-    gap: LuxurySpacing.sm,
-  },
-  budgetPill: {
-    paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: 7,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  budgetPillActive: {
-    backgroundColor: 'rgba(212,175,55,0.12)',
-    borderColor: 'rgba(212,175,55,0.35)',
-  },
-  budgetPillText: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '600',
-    color: LuxuryColors.textSecondary,
-    letterSpacing: 0.3,
-  },
-  budgetPillTextActive: {
-    color: LuxuryColors.gold,
+    lineHeight: 20,
   },
   savedSection: {
-    marginBottom: LuxurySpacing.lg,
+    marginBottom: LuxurySpacing.xl,
   },
   savedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: LuxurySpacing.sm,
+    justifyContent: 'space-between',
     paddingHorizontal: LuxurySpacing.xl,
-    marginBottom: LuxurySpacing.sm,
+    marginBottom: LuxurySpacing.md,
   },
-  savedLabel: {
+  sectionLabel: {
     fontSize: 9,
     fontWeight: '700',
     color: LuxuryColors.gold,
@@ -701,92 +727,121 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     color: LuxuryColors.textTertiary,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     letterSpacing: 0.3,
   },
   savedList: {
     paddingHorizontal: LuxurySpacing.xl,
-    gap: LuxurySpacing.sm,
+    gap: LuxurySpacing.md,
+    paddingRight: LuxurySpacing.xxl,
   },
-  savedCard: {
-    width: 150,
-    height: 110,
+  journeyCard: {
+    marginHorizontal: LuxurySpacing.xl,
+    marginBottom: LuxurySpacing.sm,
     borderRadius: LuxuryBorderRadius.xl,
     overflow: 'hidden',
-    position: 'relative',
     ...LuxuryShadow.soft,
   },
-  savedCardImg: {
+  journeyCardPressed: {
+    opacity: 0.9,
+  },
+  viewJourneyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: LuxuryColors.gold,
+    marginHorizontal: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.md,
+    marginTop: 2,
+    paddingVertical: 9,
+    borderRadius: LuxuryBorderRadius.md,
+  },
+  viewJourneyBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: LuxuryColors.background,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  manageActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.md,
+    gap: 10,
+  },
+  manageActionBtn: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: LuxuryBorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  manageActionText: {
+    color: LuxuryColors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  manageDeleteText: {
+    color: 'rgba(255,90,90,0.95)',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  journeyMediaWrap: {
+    height: 132,
+    width: '100%',
+    position: 'relative',
+  },
+  journeyMedia: {
     width: '100%',
     height: '100%',
   },
-  savedCardOverlay: {
+  journeyOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: LuxurySpacing.sm,
-    gap: 2,
+    padding: LuxurySpacing.md,
+    gap: 3,
   },
-  savedCardRegion: {
-    fontSize: 8,
+  journeyRegion: {
+    fontSize: 9,
     fontWeight: '700',
     color: LuxuryColors.gold,
-    letterSpacing: 1.5,
+    letterSpacing: 1.3,
     textTransform: 'uppercase',
   },
-  savedCardName: {
-    fontSize: 11,
+  journeyTitle: {
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.1,
-    lineHeight: 14,
+    lineHeight: 16,
   },
-  savedCardBudgeBadge: {
-    backgroundColor: 'rgba(212,175,55,0.20)',
-    borderRadius: LuxuryBorderRadius.sm,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    alignSelf: 'flex-start',
-    marginTop: 2,
-  },
-  savedCardBudgeText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-  savedLockBadge: {
-    position: 'absolute',
-    top: LuxurySpacing.sm,
-    right: LuxurySpacing.sm,
-    width: 20,
-    height: 20,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(7,17,32,0.70)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  savedBookmarkBadge: {
-    position: 'absolute',
-    top: LuxurySpacing.sm,
-    right: LuxurySpacing.sm,
-    width: 20,
-    height: 20,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  journeyMeta: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: 0.2,
   },
   savedEmptyState: {
     marginHorizontal: LuxurySpacing.xl,
-    marginBottom: LuxurySpacing.lg,
+    marginBottom: LuxurySpacing.xl,
     alignItems: 'center',
-    gap: 5,
-    paddingVertical: LuxurySpacing.lg,
+    gap: 6,
+    paddingVertical: LuxurySpacing.xl,
+    paddingHorizontal: LuxurySpacing.lg,
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
@@ -794,293 +849,18 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   savedEmptyText: {
-    fontSize: LuxuryFontSize.sm,
+    fontSize: LuxuryFontSize.md,
     fontWeight: '600',
     color: LuxuryColors.textTertiary,
     letterSpacing: 0.2,
+    textAlign: 'center',
   },
   savedEmptySubtext: {
-    fontSize: 11,
+    fontSize: 12,
     color: 'rgba(122,118,104,0.65)',
     letterSpacing: 0.1,
     textAlign: 'center',
-  },
-  cardList: {
-    gap: LuxurySpacing.md,
-  },
-  journeyCard: {
-    backgroundColor: LuxuryColors.surface,
-    borderRadius: LuxuryBorderRadius.xxl,
-    overflow: 'hidden',
-    ...LuxuryShadow.soft,
-  },
-  journeyCardPressed: {
-    transform: [{ scale: 0.985 }],
-    opacity: 0.92,
-  },
-  imageWrap: {
-    height: 155,
-    overflow: 'hidden',
-  },
-  heroImg: {
-    width: '100%',
-    height: '100%',
-  },
-  premiumBadge: {
-    position: 'absolute',
-    top: LuxurySpacing.md,
-    right: LuxurySpacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(7,17,32,0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.45)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  premiumBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 1.0,
-    textTransform: 'uppercase',
-  },
-  regionBadge: {
-    position: 'absolute',
-    top: LuxurySpacing.md,
-    left: LuxurySpacing.md,
-    backgroundColor: 'rgba(7,17,32,0.65)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  regionText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  durationBadge: {
-    position: 'absolute',
-    top: LuxurySpacing.md,
-    right: LuxurySpacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(7,17,32,0.65)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  durationText: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.80)',
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  cardBody: {
-    padding: LuxurySpacing.md,
-    gap: 8,
-  },
-  creatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-  },
-  creatorAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  creatorAvatarText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-  creatorName: {
-    flex: 1,
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '600',
-    color: LuxuryColors.textSecondary,
-    letterSpacing: 0.1,
-  },
-  creatorRatingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  creatorRatingText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.2,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  metaText: {
-    fontSize: 11,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
-  },
-  metaDivider: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: LuxuryColors.textTertiary,
-    opacity: 0.4,
-  },
-  journeyName: {
-    fontSize: LuxuryFontSize.lg,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: -0.2,
-  },
-  overviewSnippet: {
-    // kept for any future use; not currently rendered on cards
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 19,
-    letterSpacing: 0.1,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    marginTop: 2,
-  },
-  budgetChip: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: LuxuryBorderRadius.sm,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  budgetChipText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
-  },
-  savesChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  savesText: {
-    fontSize: 10,
-    color: 'rgba(212,175,55,0.55)',
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
-  ratingChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  ratingChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.2,
-  },
-  exploreLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    flexShrink: 0,
-  },
-  exploreLinkText: {
-    fontSize: LuxuryFontSize.xs,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-  expSection: {
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingTop: LuxurySpacing.xl,
-    paddingBottom: LuxurySpacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-  },
-  expSectionTitle: {
-    fontSize: LuxuryFontSize.lg,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    marginBottom: LuxurySpacing.xs,
-  },
-  expSectionSub: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    marginBottom: LuxurySpacing.md,
-  },
-  expCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: LuxuryColors.surface,
-    borderWidth: 1,
-    borderColor: LuxuryColors.glassBorder,
-    borderRadius: LuxuryBorderRadius.md,
-    padding: LuxurySpacing.md,
-    marginBottom: LuxurySpacing.sm,
-    gap: LuxurySpacing.sm,
-  },
-  expCardLeft: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: LuxuryColors.goldGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  expCardBody: {
-    flex: 1,
-    gap: 2,
-  },
-  expCardTitle: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '600',
-    color: LuxuryColors.textPrimary,
-  },
-  expCardMeta: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textTertiary,
-  },
-  expCardCreator: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.gold,
-    fontStyle: 'italic',
-  },
-  loadMoreBtn: {
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.sm,
-    borderRadius: LuxuryBorderRadius.full,
-    borderWidth: 1,
-    borderColor: LuxuryColors.gold,
-    minWidth: 140,
-    alignItems: 'center',
-  },
-  loadMoreText: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.gold,
-    fontWeight: '600',
+    lineHeight: 18,
   },
 });
 

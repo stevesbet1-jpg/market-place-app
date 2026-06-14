@@ -98,6 +98,8 @@ export interface CreatorExperience {
   hotels: Hotel[];
   /** Day-by-day plan */
   dailyPlan: DailyPlanEntry[];
+  /** Optional full create-trip payload used for editing and restoration */
+  tripData?: Record<string, unknown>;
 
   // ── Map links (experience-level) ────────────────────────────────────
   /** Top-level Google Maps URL for the primary location */

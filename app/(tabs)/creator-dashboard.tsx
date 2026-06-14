@@ -325,9 +325,9 @@ function AccessGateView({ status, onBack }: { status: AccessStatus; onBack: () =
       icon: 'create-outline',
       color: LuxuryColors.gold,
       title: 'Become a Creator',
-      body: 'Go to your Profile to activate your free creator account instantly — no approval needed.',
-      cta: 'Go to Profile',
-      ctaAction: () => router.push('/(tabs)/profile'),
+      body: 'Open the creator setup flow to activate your creator account and start publishing experiences.',
+      cta: 'Creator Setup',
+      ctaAction: () => router.push('/(tabs)/creator-subscription'),
     },
     approved: {
       icon: 'checkmark-circle',

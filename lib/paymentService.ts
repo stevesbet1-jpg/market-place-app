@@ -1,5 +1,6 @@
 import { getAuth } from 'firebase/auth';
-import { getFirebaseApp } from './firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { getFirebaseApp, getFirestoreDb } from './firebase';
 
 export interface SavedPaymentMethod {
   id: string;
@@ -105,4 +106,29 @@ export async function hasPurchasedExperience(experienceId: string): Promise<bool
     `/api/stripe/purchases/${encodeURIComponent(experienceId)}`,
   );
   return payload.purchased;
+}
+
+export async function listPurchasedExperienceIds(): Promise<string[]> {
+  const user = getAuth(getFirebaseApp()).currentUser;
+  if (!user) return [];
+
+  const purchasesCollectionPath = 'purchases';
+  try {
+    const purchasesQuery = query(
+      collection(getFirestoreDb(), purchasesCollectionPath),
+      where('uid', '==', user.uid),
+    );
+    const snapshot = await getDocs(purchasesQuery);
+    return snapshot.docs
+      .map((docSnap) => docSnap.data() as { experienceId?: unknown; paid?: unknown; status?: unknown })
+      .filter((purchase) => purchase.paid === true || purchase.status === 'paid' || purchase.status === 'succeeded')
+      .map((purchase) => purchase.experienceId)
+      .filter((experienceId): experienceId is string => typeof experienceId === 'string' && experienceId.length > 0);
+  } catch (error: any) {
+    if (error?.code === 'permission-denied') {
+      console.warn('[Payments] Firestore permission denied while reading collection:', purchasesCollectionPath);
+      return [];
+    }
+    throw error;
+  }
 }

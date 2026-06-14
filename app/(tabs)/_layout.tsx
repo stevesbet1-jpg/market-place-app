@@ -10,6 +10,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 const VISIBLE_TABS = [
   'index',
   'trips',
+  'create-trip',
   'ai-concierge',
   'membership',
   'profile',
@@ -19,7 +20,8 @@ type VisibleTab = (typeof VISIBLE_TABS)[number];
 
 const TAB_META: Record<VisibleTab, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
   'index':        { label: 'Explore', icon: 'compass'  },
-  'trips':        { label: 'Trips',   icon: 'map'      },
+  'trips':        { label: 'My Journeys',   icon: 'map'      },
+  'create-trip':  { label: 'Create Trip', icon: 'add-circle' },
   'ai-concierge': { label: 'AI',      icon: 'sparkles' },
   'membership':   { label: 'Club',    icon: 'diamond'  },
   'profile':      { label: 'Profile', icon: 'person'   },
@@ -88,7 +90,8 @@ export default function TabLayout() {
       >
         {/* Visible tabs */}
         <Tabs.Screen name="index"        options={{ title: 'Explore' }} />
-        <Tabs.Screen name="trips"        options={{ title: 'Trips'   }} />
+        <Tabs.Screen name="trips"        options={{ title: 'My Journeys'   }} />
+        <Tabs.Screen name="create-trip"  options={{ title: 'Create Trip' }} />
         <Tabs.Screen name="ai-concierge" options={{ title: 'AI'      }} />
         <Tabs.Screen name="membership"   options={{ title: 'Club'    }} />
         <Tabs.Screen name="profile"      options={{ title: 'Profile' }} />
@@ -97,7 +100,6 @@ export default function TabLayout() {
         <Tabs.Screen name="journey-detail"       options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="experience-detail"    options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="creator-profile"      options={{ tabBarButton: () => null }} />
-        <Tabs.Screen name="paywall"              options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="add-product"          options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="upload-journey"       options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="creator-subscription" options={{ tabBarButton: () => null }} />
@@ -105,6 +107,11 @@ export default function TabLayout() {
         <Tabs.Screen name="creator-dashboard"    options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="create-experience"    options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="create-journey"       options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="create-trip-itinerary"   options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="create-trip-photos"       options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="create-trip-experiences"  options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="create-trip-review"       options={{ tabBarButton: () => null }} />
+        <Tabs.Screen name="create-trip-success"      options={{ tabBarButton: () => null }} />
       </Tabs>
     </View>
   );

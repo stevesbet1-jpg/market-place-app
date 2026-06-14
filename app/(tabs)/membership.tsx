@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -248,6 +249,52 @@ export default function MembershipScreen() {
         <Text style={styles.planNote}>
           Payments are securely processed by Stripe. Cancel anytime.
         </Text>
+      </View>
+
+      {/* ── Billing ── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Subscription</Text>
+        <View style={styles.billingCard}>
+          <View style={styles.billingRowStatic}>
+            <View style={styles.billingIconWrap}>
+              <Ionicons name={isMember ? 'checkmark-circle-outline' : 'ellipse-outline'} size={20} color={isMember ? LuxuryColors.success : LuxuryColors.textTertiary} />
+            </View>
+            <View style={styles.billingTextWrap}>
+              <Text style={styles.billingTitle}>Active Subscription</Text>
+              <Text style={styles.billingDesc}>{isMember ? 'Your Club membership is active.' : 'No active Club subscription.'}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.billingRow}
+            onPress={() => router.push('/payment-methods')}
+            activeOpacity={0.82}
+          >
+            <View style={styles.billingIconWrap}>
+              <Ionicons name="card-outline" size={20} color={LuxuryColors.gold} />
+            </View>
+            <View style={styles.billingTextWrap}>
+              <Text style={styles.billingTitle}>Payment Methods</Text>
+              <Text style={styles.billingDesc}>Manage saved cards for memberships and purchases.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={LuxuryColors.textTertiary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.billingRow}
+            onPress={() => Alert.alert('Billing History', 'Billing history will appear here once invoices are available.')}
+            activeOpacity={0.82}
+          >
+            <View style={styles.billingIconWrap}>
+              <Ionicons name="receipt-outline" size={20} color={LuxuryColors.gold} />
+            </View>
+            <View style={styles.billingTextWrap}>
+              <Text style={styles.billingTitle}>Billing History</Text>
+              <Text style={styles.billingDesc}>Review receipts and payment activity.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={LuxuryColors.textTertiary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Creators preview ── */}
@@ -580,6 +627,53 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.success,
     fontWeight: '600',
+  },
+
+  // ── Billing ──────────────────────────────────────────────
+  billingCard: {
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: LuxuryBorderRadius.xl,
+    overflow: 'hidden',
+  },
+  billingRowStatic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+    padding: LuxurySpacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  billingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+    padding: LuxurySpacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  billingIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: LuxuryBorderRadius.md,
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billingTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  billingTitle: {
+    fontSize: LuxuryFontSize.sm,
+    fontWeight: '700',
+    color: LuxuryColors.textPrimary,
+  },
+  billingDesc: {
+    fontSize: 11,
+    color: LuxuryColors.textSecondary,
+    lineHeight: 16,
   },
 
   // ── Creators ──────────────────────────────────────────────

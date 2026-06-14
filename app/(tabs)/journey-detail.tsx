@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,60 +8,97 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Modal,
-  Animated,
   Dimensions,
   Share,
+  Animated,
+  type ImageSourcePropType,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
-  LuxuryColors,
-  LuxurySpacing,
   LuxuryBorderRadius,
+  LuxuryColors,
   LuxuryFontSize,
   LuxuryShadow,
+  LuxurySpacing,
 } from '../../constants/luxuryTheme';
 import type { ImageKey } from '../../constants/journeys';
 import type { CreatorJourney } from '../../constants/creatorJourneyModel';
-import { formatSaves } from '../../constants/creators';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
+import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import { checkMembership } from '../../lib/membershipService';
 import { getJourneyById } from '../../lib/creatorJourneyService';
-import { getJourneyReviews, submitJourneyReview, type JourneyReview } from '../../lib/reviewService';
-import { isValidRemoteImageUrl } from '../../lib/imageFallback';
+import { getJourneyReviews, type JourneyReview } from '../../lib/reviewService';
 import {
   consumeFreeJourney,
-  getSavedIds,
-  toggleSaved,
   FREE_JOURNEY_LIMIT,
+  getSavedIds,
   setJourneyStoreUid,
+  toggleSaved,
 } from '../../constants/journeyStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CONTENT_WIDTH = SCREEN_WIDTH - LuxurySpacing.lg * 2;
+const MEMORY_TILE_WIDTH = (CONTENT_WIDTH - LuxurySpacing.md) / 2;
+const CYAN = '#8AE6FF';
 
-// ─── Image map ──────────────────────────────────────────────────────────────
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
-  islands:    require('../../assets/collections/private-islands.jpg'),
-  villas:     require('../../assets/collections/super-villas.jpg'),
-  yacht:      require('../../assets/collections/yacht-escapes.jpg'),
-  desert:     require('../../assets/collections/desert-retreats.jpg'),
-  mountain:   require('../../assets/collections/alpine-mountains.jpg'),
-  city:       require('../../assets/collections/japanese-city.jpg'),
-  temple:     require('../../assets/collections/japanese-temple.jpg'),
-  bali:       require('../../assets/collections/bali-rice.jpg'),
+  islands: require('../../assets/collections/private-islands.jpg'),
+  villas: require('../../assets/collections/super-villas.jpg'),
+  yacht: require('../../assets/collections/yacht-escapes.jpg'),
+  desert: require('../../assets/collections/desert-retreats.jpg'),
+  mountain: require('../../assets/collections/alpine-mountains.jpg'),
+  city: require('../../assets/collections/japanese-city.jpg'),
+  temple: require('../../assets/collections/japanese-temple.jpg'),
+  bali: require('../../assets/collections/bali-rice.jpg'),
   seychelles: require('../../assets/collections/seychelles-beach.jpg'),
-  zanzibar:   require('../../assets/collections/zanzibar-coast.jpg'),
-  lakecomo:   require('../../assets/collections/lake-como-view.jpg'),
-  alps:       require('../../assets/collections/swiss-alps-day.jpg'),
+  zanzibar: require('../../assets/collections/zanzibar-coast.jpg'),
+  lakecomo: require('../../assets/collections/lake-como-view.jpg'),
+  alps: require('../../assets/collections/swiss-alps-day.jpg'),
 };
 
-function journeyImageSource(journey: CreatorJourney) {
+type HighlightCard = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value: string;
+  caption: string;
+};
+
+type InsightCard = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+};
+
+type MemoryTile = {
+  id: string;
+  label: string;
+  caption: string;
+  source: ImageSourcePropType | null;
+  tall: boolean;
+};
+
+type RouteStop = {
+  id: string;
+  label: string;
+  subtitle: string;
+};
+
+type TimelineItem = {
+  id: string;
+  day: number;
+  dateLabel: string;
+  title: string;
+  description: string;
+  source: ImageSourcePropType | null;
+};
+
+function journeyImageSource(journey: CreatorJourney): ImageSourcePropType | null {
   if (isValidRemoteImageUrl(journey.imageUri)) return { uri: journey.imageUri!.trim() };
   const key = journey.imageKey as ImageKey | undefined;
   if (key && key in JOURNEY_IMAGES) return JOURNEY_IMAGES[key];
@@ -69,1946 +106,1457 @@ function journeyImageSource(journey: CreatorJourney) {
 }
 
 function deriveInitials(name: string): string {
-  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
+  return name
+    .split(' ')
+    .map((word) => word[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
-function formatReviewDate(ms: number): string {
-  if (!ms) return 'Just now';
-  return new Date(ms).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+function durationDays(duration: string): number {
+  const match = duration.match(/\d+/);
+  if (!match) return 5;
+  const parsed = Number.parseInt(match[0], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
+function formatCompactCurrency(value: number): string {
+  if (value >= 1000) {
+    return `$${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`;
+  }
+  return `$${Math.round(value)}`;
+}
+
+function estimateSpend(journey: CreatorJourney): string {
+  const matches = [...journey.dailyBudget.matchAll(/\d+/g)].map((match) => Number.parseInt(match[0], 10));
+  const days = durationDays(journey.duration);
+  if (matches.length >= 2) {
+    const average = (matches[0] + matches[1]) / 2;
+    return formatCompactCurrency(average * days);
+  }
+  if (matches.length === 1) {
+    return formatCompactCurrency(matches[0] * days);
+  }
+  const fallback: Record<CreatorJourney['budget'], number> = {
+    $: 120,
+    $$: 260,
+    $$$: 520,
+    $$$$: 980,
+  };
+  return formatCompactCurrency(fallback[journey.budget] * days);
+}
+
+function inferWeather(journey: CreatorJourney): string {
+  const text = `${journey.destination} ${journey.region} ${journey.bestTime}`.toLowerCase();
+  if (/desert|dune|dubai|morocco/.test(text)) return '31C sunny';
+  if (/alps|mountain|swiss/.test(text)) return '14C alpine';
+  if (/island|beach|coast|seychell|zanzibar|bali/.test(text)) return '28C coastal';
+  if (/japan|kyoto|tokyo|city/.test(text)) return '22C clear';
+  return '24C mild';
+}
+
+function tripRangeLabel(journey: CreatorJourney): string {
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const lower = journey.bestTime.toLowerCase();
+  const monthIndex = months.findIndex((month) => lower.includes(month));
+  const start = new Date();
+  if (monthIndex >= 0) {
+    start.setMonth(monthIndex);
+  }
+  start.setDate(12);
+  const end = new Date(start);
+  end.setDate(start.getDate() + Math.max(durationDays(journey.duration) - 1, 0));
+  const fmt = (date: Date) => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${fmt(start)} - ${fmt(end)}`;
+}
+
+function buildJourneyStory(journey: CreatorJourney): string {
+  const days = durationDays(journey.duration);
+  const places = journey.places.slice(0, 3).join(', ');
+  const experiences = journey.experiences.slice(0, 2).join(', ');
+  if (places || experiences) {
+    return `${days} unforgettable days through ${journey.destination}, weaving together ${places || journey.region.toLowerCase()} with ${experiences || 'immersive local moments'} and a distinctly curated luxury rhythm.`;
+  }
+  return `${days} unforgettable days exploring ${journey.destination}, blending refined stays, cinematic viewpoints, and thoughtful local discoveries into one polished journey memory.`;
+}
+
+function buildRouteStops(journey: CreatorJourney, showFullJourney: boolean): RouteStop[] {
+  const baseStops = journey.places.length > 0 ? journey.places : [journey.destination, journey.region];
+  return baseStops.slice(0, showFullJourney ? 5 : 3).map((place, index) => ({
+    id: `${place}-${index}`,
+    label: place,
+    subtitle: index === 0 ? 'Arrival' : index === baseStops.length - 1 ? 'Final memory' : `Stop ${index + 1}`,
+  }));
+}
+
+function buildTimeline(journey: CreatorJourney, source: ImageSourcePropType | null, showFullJourney: boolean): TimelineItem[] {
+  const base = new Date();
+  const itinerary = journey.itinerary.length > 0
+    ? journey.itinerary
+    : [{ day: 1, activities: [journey.overview || `Arrival in ${journey.destination}`] }];
+
+  return itinerary.slice(0, showFullJourney ? itinerary.length : 2).map((entry, index) => {
+    const date = new Date(base);
+    date.setDate(base.getDate() + index);
+    const dateLabel = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const title = entry.activities[0] ?? `Day ${entry.day} in ${journey.destination}`;
+    const description = entry.activities.slice(1, 3).join(' • ') || 'A beautifully paced sequence of moments unfolds.';
+    return {
+      id: `day-${entry.day}`,
+      day: entry.day,
+      dateLabel,
+      title,
+      description,
+      source,
+    };
   });
 }
 
-// ─── Derived presentation helpers ───────────────────────────────────────────
-type DifficultyInfo = { label: string; color: string; icon: keyof typeof Ionicons.glyphMap };
-
-function getDifficulty(journey: CreatorJourney): DifficultyInfo {
-  const days = parseInt(journey.duration, 10);
-  if (!isNaN(days) && days >= 12) {
-    return { label: 'Advanced', color: '#FF6B6B', icon: 'trending-up-outline' };
-  }
-  if (!isNaN(days) && days >= 7) {
-    return { label: 'Moderate', color: '#FFA040', icon: 'flame-outline' };
-  }
-  return { label: 'Easy', color: '#4CAF80', icon: 'leaf-outline' };
+function buildHighlights(journey: CreatorJourney): HighlightCard[] {
+  return [
+    {
+      icon: 'trophy-outline',
+      title: 'Best Moment',
+      value: journey.experiences[0] ?? `Golden hour in ${journey.destination}`,
+      caption: 'The memory that defined the trip',
+    },
+    {
+      icon: 'location-outline',
+      title: 'Favorite Spot',
+      value: journey.places[0] ?? journey.destination,
+      caption: 'Most revisited destination moment',
+    },
+    {
+      icon: 'restaurant-outline',
+      title: 'Best Restaurant',
+      value: journey.restaurants[0] ?? 'Private chef table',
+      caption: 'Most memorable meal',
+    },
+    {
+      icon: 'camera-outline',
+      title: 'Most Photographed',
+      value: journey.places[1] ?? journey.destination,
+      caption: 'The frame everyone kept',
+    },
+    {
+      icon: 'heart-outline',
+      title: 'User Favorite',
+      value: journey.savedCount > 0 ? `${journey.savedCount} saves` : 'Loved by early explorers',
+      caption: 'Audience sentiment snapshot',
+    },
+  ];
 }
 
-function getTravelStyles(journey: CreatorJourney): string[] {
-  const haystack = (journey.title + ' ' + journey.region + ' ' + journey.destination).toLowerCase();
-  const tags: string[] = ['Luxury'];
-  if (/ocean|sea|island|coast|beach|maldiv|seychell|zanzibar/.test(haystack)) tags.push('Beach');
-  if (/mountain|alps|trek|safari|desert/.test(haystack)) tags.push('Adventure');
-  if (/japan|bali|tokyo|kyoto|africa|temple|heritage/.test(haystack)) tags.push('Culture');
-  if (journey.restaurants.length >= 4) tags.push('Food');
-  return [...new Set(tags)].slice(0, 4);
+function buildMemoryTiles(journey: CreatorJourney, source: ImageSourcePropType | null): MemoryTile[] {
+  const labels = [
+    ...journey.places,
+    ...journey.experiences,
+    ...journey.restaurants,
+    journey.destination,
+    journey.region,
+  ].filter(Boolean);
+
+  const unique = labels.filter((label, index) => labels.indexOf(label) === index).slice(0, 6);
+  return unique.map((label, index) => ({
+    id: `memory-${index}-${label}`,
+    label,
+    caption: index % 2 === 0 ? 'Saved to the highlight reel' : 'A frame worth keeping forever',
+    source,
+    tall: index % 3 !== 1,
+  }));
 }
 
-// ─── Paywall gate ────────────────────────────────────────────────────────────
-function PaywallBanner({ sectionName }: { sectionName: string }) {
+function buildAchievements(journey: CreatorJourney): string[] {
+  const badges = ['City Explorer', 'Luxury Traveler'];
+  const text = `${journey.destination} ${journey.region} ${journey.overview}`.toLowerCase();
+  if (/desert|dune/.test(text)) badges.push('Desert Adventurer');
+  if (/beach|coast|island|ocean/.test(text)) badges.push('Coastal Collector');
+  if (journey.places.length >= 4) badges.push('Photo Master');
+  if (journey.restaurants.length >= 3) badges.push('Table Hunter');
+  return badges.slice(0, 4);
+}
+
+function buildInsights(journey: CreatorJourney, memoryCount: number): InsightCard[] {
+  const days = durationDays(journey.duration);
+  return [
+    { icon: 'walk-outline', label: 'Distance Walked', value: `${(journey.places.length * 4.6 + days * 1.9).toFixed(0)} km` },
+    { icon: 'camera-outline', label: 'Photos Taken', value: String(memoryCount) },
+    { icon: 'wallet-outline', label: 'Budget Used', value: estimateSpend(journey) },
+    { icon: 'map-outline', label: 'Locations Visited', value: String(Math.max(journey.places.length, 1)) },
+    { icon: 'sunny-outline', label: 'Average Weather', value: inferWeather(journey) },
+  ];
+}
+
+function GradientFallback({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+}) {
   return (
-    <View style={styles.paywallBanner}>
-      <View style={styles.paywallIconCircle}>
-        <Ionicons name="lock-closed" size={22} color={LuxuryColors.gold} />
+    <LinearGradient colors={['#11243F', '#09131F']} style={styles.fallbackGradient}>
+      <View style={styles.fallbackIconWrap}>
+        <Ionicons name={icon} size={26} color={CYAN} />
       </View>
-      <Text style={styles.paywallTitle}>Club Members Only</Text>
-      <Text style={styles.paywallDesc}>
-        Unlock the full {sectionName}, hotels, insider tips and creator notes
-        with a Club membership.
-      </Text>
-      <TouchableOpacity
-        style={styles.paywallCta}
-        onPress={() => router.push('/(tabs)/membership')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="diamond" size={12} color={LuxuryColors.background} />
-        <Text style={styles.paywallCtaText}>Unlock with Club</Text>
-      </TouchableOpacity>
-    </View>
+      <Text style={styles.fallbackTitle}>{title}</Text>
+      <Text style={styles.fallbackSubtitle}>{subtitle}</Text>
+    </LinearGradient>
   );
 }
 
-// ─── Collapsible section header ─────────────────────────────────────────────
-interface SectionHeaderProps {
-  label: string;
-  isOpen: boolean;
-  onToggle: () => void;
-}
-
-function SectionHeader({ label, isOpen, onToggle }: SectionHeaderProps) {
+function PremiumUnlockCard() {
   return (
-    <TouchableOpacity
-      style={styles.sectionHeaderRow}
-      onPress={onToggle}
-      activeOpacity={0.7}
-      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-    >
-      <Text style={styles.sectionLabel}>{label}</Text>
-      <Ionicons
-        name={isOpen ? 'chevron-up' : 'chevron-down'}
-        size={13}
-        color={LuxuryColors.gold}
-      />
-    </TouchableOpacity>
+    <LinearGradient colors={['rgba(19,45,72,0.94)', 'rgba(7,17,32,0.98)']} style={styles.unlockCard}>
+      <View style={styles.unlockIconWrap}>
+        <Ionicons name="diamond-outline" size={18} color={CYAN} />
+      </View>
+      <View style={styles.unlockBody}>
+        <Text style={styles.unlockTitle}>Unlock the complete memory trail</Text>
+        <Text style={styles.unlockText}>
+          Club access reveals the full route, every day on the timeline, expanded memories, and the creator’s full premium curation.
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={styles.unlockButton}
+        onPress={() => router.push('/(tabs)/membership')}
+        activeOpacity={0.86}
+      >
+        <Text style={styles.unlockButtonText}>Unlock</Text>
+      </TouchableOpacity>
+    </LinearGradient>
   );
 }
 
-// ─── Experience icon cycle ───────────────────────────────────────────────────
-const EXP_ICONS: ReadonlyArray<keyof typeof Ionicons.glyphMap> = [
-  'star-outline', 'heart-outline', 'camera-outline', 'map-outline',
-  'musical-notes-outline', 'leaf-outline', 'wine-outline', 'boat-outline',
-];
-
-// ─── Main screen ─────────────────────────────────────────────────────────────
 export default function JourneyDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+
   const [journey, setJourney] = useState<CreatorJourney | null>(null);
   const [loading, setLoading] = useState(true);
-
   const [saved, setSaved] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
-  const [followed, setFollowed] = useState(false);
   const [freeRemaining, setFreeRemaining] = useState<number>(FREE_JOURNEY_LIMIT);
-  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [isPremium, setIsPremium] = useState(false);
   const [reviews, setReviews] = useState<JourneyReview[]>([]);
-  const [reviewsLoading, setReviewsLoading] = useState(false);
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState('');
-  const [authUid, setAuthUid] = useState<string | null>(null);
-  const [sections, setSections] = useState({
-
-    places: true,
-    restaurants: true,
-    experiences: true,
-    itinerary: true,
-    hotels: true,
-    map: true,
-    insiderTips: true,
-    gallery: true,
-    reviews: true,
-  });
-
+  const [galleryVisible, setGalleryVisible] = useState(false);
   const saveScale = useRef(new Animated.Value(1)).current;
-
-  const toggleSection = useCallback((key: keyof typeof sections) => {
-    setSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
-  const loadReviews = useCallback(async (journeyId: string) => {
-    setReviewsLoading(true);
-    try {
-      const next = await getJourneyReviews(journeyId, 20);
-      setReviews(next);
-    } catch {
-      setReviews([]);
-    } finally {
-      setReviewsLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    if (!id) { setLoading(false); return; }
-    getJourneyById(id).then((j) => {
-      if (!cancelled) { setJourney(j); setLoading(false); }
-    }).catch(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    getJourneyById(id)
+      .then((next) => {
+        if (!cancelled) {
+          setJourney(next);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
-    consumeFreeJourney(id).then(setFreeRemaining);
-    getSavedIds().then((ids) => setSaved(ids.includes(id)));
-    loadReviews(id);
-  }, [id, loadReviews]);
+    consumeFreeJourney(id).then(setFreeRemaining).catch(() => {});
+    getSavedIds().then((ids) => setSaved(ids.includes(id))).catch(() => {});
+    getJourneyReviews(id, 6).then(setReviews).catch(() => setReviews([]));
+  }, [id]);
 
-  // ── Membership check: set isPremium when Firebase auth resolves ──────────
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setJourneyStoreUid(user?.uid ?? null);
-      setAuthUid(user?.uid ?? null);
-      if (!user) { setIsPremium(false); return; }
-      const active = await checkMembership(user.uid);
+      if (!user) {
+        setIsPremium(false);
+        return;
+      }
+      const active = await checkMembership(user.uid).catch(() => false);
       setIsPremium(active);
     });
     return unsubscribe;
   }, []);
 
-  const handleSubmitReview = useCallback(async () => {
-    if (!id || reviewSubmitting) return;
-    if (!authUid) {
-      Alert.alert('Sign in required', 'Please log in to leave a review.');
-      return;
-    }
-    if (reviewComment.trim().length < 6) {
-      Alert.alert('Review too short', 'Please write at least 6 characters.');
-      return;
-    }
-
-    setReviewSubmitting(true);
+  const handleToggleSave = useCallback(async () => {
+    if (!id || saveLoading) return;
+    setSaveLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    Animated.sequence([
+      Animated.spring(saveScale, { toValue: 0.92, useNativeDriver: true, speed: 40, bounciness: 6 }),
+      Animated.spring(saveScale, { toValue: 1, useNativeDriver: true, speed: 22, bounciness: 8 }),
+    ]).start();
     try {
-      await submitJourneyReview({
-        journeyId: id,
-        rating: reviewRating,
-        comment: reviewComment,
-      });
-      setReviewComment('');
-      setReviewRating(5);
-      await loadReviews(id);
-      Alert.alert('Thank you', 'Your review has been posted.');
-    } catch (e: any) {
-      Alert.alert('Could not post review', e?.message || 'Please try again.');
+      const nextIds = await toggleSaved(id);
+      setSaved(nextIds.includes(id));
     } finally {
-      setReviewSubmitting(false);
+      setSaveLoading(false);
     }
-  }, [authUid, id, loadReviews, reviewComment, reviewRating, reviewSubmitting]);
+  }, [id, saveLoading, saveScale]);
 
   const handleShare = useCallback(async () => {
     if (!journey) return;
     try {
       await Share.share({
         title: journey.title,
-        message: `${journey.title} — ${journey.destination}\n\nDiscover this ${journey.duration} journey curated by a top travel creator. ${journey.overview.slice(0, 120)}…`,
+        message: `${journey.title} in ${journey.destination}\n\n${buildJourneyStory(journey)}`,
       });
-    } catch (_) { /* user dismissed */ }
+    } catch {
+      // ignore dismissed share
+    }
   }, [journey]);
 
-  const handleStartPlanning = useCallback(() => {
+  const handleCreateReel = useCallback(() => {
     if (!journey) return;
     router.push({
       pathname: '/(tabs)/ai-concierge',
-      params: { query: `${journey.duration} in ${journey.destination}` },
+      params: { query: `Create a cinematic travel reel concept for ${journey.title} in ${journey.destination}` },
     });
   }, [journey]);
 
-  const handleToggleSave = async () => {
-    if (!id || saveLoading) return;
-    setSaveLoading(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Animated.sequence([
-      Animated.spring(saveScale, { toValue: 0.93, useNativeDriver: true, speed: 40, bounciness: 6 }),
-      Animated.spring(saveScale, { toValue: 1.00, useNativeDriver: true, speed: 20, bounciness: 8 }),
-    ]).start();
-    const newIds = await toggleSaved(id);
-    setSaved(newIds.includes(id));
-    setSaveLoading(false);
-  };
+  const handleDownloadMemories = useCallback(async () => {
+    if (!journey) return;
+    const mediaUrl = isValidRemoteImageUrl(journey.imageUri) ? journey.imageUri!.trim() : undefined;
+    try {
+      await Share.share({
+        title: `${journey.title} memories`,
+        message: `Memories from ${journey.title} in ${journey.destination}`,
+        url: mediaUrl,
+      });
+    } catch {
+      Alert.alert('Memories', 'Could not open the share sheet right now.');
+    }
+  }, [journey]);
+
+  const noteText = useMemo(() => {
+    const topReview = reviews[0]?.comment?.trim();
+    if (topReview) return topReview;
+    if (journey?.overview) return journey.overview;
+    return 'A beautifully paced journey worth revisiting again and again.';
+  }, [journey, reviews]);
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.notFoundWrap]}>
-        <ActivityIndicator color={LuxuryColors.gold} />
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={CYAN} size="large" />
       </View>
     );
   }
 
   if (!journey) {
     return (
-      <View style={[styles.container, styles.notFoundWrap]}>
-        <Ionicons name="map-outline" size={36} color={LuxuryColors.textTertiary} />
-        <Text style={styles.notFoundText}>Journey not available</Text>
-        <Text style={styles.notFoundSub}>
-          This journey may still be under review or has not been published yet.
-        </Text>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.8}>
-          <Text style={styles.backFallback}>← Back to Journeys</Text>
+      <View style={styles.loadingWrap}>
+        <Ionicons name="map-outline" size={40} color={LuxuryColors.textTertiary} />
+        <Text style={styles.emptyTitle}>Journey not available</Text>
+        <Text style={styles.emptyBody}>This journey may still be under review or is no longer available.</Text>
+        <TouchableOpacity style={styles.backGhostButton} onPress={() => router.back()} activeOpacity={0.82}>
+          <Text style={styles.backGhostButtonText}>Back to journeys</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  const galleryImageSrc = journeyImageSource(journey);
-  const galleryKeys: ImageKey[] = journey.imageKey
-    ? ([journey.imageKey] as ImageKey[])
-    : [];
-
-  const difficulty = getDifficulty(journey);
-  const travelStyles = getTravelStyles(journey);
-  const creatorInitials = deriveInitials(journey.creatorName || 'Creator');
-  const reviewAverage = reviews.length
-    ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+  const heroSource = journeyImageSource(journey);
+  const showFullJourney = isPremium;
+  const memories = buildMemoryTiles(journey, heroSource);
+  const visibleMemories = showFullJourney ? memories : memories.slice(0, 4);
+  const reviewsAverage = reviews.length > 0
+    ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
     : 0;
+  const displayRating = journey.rating > 0 ? journey.rating : reviewsAverage;
+  const totalMemories = Math.max((journey.places.length + journey.experiences.length + journey.restaurants.length) * 7, 24);
+  const travelDates = tripRangeLabel(journey);
+  const story = buildJourneyStory(journey);
+  const routeStops = buildRouteStops(journey, showFullJourney);
+  const timeline = buildTimeline(journey, heroSource, showFullJourney);
+  const highlights = buildHighlights(journey);
+  const insights = buildInsights(journey, totalMemories);
+  const achievements = buildAchievements(journey);
+  const quickInsights = [
+    { icon: 'airplane-outline' as const, value: `${Math.max(1, Math.ceil(durationDays(journey.duration) / 5))}`, label: 'Flights' },
+    { icon: 'location-outline' as const, value: `${Math.max(journey.places.length, 1)}`, label: 'Places Visited' },
+    { icon: 'camera-outline' as const, value: `${totalMemories}`, label: 'Photos' },
+    { icon: 'wallet-outline' as const, value: estimateSpend(journey), label: 'Total Spent' },
+  ];
 
   return (
     <>
       <ScrollView
-        style={styles.container}
+        style={styles.screen}
         showsVerticalScrollIndicator={false}
-        bounces={false}
-        contentInsetAdjustmentBehavior="never"
-        automaticallyAdjustContentInsets={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + LuxurySpacing.xxl }}
       >
-        {/* ── Hero ─────────────────────────────────────────── */}
-        <View style={styles.heroWrap}>
-          {galleryImageSrc ? (
-            <Image
-              source={galleryImageSrc}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
+        <View style={styles.heroSection}>
+          {heroSource ? (
+            <Image source={heroSource} style={styles.heroImage} resizeMode="cover" />
           ) : (
-            <View style={[styles.heroImage, { backgroundColor: LuxuryColors.surface }]} />
+            <GradientFallback icon="airplane-outline" title={journey.destination} subtitle="Curated journey memory" />
           )}
-          <LinearGradient
-            colors={['rgba(7,17,32,0.40)', 'transparent', 'rgba(7,17,32,0.97)'] as const}
-            style={StyleSheet.absoluteFill}
-          />
+          <LinearGradient colors={['rgba(6,12,20,0.08)', 'rgba(6,12,20,0.48)', 'rgba(6,12,20,0.94)']} style={StyleSheet.absoluteFillObject} />
 
-          {/* Back */}
-          <TouchableOpacity
-            style={[styles.backBtn, { top: insets.top + LuxurySpacing.sm }]}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={[styles.heroActions, { top: insets.top + LuxurySpacing.sm }]}>
+            <TouchableOpacity style={styles.heroActionButton} onPress={() => router.back()} activeOpacity={0.84}>
+              <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.heroActionRowRight}>
+              <TouchableOpacity style={styles.heroActionButton} onPress={handleShare} activeOpacity={0.84}>
+                <Ionicons name="share-social-outline" size={19} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+                <TouchableOpacity style={styles.heroActionButton} onPress={handleToggleSave} activeOpacity={0.84} disabled={saveLoading}>
+                  <Ionicons name={saved ? 'heart' : 'heart-outline'} size={19} color={saved ? CYAN : '#FFFFFF'} />
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
+          </View>
 
-          {/* Share in hero */}
-          <TouchableOpacity
-            style={[styles.shareHeroBtn, { top: insets.top + LuxurySpacing.sm }]}
-            onPress={handleShare}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="share-outline" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-
-          {/* Save in hero */}
-          <TouchableOpacity
-            style={[styles.saveHeroBtn, { top: insets.top + LuxurySpacing.sm }]}
-            onPress={handleToggleSave}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={saved ? 'bookmark' : 'bookmark-outline'}
-              size={20}
-              color={saved ? LuxuryColors.gold : '#FFFFFF'}
-            />
-          </TouchableOpacity>
-
-          {/* Hero text */}
-          <View style={styles.heroOverlay}>
-            <Text style={styles.heroRegion}>{journey.region}</Text>
-            <Text style={styles.heroTitle}>{journey.title}</Text>
-
-            <View style={styles.heroMetaRow}>
-              <View style={styles.heroMetaItem}>
-                <Ionicons name="time-outline" size={12} color={LuxuryColors.gold} />
-                <Text style={styles.heroMetaText}>{journey.duration}</Text>
-              </View>
-              <View style={styles.heroMetaDot} />
-              <View style={styles.heroMetaItem}>
-                <Ionicons name="sunny-outline" size={12} color={LuxuryColors.gold} />
-                <Text style={styles.heroMetaText}>{journey.bestTime}</Text>
-              </View>
-              <View style={styles.heroMetaDot} />
-              <View style={styles.heroMetaItem}>
-                <Ionicons name="cash-outline" size={12} color={LuxuryColors.gold} />
-                <Text style={styles.heroMetaText}>{journey.budget} · {journey.dailyBudget}</Text>
-              </View>
+          <View style={styles.heroContent}>
+            <View style={styles.statusBadge}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusBadgeText}>Completed Trip</Text>
             </View>
 
-            {/* Difficulty + style tags */}
-            <View style={styles.heroTagsRow}>
-              <View style={[styles.heroTag, { borderColor: difficulty.color + '66' }]}>
-                <Ionicons name={difficulty.icon} size={9} color={difficulty.color} />
-                <Text style={[styles.heroTagText, { color: difficulty.color }]}>
-                  {difficulty.label}
-                </Text>
+            <Text style={styles.destinationTitle}>{journey.destination}</Text>
+            <Text style={styles.countryText}>{journey.region}</Text>
+
+            <TouchableOpacity
+              style={styles.creatorPill}
+              onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } })}
+              activeOpacity={0.84}
+            >
+              <View style={styles.creatorAvatarMini}>
+                <Text style={styles.creatorAvatarMiniText}>{deriveInitials(journey.creatorName || 'Creator')}</Text>
               </View>
-              {travelStyles.map((s) => (
-                <View key={s} style={styles.heroTag}>
-                  <Text style={styles.heroTagText}>{s}</Text>
+              <Text style={styles.creatorPillText}>{journey.creatorName || 'Curated by creator'}</Text>
+            </TouchableOpacity>
+
+            <View style={styles.heroMetaGrid}>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="calendar-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{travelDates}</Text>
+              </View>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="time-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{journey.duration}</Text>
+              </View>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="star-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{displayRating > 0 ? displayRating.toFixed(1) : 'New'}</Text>
+              </View>
+              <View style={styles.heroMetaChip}>
+                <Ionicons name="images-outline" size={14} color={CYAN} />
+                <Text style={styles.heroMetaValue}>{totalMemories} memories</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.contentWrap}>
+          <View style={styles.sectionHeaderWrap}>
+            <Text style={styles.sectionEyebrow}>Quick Insights</Text>
+            <Text style={styles.sectionHeading}>A premium snapshot of the journey</Text>
+          </View>
+
+          <View style={styles.quickGrid}>
+            {quickInsights.map((item) => (
+              <LinearGradient key={item.label} colors={['rgba(18,39,60,0.95)', 'rgba(9,18,29,0.95)']} style={styles.quickCard}>
+                <View style={styles.quickCardGlow} />
+                <View style={styles.quickIconWrap}>
+                  <Ionicons name={item.icon} size={18} color={CYAN} />
+                </View>
+                <Text style={styles.quickValue}>{item.value}</Text>
+                <Text style={styles.quickLabel}>{item.label}</Text>
+              </LinearGradient>
+            ))}
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Journey Story</Text>
+            <LinearGradient colors={['rgba(17,39,62,0.92)', 'rgba(8,17,30,0.98)']} style={styles.storyCard}>
+              <View style={styles.storyIconWrap}>
+                <Ionicons name="sparkles-outline" size={18} color={CYAN} />
+              </View>
+              <Text style={styles.storyText}>{story}</Text>
+            </LinearGradient>
+          </View>
+
+          {!showFullJourney ? <PremiumUnlockCard /> : null}
+
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Trip Route</Text>
+            <LinearGradient colors={['rgba(14,27,43,0.96)', 'rgba(7,15,26,0.98)']} style={styles.routeCard}>
+              <View style={styles.routeMapBackdrop}>
+                <View style={styles.routeGlowLarge} />
+                <View style={styles.routeGlowSmall} />
+              </View>
+              <View style={styles.routeCanvas}>
+                <View style={styles.routeLineTrack} />
+                {routeStops.map((stop, index) => (
+                  <View key={stop.id} style={[styles.routeStop, { left: `${10 + index * 20}%`, top: index % 2 === 0 ? 28 : 92 }]}>
+                    <View style={styles.routeMarker}>
+                      <View style={styles.routeMarkerInner} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+              <View style={styles.routeStopsList}>
+                {routeStops.map((stop) => (
+                  <View key={stop.id} style={styles.routeStopRow}>
+                    <View style={styles.routeStopBadge}>
+                      <Ionicons name="navigate-outline" size={12} color={CYAN} />
+                    </View>
+                    <View style={styles.routeStopTextWrap}>
+                      <Text style={styles.routeStopTitle}>{stop.label}</Text>
+                      <Text style={styles.routeStopSubtitle}>{stop.subtitle}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </LinearGradient>
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Itinerary Timeline</Text>
+            <View style={styles.timelineWrap}>
+              {timeline.map((item) => (
+                <View key={item.id} style={styles.timelineRow}>
+                  <View style={styles.timelineRailWrap}>
+                    <View style={styles.timelineRail} />
+                    <LinearGradient colors={['#8AE6FF', '#4DA8FF']} style={styles.timelineNode}>
+                      <Text style={styles.timelineNodeText}>{item.day}</Text>
+                    </LinearGradient>
+                  </View>
+                  <LinearGradient colors={['rgba(20,38,59,0.96)', 'rgba(8,17,30,0.98)']} style={styles.timelineCard}>
+                    <View style={styles.timelineThumbWrap}>
+                      {item.source ? (
+                        <Image source={item.source} style={styles.timelineThumb} resizeMode="cover" />
+                      ) : (
+                        <GradientFallback icon="images-outline" title={item.title} subtitle={item.dateLabel} />
+                      )}
+                    </View>
+                    <View style={styles.timelineBody}>
+                      <Text style={styles.timelineDate}>{item.dateLabel}</Text>
+                      <Text style={styles.timelineTitle}>{item.title}</Text>
+                      <Text style={styles.timelineDescription}>{item.description}</Text>
+                    </View>
+                  </LinearGradient>
                 </View>
               ))}
             </View>
-
-            {/* Counter */}
-            <View style={styles.freeCounterBadge}>
-              <Ionicons name="diamond-outline" size={10} color={LuxuryColors.gold} />
-              <Text style={styles.freeCounterText}>
-                {freeRemaining} of {FREE_JOURNEY_LIMIT} complimentary remaining
-              </Text>
-            </View>
           </View>
-        </View>
 
-        {/* ── Creator strip ───────────────────────────────── */}
-        {journey.creatorName ? (
-          <View style={styles.creatorStrip}>
-            {/* Top row: avatar + info + follow */}
-            <View style={styles.creatorTopRow}>
-              <TouchableOpacity
-                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } })}
-                activeOpacity={0.8}
-              >
-                <View style={styles.creatorAvatar}>
-                  <Text style={styles.creatorAvatarText}>{creatorInitials}</Text>
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.creatorInfo}
-                onPress={() => router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } })}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.creatorNameText}>{journey.creatorName}</Text>
-                {journey.rating > 0 && (
-                  <View style={styles.creatorRatingRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Ionicons
-                        key={s}
-                        name={s <= Math.round(journey.rating) ? 'star' : 'star-outline'}
-                        size={10}
-                        color={LuxuryColors.gold}
-                      />
-                    ))}
-                    <Text style={styles.creatorRatingVal}> {journey.rating.toFixed(1)}</Text>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Trip Highlights</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.highlightsRow}>
+              {highlights.slice(0, showFullJourney ? highlights.length : 3).map((item) => (
+                <LinearGradient key={item.title} colors={['rgba(17,39,62,0.94)', 'rgba(9,17,28,0.98)']} style={styles.highlightCard}>
+                  <View style={styles.highlightIconBadge}>
+                    <Ionicons name={item.icon} size={16} color={CYAN} />
                   </View>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.followBtn, followed && styles.followBtnActive]}
-                onPress={() => setFollowed((f) => !f)}
-                activeOpacity={0.8}
-              >
-                <Ionicons
-                  name={followed ? 'checkmark' : 'person-add-outline'}
-                  size={12}
-                  color={followed ? LuxuryColors.background : LuxuryColors.gold}
-                />
-                <Text style={[styles.followBtnText, followed && styles.followBtnTextActive]}>
-                  {followed ? 'Following' : 'Follow'}
-                </Text>
+                  <Text style={styles.highlightTitle}>{item.title}</Text>
+                  <Text style={styles.highlightValue} numberOfLines={2}>{item.value}</Text>
+                  <Text style={styles.highlightCaption}>{item.caption}</Text>
+                </LinearGradient>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <View style={styles.memoriesHeaderRow}>
+              <View>
+                <Text style={styles.sectionEyebrow}>Travel Memories</Text>
+                <Text style={styles.sectionHeading}>A visual reel of the trip</Text>
+              </View>
+              <TouchableOpacity onPress={() => setGalleryVisible(true)} activeOpacity={0.84}>
+                <Text style={styles.memoriesActionText}>Open gallery</Text>
               </TouchableOpacity>
             </View>
-            {/* Bottom row: stats + view profile */}
-            <View style={styles.creatorBottomRow}>
-              {journey.savedCount > 0 && (
-                <>
-                  <View style={styles.creatorStat}>
-                    <Ionicons name="heart-outline" size={11} color={LuxuryColors.textTertiary} />
-                    <Text style={styles.creatorStatText}>{formatSaves(journey.savedCount)} saves</Text>
-                  </View>
-                  <View style={styles.creatorStatDot} />
-                </>
-              )}
-              {journey.rating > 0 && (
-                <View style={styles.creatorStat}>
-                  <Ionicons name="star" size={11} color={LuxuryColors.gold} />
-                  <Text style={[styles.creatorStatText, { color: LuxuryColors.gold }]}>{journey.rating.toFixed(1)}</Text>
-                </View>
-              )}
-              <View style={{ flex: 1 }} />
-              <TouchableOpacity
-                onPress={() =>
-                  router.push({ pathname: '/(tabs)/creator-profile', params: { id: journey.creatorId } })
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={styles.viewProfileText}>Profile →</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
-
-        {/* ── Content ──────────────────────────────────────── */}
-        <View style={styles.content}>
-
-          {/* Overview — always visible */}
-          <View style={styles.overviewSection}>
-            <Text style={styles.sectionLabel}>Overview</Text>
-            <Text style={styles.bodyText}>{journey.overview}</Text>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Places to Explore */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Places to Explore"
-              isOpen={sections.places}
-              onToggle={() => toggleSection('places')}
-            />
-            {sections.places && (
-              <View style={styles.sectionBody}>
-                {journey.places.map((place) => (
-                  <View key={place} style={styles.listRow}>
-                    <View style={styles.bulletDiamond} />
-                    <Text style={styles.listText}>{place}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Restaurants & Cafés — first item visible, rest locked */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Restaurants & Cafés"
-              isOpen={sections.restaurants}
-              onToggle={() => toggleSection('restaurants')}
-            />
-            {sections.restaurants && (
-              <View style={styles.sectionBody}>
-                {/* Always show the first restaurant as a teaser */}
-                {journey.restaurants.slice(0, 1).map((r) => (
-                  <View key={r} style={styles.listRow}>
-                    <Ionicons
-                      name="restaurant-outline"
-                      size={12}
-                      color={LuxuryColors.gold}
-                      style={styles.listIcon}
-                    />
-                    <Text style={styles.listText}>{r}</Text>
-                  </View>
-                ))}
-                {/* Gate the rest */}
-                {isPremium ? (
-                  journey.restaurants.slice(1).map((r) => (
-                    <View key={r} style={styles.listRow}>
-                      <Ionicons
-                        name="restaurant-outline"
-                        size={12}
-                        color={LuxuryColors.gold}
-                        style={styles.listIcon}
-                      />
-                      <Text style={styles.listText}>{r}</Text>
-                    </View>
-                  ))
-                ) : (
-                  journey.restaurants.length > 1 && (
-                    <PaywallBanner sectionName="restaurant list" />
-                  )
-                )}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Hotels — locked for members */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Where to Stay"
-              isOpen={sections.hotels}
-              onToggle={() => toggleSection('hotels')}
-            />
-            {sections.hotels && (
-              <View style={styles.sectionBody}>
-                {isPremium ? (
-                  <Text style={styles.bodyText}>
-                    Hotel recommendations will be added by the creator.
-                  </Text>
-                ) : (
-                  <PaywallBanner sectionName="hotel recommendations" />
-                )}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Local Experiences — 2-col cards */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Local Experiences"
-              isOpen={sections.experiences}
-              onToggle={() => toggleSection('experiences')}
-            />
-            {sections.experiences && (
-              <View style={[styles.sectionBody, styles.expGrid]}>
-                {journey.experiences.map((exp, idx) => (
-                  <View key={exp} style={styles.expCard}>
-                    <View style={styles.expCardIconWrap}>
-                      <Ionicons
-                        name={EXP_ICONS[idx % EXP_ICONS.length]}
-                        size={15}
-                        color={LuxuryColors.gold}
-                      />
-                    </View>
-                    <Text style={styles.expCardText} numberOfLines={2}>{exp}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Day-by-Day Itinerary — Day 1 free, rest locked */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Day-by-Day Itinerary"
-              isOpen={sections.itinerary}
-              onToggle={() => toggleSection('itinerary')}
-            />
-            {sections.itinerary && (
-              <View style={styles.sectionBody}>
-                {/* Day 1 always visible */}
-                {journey.itinerary.slice(0, 1).map((dayPlan) => (
-                  <View key={dayPlan.day} style={styles.itineraryCard}>
-                    <View style={styles.itineraryCardHeader}>
-                      <View style={styles.itineraryDayBadge}>
-                        <Text style={styles.itineraryDayNum}>Day {dayPlan.day}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.itineraryActivities}>
-                      {dayPlan.activities.map((activity, idx) => (
-                        <View key={idx} style={styles.itineraryActivityRow}>
-                          <Ionicons
-                            name="location-outline"
-                            size={11}
-                            color={LuxuryColors.gold}
-                            style={styles.itineraryActivityIcon}
-                          />
-                          <Text style={styles.itineraryActivityText}>{activity}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ))}
-                {/* Remaining days gated */}
-                {isPremium ? (
-                  journey.itinerary.slice(1).map((dayPlan) => (
-                    <View key={dayPlan.day} style={styles.itineraryCard}>
-                      <View style={styles.itineraryCardHeader}>
-                        <View style={styles.itineraryDayBadge}>
-                          <Text style={styles.itineraryDayNum}>Day {dayPlan.day}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.itineraryActivities}>
-                        {dayPlan.activities.map((activity, idx) => (
-                          <View key={idx} style={styles.itineraryActivityRow}>
-                            <Ionicons
-                              name="location-outline"
-                              size={11}
-                              color={LuxuryColors.gold}
-                              style={styles.itineraryActivityIcon}
-                            />
-                            <Text style={styles.itineraryActivityText}>{activity}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  ))
-                ) : (
-                  journey.itinerary.length > 1 && (
-                    <PaywallBanner sectionName={`full ${journey.itinerary.length}-day itinerary`} />
-                  )
-                )}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Journey Route Map placeholder */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Journey Route"
-              isOpen={sections.map}
-              onToggle={() => toggleSection('map')}
-            />
-            {sections.map && (
-              isPremium ? (
-                <View style={styles.mapPlaceholder}>
-                  <Ionicons name="map" size={32} color="rgba(212,175,55,0.35)" />
-                  <Text style={styles.mapTitle}>{journey.destination} Route</Text>
-                  <Text style={styles.mapSub}>
-                    {journey.places.length} stops · {journey.duration}
-                  </Text>
-                  <View style={styles.mapStopsRow}>
-                    {journey.places.slice(0, 4).map((place, i) => (
-                      <View key={place} style={styles.mapStop}>
-                        <View style={styles.mapStopDot} />
-                        {i < Math.min(journey.places.length, 4) - 1 && (
-                          <View style={styles.mapStopLine} />
-                        )}
-                        <Text style={styles.mapStopName} numberOfLines={1}>{place}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ) : (
-                <PaywallBanner sectionName="journey route map" />
-              )
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Photo Gallery — horizontal scroll + tap for fullscreen */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Photo Gallery"
-              isOpen={sections.gallery}
-              onToggle={() => toggleSection('gallery')}
-            />
-            {sections.gallery && galleryImageSrc && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.galleryScroll}
-                style={styles.galleryScrollWrap}
-              >
-                {galleryKeys.length > 0 ? galleryKeys.map((key, i) => (
-                  <TouchableOpacity
-                    key={`${key}-${i}`}
-                    style={styles.galleryCard}
-                    onPress={() => setGalleryIndex(i)}
-                    activeOpacity={0.88}
-                  >
-                    <Image
-                      source={JOURNEY_IMAGES[key]}
-                      style={styles.galleryImage}
-                      resizeMode="cover"
-                    />
-                    <LinearGradient
-                      colors={['transparent', 'rgba(7,17,32,0.50)'] as const}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <View style={styles.galleryExpandIcon}>
-                      <Ionicons name="expand-outline" size={14} color="rgba(255,255,255,0.85)" />
-                    </View>
-                  </TouchableOpacity>
-                )) : (
-                  <TouchableOpacity
-                    style={styles.galleryCard}
-                    onPress={() => setGalleryIndex(0)}
-                    activeOpacity={0.88}
-                  >
-                    <Image
-                      source={galleryImageSrc}
-                      style={styles.galleryImage}
-                      resizeMode="cover"
-                    />
-                    <LinearGradient
-                      colors={['transparent', 'rgba(7,17,32,0.50)'] as const}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <View style={styles.galleryExpandIcon}>
-                      <Ionicons name="expand-outline" size={14} color="rgba(255,255,255,0.85)" />
-                    </View>
-                  </TouchableOpacity>
-                )}
-              </ScrollView>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Traveler Reviews */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Traveler Reviews"
-              isOpen={sections.reviews}
-              onToggle={() => toggleSection('reviews')}
-            />
-            {sections.reviews && (
-              <View style={styles.sectionBody}>
-                {reviewsLoading ? (
-                  <ActivityIndicator color={LuxuryColors.gold} />
-                ) : (
-                  <>
-                    {reviews.length > 0 ? (
-                      <View style={styles.reviewSummary}>
-                        <Text style={styles.reviewAvgScore}>{reviewAverage.toFixed(1)}</Text>
-                        <View style={styles.reviewMeta}>
-                          <View style={styles.reviewAvgStars}>
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <Ionicons
-                                key={star}
-                                name={star <= Math.round(reviewAverage) ? 'star' : 'star-outline'}
-                                size={12}
-                                color={LuxuryColors.gold}
-                              />
-                            ))}
-                          </View>
-                          <Text style={styles.reviewAvgLabel}>{reviews.length} traveler reviews</Text>
-                        </View>
-                      </View>
+            <View style={styles.masonryRow}>
+              <View style={styles.masonryColumn}>
+                {visibleMemories.filter((_, index) => index % 2 === 0).map((tile) => (
+                  <TouchableOpacity key={tile.id} style={[styles.memoryTile, tile.tall ? styles.memoryTileTall : styles.memoryTileShort]} onPress={() => setGalleryVisible(true)} activeOpacity={0.88}>
+                    {tile.source ? (
+                      <Image source={tile.source} style={styles.memoryImage} resizeMode="cover" />
                     ) : (
-                      <Text style={styles.bodyText}>Be the first to review this journey.</Text>
+                      <GradientFallback icon="camera-outline" title={tile.label} subtitle={tile.caption} />
                     )}
-
-                    <View style={styles.reviewFormCard}>
-                      <Text style={styles.reviewFormTitle}>Share your experience</Text>
-                      <View style={styles.reviewRatingPicker}>
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <TouchableOpacity
-                            key={star}
-                            onPress={() => setReviewRating(star)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            activeOpacity={0.8}
-                          >
-                            <Ionicons
-                              name={star <= reviewRating ? 'star' : 'star-outline'}
-                              size={20}
-                              color={LuxuryColors.gold}
-                            />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                      <TextInput
-                        style={styles.reviewInput}
-                        value={reviewComment}
-                        onChangeText={setReviewComment}
-                        placeholder="What made this journey special?"
-                        placeholderTextColor={LuxuryColors.textTertiary}
-                        multiline
-                        maxLength={400}
-                        textAlignVertical="top"
-                      />
-                      <TouchableOpacity
-                        style={[
-                          styles.reviewSubmitBtn,
-                          (!authUid || reviewSubmitting || reviewComment.trim().length < 6) && styles.reviewSubmitBtnDisabled,
-                        ]}
-                        onPress={handleSubmitReview}
-                        disabled={!authUid || reviewSubmitting || reviewComment.trim().length < 6}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.reviewSubmitText}>
-                          {reviewSubmitting ? 'Posting...' : authUid ? 'Post Review' : 'Sign In to Review'}
-                        </Text>
-                      </TouchableOpacity>
+                    <LinearGradient colors={['transparent', 'rgba(6,12,20,0.82)']} style={StyleSheet.absoluteFillObject} />
+                    <View style={styles.memoryOverlay}>
+                      <Text style={styles.memoryLabel}>{tile.label}</Text>
+                      <Text style={styles.memoryCaption}>{tile.caption}</Text>
                     </View>
-
-                    {reviews.map((review) => (
-                      <View key={review.id} style={styles.reviewCard}>
-                        <View style={styles.reviewCardHeader}>
-                          <View style={styles.reviewAvatar}>
-                            <Text style={styles.reviewAvatarText}>{deriveInitials(review.authorName)}</Text>
-                          </View>
-                          <View style={styles.reviewMeta}>
-                            <Text style={styles.reviewAuthor}>{review.authorName}</Text>
-                            <View style={styles.reviewRating}>
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <Ionicons
-                                  key={star}
-                                  name={star <= review.rating ? 'star' : 'star-outline'}
-                                  size={11}
-                                  color={LuxuryColors.gold}
-                                />
-                              ))}
-                            </View>
-                          </View>
-                          <Text style={styles.reviewDate}>{formatReviewDate(review.createdAtMs)}</Text>
-                        </View>
-                        <Text style={styles.reviewText}>{review.comment}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.masonryColumn}>
+                {visibleMemories.filter((_, index) => index % 2 === 1).map((tile, index, arr) => {
+                  const isLast = index === arr.length - 1;
+                  return (
+                    <TouchableOpacity key={tile.id} style={[styles.memoryTile, tile.tall ? styles.memoryTileTall : styles.memoryTileShort]} onPress={() => setGalleryVisible(true)} activeOpacity={0.88}>
+                      {tile.source ? (
+                        <Image source={tile.source} style={styles.memoryImage} resizeMode="cover" />
+                      ) : (
+                        <GradientFallback icon="camera-outline" title={tile.label} subtitle={tile.caption} />
+                      )}
+                      <LinearGradient colors={['transparent', 'rgba(6,12,20,0.86)']} style={StyleSheet.absoluteFillObject} />
+                      <View style={styles.memoryOverlay}>
+                        <Text style={styles.memoryLabel}>{tile.label}</Text>
+                        <Text style={styles.memoryCaption}>{tile.caption}</Text>
                       </View>
-                    ))}
-                  </>
-                )}
+                      {isLast ? (
+                        <View style={styles.moreMemoriesBadge}>
+                          <Text style={styles.moreMemoriesText}>+99 memories</Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            )}
+            </View>
           </View>
 
-          {/* Insider Tips — Creator notes, gated */}
-          <View style={styles.sectionOuter}>
-            <SectionHeader
-              label="Creator's Insider Tips"
-              isOpen={sections.insiderTips}
-              onToggle={() => toggleSection('insiderTips')}
-            />
-            {sections.insiderTips && (
-              <View style={styles.sectionBody}>
-                {isPremium ? (
-                  <Text style={styles.bodyText}>Insider tips will appear here once the creator adds them.</Text>
-                ) : (
-                  <PaywallBanner sectionName="insider tips" />
-                )}
-              </View>
-            )}
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Trip Insights</Text>
+            <View style={styles.insightsGrid}>
+              {insights.slice(0, showFullJourney ? insights.length : 4).map((item) => (
+                <View key={item.label} style={styles.insightCard}>
+                  <View style={styles.insightIconWrap}>
+                    <Ionicons name={item.icon} size={15} color={CYAN} />
+                  </View>
+                  <Text style={styles.insightValue}>{item.value}</Text>
+                  <Text style={styles.insightLabel}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
           </View>
 
-          <View style={styles.divider} />
-
-          {/* Action buttons row */}
-          <View style={styles.actionRow}>
-            {/* Start Planning */}
-            <TouchableOpacity
-              style={styles.startPlanningBtn}
-              onPress={handleStartPlanning}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="sparkles-outline" size={16} color={LuxuryColors.background} />
-              <Text style={styles.startPlanningText}>Start Planning</Text>
-            </TouchableOpacity>
-
-            {/* Share */}
-            <TouchableOpacity
-              style={styles.shareBtn}
-              onPress={handleShare}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="share-outline" size={16} color={LuxuryColors.gold} />
-            </TouchableOpacity>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>User Notes</Text>
+            <LinearGradient colors={['rgba(18,41,63,0.96)', 'rgba(8,17,30,0.98)']} style={styles.notesCard}>
+              <Text style={styles.quoteMark}>“</Text>
+              <Text style={styles.notesText}>{noteText}</Text>
+              <Text style={styles.notesAttribution}>{journey.creatorName || 'Traveler note'}</Text>
+            </LinearGradient>
           </View>
 
-          {/* Save Journey CTA — animated + haptic */}
-          <Animated.View style={{ transform: [{ scale: saveScale }] }}>
-            <TouchableOpacity
-              style={[styles.saveCta, saved && styles.saveCtaSaved]}
-              onPress={handleToggleSave}
-              activeOpacity={0.85}
-              disabled={saveLoading}
-            >
-              <Ionicons
-                name={saved ? 'bookmark' : 'bookmark-outline'}
-                size={16}
-                color={saved ? LuxuryColors.background : LuxuryColors.gold}
-              />
-              <Text style={[styles.saveCtaText, saved && styles.saveCtaTextSaved]}>
-                {saved ? 'Saved  ✓' : 'Save Journey'}
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>Achievements</Text>
+            <View style={styles.achievementWrap}>
+              {achievements.map((badge) => (
+                <LinearGradient key={badge} colors={['rgba(27,72,105,0.92)', 'rgba(10,26,40,0.98)']} style={styles.achievementBadge}>
+                  <View style={styles.achievementGlow} />
+                  <Ionicons name="ribbon-outline" size={14} color={CYAN} />
+                  <Text style={styles.achievementText}>{badge}</Text>
+                </LinearGradient>
+              ))}
+            </View>
+          </View>
 
-          <View style={{ height: 80 + insets.bottom }} />
+          <View style={styles.bottomActionsWrap}>
+            <TouchableOpacity style={styles.secondaryAction} onPress={handleShare} activeOpacity={0.86}>
+              <Ionicons name="share-social-outline" size={17} color="#D8F7FF" />
+              <Text style={styles.secondaryActionText}>Share Journey</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.primaryAction} onPress={handleCreateReel} activeOpacity={0.88}>
+              <LinearGradient colors={['#8AE6FF', '#3FA7FF']} style={styles.primaryActionFill}>
+                <Ionicons name="sparkles-outline" size={18} color="#04111E" />
+                <Text style={styles.primaryActionText}>Create Reel</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryAction} onPress={handleDownloadMemories} activeOpacity={0.86}>
+              <Ionicons name="download-outline" size={17} color="#D8F7FF" />
+              <Text style={styles.secondaryActionText}>Download Memories</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
-      {/* ── Full-screen Gallery Modal ────────────────────────── */}
-      <Modal
-        visible={galleryIndex !== null}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setGalleryIndex(null)}
-      >
-        <View style={styles.modalBg}>
-          <TouchableOpacity
-            style={[styles.modalClose, { top: insets.top + 12 }]}
-            onPress={() => setGalleryIndex(null)}
-            activeOpacity={0.8}
-          >
+      <Modal visible={galleryVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setGalleryVisible(false)}>
+        <View style={styles.galleryModalBackdrop}>
+          <TouchableOpacity style={[styles.galleryModalClose, { top: insets.top + LuxurySpacing.sm }]} onPress={() => setGalleryVisible(false)} activeOpacity={0.82}>
             <Ionicons name="close" size={22} color="#FFFFFF" />
           </TouchableOpacity>
-
-          {galleryIndex !== null && (
-            <Image
-              source={galleryKeys.length > 0 ? JOURNEY_IMAGES[galleryKeys[galleryIndex]] : galleryImageSrc!}
-              style={styles.modalImage}
-              resizeMode="contain"
-            />
-          )}
-
-          <View style={[styles.modalNavRow, { paddingBottom: insets.bottom + 16 }]}>
-            <TouchableOpacity
-              style={[styles.modalNavBtn, galleryIndex === 0 && styles.modalNavBtnDisabled]}
-              onPress={() => setGalleryIndex((i) => (i !== null ? Math.max(0, i - 1) : 0))}
-              disabled={galleryIndex === 0}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={22}
-                color={galleryIndex === 0 ? 'rgba(255,255,255,0.25)' : '#FFFFFF'}
-              />
-            </TouchableOpacity>
-            <Text style={styles.modalCounter}>
-              {(galleryIndex ?? 0) + 1} / {galleryKeys.length}
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.modalNavBtn,
-                galleryIndex === galleryKeys.length - 1 && styles.modalNavBtnDisabled,
-              ]}
-              onPress={() =>
-                setGalleryIndex((i) =>
-                  i !== null ? Math.min(galleryKeys.length - 1, i + 1) : 0,
-                )
-              }
-              disabled={galleryIndex === galleryKeys.length - 1}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="chevron-forward"
-                size={22}
-                color={
-                  galleryIndex === galleryKeys.length - 1
-                    ? 'rgba(255,255,255,0.25)'
-                    : '#FFFFFF'
-                }
-              />
-            </TouchableOpacity>
-          </View>
+          <ScrollView contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: insets.bottom + 48 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.galleryModalGrid}>
+              {memories.map((tile) => (
+                <View key={tile.id} style={[styles.galleryModalTile, tile.tall ? styles.galleryModalTileTall : styles.galleryModalTileShort]}>
+                  {tile.source ? (
+                    <Image source={tile.source} style={styles.memoryImage} resizeMode="cover" />
+                  ) : (
+                    <GradientFallback icon="images-outline" title={tile.label} subtitle={tile.caption} />
+                  )}
+                  <LinearGradient colors={['transparent', 'rgba(6,12,20,0.85)']} style={StyleSheet.absoluteFillObject} />
+                  <View style={styles.memoryOverlay}>
+                    <Text style={styles.memoryLabel}>{tile.label}</Text>
+                    <Text style={styles.memoryCaption}>{tile.caption}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: LuxuryColors.background,
+    backgroundColor: '#050C15',
   },
-  notFoundWrap: {
+  loadingWrap: {
+    flex: 1,
+    backgroundColor: '#050C15',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: LuxurySpacing.xl,
     gap: LuxurySpacing.md,
   },
-  notFoundText: {
-    fontSize: LuxuryFontSize.lg,
+  emptyTitle: {
+    color: LuxuryColors.textPrimary,
+    fontSize: LuxuryFontSize.xl,
+    fontWeight: '700',
+  },
+  emptyBody: {
     color: LuxuryColors.textSecondary,
-  },
-  notFoundSub: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textTertiary,
     textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: LuxurySpacing.xl,
+    lineHeight: 22,
   },
-  backFallback: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.gold,
-    fontWeight: '600',
+  backGhostButton: {
+    paddingHorizontal: LuxurySpacing.lg,
+    paddingVertical: LuxurySpacing.sm,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.35)',
   },
-
-  // ── Hero ────────────────────────────────────────────────
-  heroWrap: {
-    height: 330,
+  backGhostButtonText: {
+    color: CYAN,
+    fontWeight: '700',
+  },
+  heroSection: {
+    height: 470,
+    position: 'relative',
     overflow: 'hidden',
+    backgroundColor: '#081423',
   },
   heroImage: {
     width: '100%',
     height: '100%',
   },
-  backBtn: {
+  heroActions: {
+    position: 'absolute',
+    left: LuxurySpacing.md,
+    right: LuxurySpacing.md,
+    zIndex: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  heroActionRowRight: {
+    flexDirection: 'row',
+    gap: LuxurySpacing.sm,
+  },
+  heroActionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(7, 19, 31, 0.44)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroContent: {
     position: 'absolute',
     left: LuxurySpacing.lg,
-    width: 36,
-    height: 36,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(7,17,32,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  saveHeroBtn: {
-    position: 'absolute',
     right: LuxurySpacing.lg,
-    width: 36,
-    height: 36,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(7,17,32,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    bottom: LuxurySpacing.xl,
   },
-  shareHeroBtn: {
-    position: 'absolute',
-    right: LuxurySpacing.lg + 44,
-    width: 36,
-    height: 36,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(7,17,32,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  heroOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingBottom: LuxurySpacing.xl,
-    gap: 7,
-  },
-  heroRegion: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 2.8,
-    textTransform: 'uppercase',
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-    lineHeight: 31,
-  },
-  heroMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: LuxurySpacing.sm,
-  },
-  heroMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  heroMetaText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.80)',
-    fontWeight: '500',
-    letterSpacing: 0.1,
-  },
-  heroMetaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: LuxuryColors.gold,
-    opacity: 0.55,
-  },
-  heroTagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  heroTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(7,17,32,0.65)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.28)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  heroTagText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.82)',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  freeCounterBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(7,17,32,0.50)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  statusBadge: {
     alignSelf: 'flex-start',
-  },
-  freeCounterText: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.70)',
-    letterSpacing: 0.2,
-    fontWeight: '500',
-  },
-
-  // ── Creator strip ────────────────────────────────────────
-  creatorStrip: {
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-    backgroundColor: LuxuryColors.surface,
-    gap: LuxurySpacing.sm,
-  },
-  creatorTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: LuxurySpacing.sm,
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(9, 29, 45, 0.48)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.20)',
+    marginBottom: LuxurySpacing.md,
   },
-  creatorAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.14)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(212,175,55,0.40)',
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: CYAN,
+  },
+  statusBadgeText: {
+    color: '#E6FAFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  destinationTitle: {
+    color: '#FFFFFF',
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: '800',
+    letterSpacing: -1,
+  },
+  countryText: {
+    color: 'rgba(230,250,255,0.72)',
+    fontSize: 16,
+    marginTop: 6,
+    marginBottom: LuxurySpacing.md,
+  },
+  creatorPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: LuxurySpacing.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(7,18,30,0.44)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  creatorAvatarMini: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(138,230,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  creatorAvatarText: {
-    fontSize: 13,
+  creatorAvatarMiniText: {
+    color: CYAN,
+    fontSize: 10,
     fontWeight: '800',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
   },
-  creatorInfo: {
-    flex: 1,
-    gap: 3,
+  creatorPillText: {
+    color: '#EAFDFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
-  creatorNameText: {
-    fontSize: LuxuryFontSize.md,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  creatorRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  creatorRatingVal: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    marginLeft: 2,
-  },
-  followBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderRadius: LuxuryBorderRadius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.45)',
-    backgroundColor: 'transparent',
-  },
-  followBtnActive: {
-    backgroundColor: LuxuryColors.gold,
-    borderColor: LuxuryColors.gold,
-  },
-  followBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.4,
-  },
-  followBtnTextActive: {
-    color: LuxuryColors.background,
-  },
-  creatorBottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  creatorStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  creatorStatText: {
-    fontSize: 11,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.1,
-  },
-  creatorStatDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: 'rgba(122,118,104,0.35)',
-  },
-  viewProfileText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-
-  // ── Content ─────────────────────────────────────────────
-  content: {
-    paddingTop: LuxurySpacing.lg,
-  },
-  overviewSection: {
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.md,
-    gap: LuxurySpacing.sm,
-  },
-  sectionOuter: {
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingTop: LuxurySpacing.md,
-    paddingBottom: LuxurySpacing.sm,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: LuxurySpacing.sm,
-  },
-  sectionBody: {
-    gap: LuxurySpacing.sm,
-    paddingTop: 2,
-  },
-  sectionLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 2.5,
-    textTransform: 'uppercase',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginHorizontal: LuxurySpacing.xl,
-  },
-  bodyText: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 22,
-    letterSpacing: 0.1,
-  },
-
-  // ── List rows ───────────────────────────────────────────
-  listRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: LuxurySpacing.sm,
-    paddingVertical: 3,
-  },
-  bulletDiamond: {
-    width: 5,
-    height: 5,
-    backgroundColor: LuxuryColors.gold,
-    transform: [{ rotate: '45deg' }],
-    marginTop: 7,
-    flexShrink: 0,
-  },
-  listIcon: {
-    marginTop: 2,
-    flexShrink: 0,
-  },
-  listText: {
-    flex: 1,
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 20,
-    letterSpacing: 0.1,
-  },
-
-  // ── Local Experiences 2-col grid ────────────────────────
-  expGrid: {
+  heroMetaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: LuxurySpacing.sm,
   },
-  expCard: {
-    width: (SCREEN_WIDTH - LuxurySpacing.xl * 2 - LuxurySpacing.sm) / 2,
-    backgroundColor: 'rgba(13,21,37,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.12)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-    gap: LuxurySpacing.xs,
-    ...LuxuryShadow.soft,
-  },
-  expCardIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: LuxuryBorderRadius.sm,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  expCardText: {
-    fontSize: 11,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 16,
-    letterSpacing: 0.1,
-  },
-
-  // ── Itinerary cards ─────────────────────────────────────
-  itineraryCard: {
-    backgroundColor: 'rgba(13,21,37,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.10)',
-    borderRadius: LuxuryBorderRadius.lg,
-    overflow: 'hidden',
-    marginBottom: LuxurySpacing.sm,
-    ...LuxuryShadow.soft,
-  },
-  itineraryCardHeader: {
+  heroMetaChip: {
+    minWidth: (CONTENT_WIDTH - LuxurySpacing.sm) / 2,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: LuxurySpacing.md,
-    paddingTop: LuxurySpacing.md,
-    paddingBottom: LuxurySpacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(212,175,55,0.08)',
-  },
-  itineraryDayBadge: {
-    backgroundColor: 'rgba(212,175,55,0.12)',
-    borderRadius: LuxuryBorderRadius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  itineraryDayNum: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  itineraryActivities: {
-    paddingHorizontal: LuxurySpacing.md,
-    paddingTop: LuxurySpacing.sm,
-    paddingBottom: LuxurySpacing.md,
     gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(10, 24, 37, 0.42)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
-  itineraryActivityRow: {
+  heroMetaValue: {
+    color: '#F2FCFF',
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  contentWrap: {
+    marginTop: -LuxurySpacing.xl,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    backgroundColor: '#050C15',
+    paddingTop: LuxurySpacing.xl,
+    paddingHorizontal: LuxurySpacing.lg,
+  },
+  sectionHeaderWrap: {
+    marginBottom: LuxurySpacing.md,
+  },
+  sectionEyebrow: {
+    color: CYAN,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.7,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  sectionHeading: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+  quickGrid: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.md,
   },
-  itineraryActivityIcon: {
-    marginTop: 2,
-    flexShrink: 0,
-  },
-  itineraryActivityText: {
-    flex: 1,
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 20,
-    letterSpacing: 0.1,
-  },
-
-  // ── Gallery ─────────────────────────────────────────────
-  galleryScrollWrap: {
-    marginHorizontal: -LuxurySpacing.xl,
-  },
-  galleryScroll: {
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingBottom: LuxurySpacing.sm,
-    gap: LuxurySpacing.sm,
-  },
-  galleryCard: {
-    width: SCREEN_WIDTH * 0.62,
-    height: 200,
-    borderRadius: LuxuryBorderRadius.xl,
+  quickCard: {
+    width: (CONTENT_WIDTH - LuxurySpacing.md) / 2,
+    borderRadius: 28,
+    padding: LuxurySpacing.lg,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.12)',
     ...LuxuryShadow.medium,
   },
-  galleryImage: {
+  quickCardGlow: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(77,168,255,0.16)',
+  },
+  quickIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    marginBottom: LuxurySpacing.md,
+  },
+  quickValue: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  quickLabel: {
+    color: 'rgba(230,250,255,0.72)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  sectionBlock: {
+    marginTop: LuxurySpacing.xl,
+  },
+  storyCard: {
+    borderRadius: 30,
+    padding: LuxurySpacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.12)',
+    ...LuxuryShadow.medium,
+  },
+  storyIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    marginBottom: LuxurySpacing.md,
+  },
+  storyText: {
+    color: '#F4FCFF',
+    fontSize: 17,
+    lineHeight: 28,
+    fontWeight: '600',
+  },
+  unlockCard: {
+    marginTop: LuxurySpacing.xl,
+    borderRadius: 28,
+    padding: LuxurySpacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.18)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.md,
+  },
+  unlockIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(138,230,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unlockBody: {
+    flex: 1,
+  },
+  unlockTitle: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  unlockText: {
+    color: 'rgba(230,250,255,0.70)',
+    lineHeight: 20,
+    fontSize: 13,
+  },
+  unlockButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: CYAN,
+  },
+  unlockButtonText: {
+    color: '#04111E',
+    fontWeight: '800',
+  },
+  routeCard: {
+    borderRadius: 30,
+    padding: LuxurySpacing.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+  },
+  routeMapBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+  },
+  routeGlowLarge: {
+    position: 'absolute',
+    right: -24,
+    top: -20,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(77,168,255,0.14)',
+  },
+  routeGlowSmall: {
+    position: 'absolute',
+    left: 18,
+    bottom: 18,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(138,230,255,0.12)',
+  },
+  routeCanvas: {
+    height: 170,
+    borderRadius: 24,
+    backgroundColor: 'rgba(3,10,18,0.44)',
+    marginBottom: LuxurySpacing.lg,
+    overflow: 'hidden',
+  },
+  routeLineTrack: {
+    position: 'absolute',
+    left: '12%',
+    right: '12%',
+    top: 82,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: 'rgba(138,230,255,0.55)',
+  },
+  routeStop: {
+    position: 'absolute',
+  },
+  routeMarker: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.24)',
+  },
+  routeMarkerInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: CYAN,
+  },
+  routeStopsList: {
+    gap: LuxurySpacing.sm,
+  },
+  routeStopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LuxurySpacing.sm,
+  },
+  routeStopBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+  },
+  routeStopTextWrap: {
+    flex: 1,
+  },
+  routeStopTitle: {
+    color: '#F2FCFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  routeStopSubtitle: {
+    color: 'rgba(230,250,255,0.62)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  timelineWrap: {
+    gap: LuxurySpacing.md,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  timelineRailWrap: {
+    width: 34,
+    alignItems: 'center',
+  },
+  timelineRail: {
+    position: 'absolute',
+    top: 18,
+    bottom: -LuxurySpacing.md,
+    width: 2,
+    backgroundColor: 'rgba(138,230,255,0.18)',
+  },
+  timelineNode: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  timelineNodeText: {
+    color: '#04111E',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  timelineCard: {
+    flex: 1,
+    marginLeft: LuxurySpacing.sm,
+    borderRadius: 28,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+    ...LuxuryShadow.soft,
+  },
+  timelineThumbWrap: {
+    height: 160,
+    backgroundColor: '#0A1623',
+  },
+  timelineThumb: {
     width: '100%',
     height: '100%',
   },
-  galleryExpandIcon: {
-    position: 'absolute',
-    bottom: LuxurySpacing.sm,
-    right: LuxurySpacing.sm,
-    width: 28,
-    height: 28,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(7,17,32,0.60)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  timelineBody: {
+    padding: LuxurySpacing.lg,
   },
-
-  // ── Save CTA ────────────────────────────────────────────
-  saveCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: LuxurySpacing.sm,
-    marginHorizontal: LuxurySpacing.xl,
-    marginTop: LuxurySpacing.xl,
-    paddingVertical: 16,
-    borderRadius: LuxuryBorderRadius.xl,
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: LuxuryColors.gold,
-  },
-  saveCtaSaved: {
-    backgroundColor: LuxuryColors.gold,
-    borderColor: LuxuryColors.gold,
-  },
-  saveCtaText: {
-    fontSize: LuxuryFontSize.sm,
+  timelineDate: {
+    color: CYAN,
     fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 1.2,
+    fontSize: 12,
+    letterSpacing: 1,
     textTransform: 'uppercase',
+    marginBottom: 8,
   },
-  saveCtaTextSaved: {
-    color: LuxuryColors.background,
+  timelineTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
+    marginBottom: 8,
   },
-
-  // ── Fullscreen gallery modal ────────────────────────────
-  modalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(3,10,20,0.97)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  timelineDescription: {
+    color: 'rgba(230,250,255,0.70)',
+    lineHeight: 22,
   },
-  modalClose: {
-    position: 'absolute',
-    right: LuxurySpacing.lg,
-    width: 36,
-    height: 36,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH * 1.2,
-  },
-  modalNavRow: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: LuxurySpacing.xxl,
-    paddingTop: LuxurySpacing.lg,
-    backgroundColor: 'rgba(3,10,20,0.70)',
-  },
-  modalNavBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalNavBtnDisabled: {
-    opacity: 0.35,
-  },
-  modalCounter: {
-    fontSize: LuxuryFontSize.sm,
-    color: 'rgba(255,255,255,0.70)',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-
-  // ── Similar Journeys ─────────────────────────────────────
-  similarCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: LuxuryBorderRadius.lg,
-    overflow: 'hidden',
-    marginBottom: LuxurySpacing.sm,
+  highlightsRow: {
+    paddingRight: LuxurySpacing.sm,
     gap: LuxurySpacing.md,
-    paddingRight: LuxurySpacing.md,
   },
-  similarCardThumb: {
-    width: 72,
-    height: 72,
-    flexShrink: 0,
-  },
-  similarCardInfo: {
-    flex: 1,
-    gap: 2,
-    paddingVertical: LuxurySpacing.xs,
-  },
-  similarCardName: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  similarCardDest: {
-    fontSize: 10,
-    color: LuxuryColors.textSecondary,
-    letterSpacing: 0.1,
-  },
-  similarCardMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 2,
-  },
-  similarCardRating: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.2,
-  },
-  similarCardBudget: {
-    fontSize: 10,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.1,
-  },
-
-  // ── Action row ───────────────────────────────────────────
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    paddingHorizontal: LuxurySpacing.xl,
-    paddingVertical: LuxurySpacing.md,
-  },
-  startPlanningBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: LuxurySpacing.sm,
-    backgroundColor: LuxuryColors.gold,
-    borderRadius: LuxuryBorderRadius.full,
-    paddingVertical: 13,
-  },
-  startPlanningText: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '800',
-    color: LuxuryColors.background,
-    letterSpacing: 0.3,
-  },
-  shareBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: LuxuryBorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+  highlightCard: {
+    width: 220,
+    borderRadius: 28,
+    padding: LuxurySpacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
-    backgroundColor: 'transparent',
+    borderColor: 'rgba(138,230,255,0.10)',
   },
-
-  // ── Reviews ──────────────────────────────────────────────
-  reviewSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    paddingVertical: LuxurySpacing.sm,
-    marginBottom: LuxurySpacing.sm,
-  },
-  reviewAvgScore: {
-    fontSize: LuxuryFontSize.xxl,
-    fontWeight: '800',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: -0.5,
-  },
-  reviewAvgStars: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  reviewAvgLabel: {
-    fontSize: 11,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
-  },
-  reviewCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-    gap: LuxurySpacing.sm,
-    marginBottom: LuxurySpacing.sm,
-  },
-  reviewCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-  },
-  reviewAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reviewAvatarText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-  reviewMeta: {
-    flex: 1,
-    gap: 1,
-  },
-  reviewAuthor: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  reviewLocation: {
-    fontSize: 10,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
-  },
-  reviewRating: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  reviewText: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 20,
-    letterSpacing: 0.1,
-  },
-  reviewDate: {
-    fontSize: 10,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.3,
-    textAlign: 'right',
-  },
-  reviewFormCard: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-    gap: LuxurySpacing.sm,
-    marginBottom: LuxurySpacing.sm,
-  },
-  reviewFormTitle: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  reviewRatingPicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.xs,
-  },
-  reviewInput: {
-    minHeight: 90,
-    borderRadius: LuxuryBorderRadius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(13,21,37,0.95)',
-    color: LuxuryColors.textPrimary,
-    fontSize: LuxuryFontSize.sm,
-    paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: LuxurySpacing.sm,
-  },
-  reviewSubmitBtn: {
-    backgroundColor: LuxuryColors.gold,
-    borderRadius: LuxuryBorderRadius.full,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reviewSubmitBtnDisabled: {
-    opacity: 0.45,
-  },
-  reviewSubmitText: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    color: LuxuryColors.background,
-    letterSpacing: 0.2,
-  },
-
-  // ── Paywall Banner ───────────────────────────────────────
-  paywallBanner: {
-    alignItems: 'center',
-    gap: LuxurySpacing.md,
-    backgroundColor: 'rgba(212,175,55,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.18)',
-    borderRadius: LuxuryBorderRadius.xl,
-    paddingVertical: LuxurySpacing.xl,
-    paddingHorizontal: LuxurySpacing.xl,
-    marginTop: LuxurySpacing.sm,
-  },
-  paywallIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(212,175,55,0.28)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  paywallTitle: {
-    fontSize: LuxuryFontSize.md,
-    fontWeight: '800',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.2,
-  },
-  paywallDesc: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    letterSpacing: 0.1,
-  },
-  paywallCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    backgroundColor: LuxuryColors.gold,
-    borderRadius: LuxuryBorderRadius.full,
-    paddingVertical: 11,
-    paddingHorizontal: LuxurySpacing.xl,
-    marginTop: 4,
-  },
-  paywallCtaText: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '800',
-    color: LuxuryColors.background,
-    letterSpacing: 0.4,
-  },
-
-  // ── Hotels ───────────────────────────────────────────────
-  hotelCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-    gap: LuxurySpacing.sm,
-  },
-  hotelCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.sm,
-    flex: 1,
-  },
-  hotelIconWrap: {
+  highlightIconBadge: {
     width: 38,
     height: 38,
-    borderRadius: LuxuryBorderRadius.md,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.20)',
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    backgroundColor: 'rgba(138,230,255,0.12)',
+    marginBottom: LuxurySpacing.md,
   },
-  hotelInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  hotelName: {
-    fontSize: LuxuryFontSize.sm,
+  highlightTitle: {
+    color: CYAN,
+    fontSize: 12,
     fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
   },
-  hotelStars: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 1,
-  },
-  hotelType: {
-    fontSize: 10,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
-  },
-  hotelPrice: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.1,
-  },
-  hotelNoteBadge: {
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    borderRadius: LuxuryBorderRadius.sm,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    flexShrink: 0,
-  },
-  hotelNoteText: {
-    fontSize: 9,
+  highlightValue: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    lineHeight: 24,
     fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
+    marginBottom: 8,
   },
-
-  // ── Journey Route Map Placeholder ────────────────────────
-  mapPlaceholder: {
-    alignItems: 'center',
-    gap: LuxurySpacing.md,
-    backgroundColor: 'rgba(13,21,37,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.12)',
-    borderRadius: LuxuryBorderRadius.xl,
-    paddingVertical: LuxurySpacing.xl,
-    paddingHorizontal: LuxurySpacing.xl,
-    marginTop: LuxurySpacing.sm,
-  },
-  mapTitle: {
-    fontSize: LuxuryFontSize.md,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  mapSub: {
-    fontSize: 11,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
-  },
-  mapStopsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 0,
-    marginTop: LuxurySpacing.sm,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  mapStop: {
-    alignItems: 'center',
-    gap: 4,
-    width: 70,
-  },
-  mapStopDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: LuxuryColors.gold,
-    borderWidth: 2,
-    borderColor: 'rgba(212,175,55,0.30)',
-  },
-  mapStopLine: {
-    position: 'absolute',
-    top: 4,
-    left: '50%',
-    width: 70,
-    height: 2,
-    backgroundColor: 'rgba(212,175,55,0.20)',
-  },
-  mapStopName: {
-    fontSize: 9,
-    color: LuxuryColors.textSecondary,
-    letterSpacing: 0.2,
-    textAlign: 'center',
-  },
-
-  // ── Insider Tips ─────────────────────────────────────────
-  tipCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: LuxurySpacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.10)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.md,
-  },
-  tipNumBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    marginTop: 1,
-  },
-  tipNum: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.2,
-  },
-  tipText: {
-    flex: 1,
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
+  highlightCaption: {
+    color: 'rgba(230,250,255,0.64)',
     lineHeight: 20,
-    letterSpacing: 0.1,
+    fontSize: 13,
+  },
+  memoriesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: LuxurySpacing.md,
+  },
+  memoriesActionText: {
+    color: CYAN,
+    fontWeight: '700',
+  },
+  masonryRow: {
+    flexDirection: 'row',
+    gap: LuxurySpacing.md,
+  },
+  masonryColumn: {
+    flex: 1,
+    gap: LuxurySpacing.md,
+  },
+  memoryTile: {
+    width: MEMORY_TILE_WIDTH,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0A1623',
+  },
+  memoryTileTall: {
+    height: 240,
+  },
+  memoryTileShort: {
+    height: 180,
+  },
+  memoryImage: {
+    width: '100%',
+    height: '100%',
+  },
+  memoryOverlay: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+  },
+  memoryLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  memoryCaption: {
+    color: 'rgba(230,250,255,0.74)',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  moreMemoriesBadge: {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(5,12,21,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  moreMemoriesText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  insightsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.md,
+  },
+  insightCard: {
+    width: (CONTENT_WIDTH - LuxurySpacing.md) / 2,
+    borderRadius: 24,
+    padding: LuxurySpacing.md,
+    backgroundColor: 'rgba(11, 22, 34, 0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.09)',
+  },
+  insightIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    marginBottom: 12,
+  },
+  insightValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  insightLabel: {
+    color: 'rgba(230,250,255,0.64)',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  notesCard: {
+    borderRadius: 30,
+    padding: LuxurySpacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.12)',
+  },
+  quoteMark: {
+    color: 'rgba(138,230,255,0.34)',
+    fontSize: 52,
+    lineHeight: 52,
+    marginBottom: 12,
+  },
+  notesText: {
+    color: '#F6FDFF',
+    fontSize: 18,
+    lineHeight: 29,
+    fontWeight: '600',
+    marginBottom: LuxurySpacing.lg,
+  },
+  notesAttribution: {
+    color: CYAN,
+    fontWeight: '700',
+  },
+  achievementWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: LuxurySpacing.md,
+  },
+  achievementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+  },
+  achievementGlow: {
+    position: 'absolute',
+    right: -10,
+    top: -10,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(138,230,255,0.18)',
+  },
+  achievementText: {
+    color: '#F4FCFF',
+    fontWeight: '700',
+  },
+  bottomActionsWrap: {
+    marginTop: LuxurySpacing.xxl,
+    gap: LuxurySpacing.md,
+  },
+  secondaryAction: {
+    height: 58,
+    borderRadius: 22,
+    backgroundColor: 'rgba(11, 22, 34, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryActionText: {
+    color: '#D8F7FF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  primaryAction: {
+    borderRadius: 26,
+    overflow: 'hidden',
+    ...LuxuryShadow.medium,
+  },
+  primaryActionFill: {
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  primaryActionText: {
+    color: '#04111E',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  galleryModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(3, 8, 15, 0.96)',
+  },
+  galleryModalClose: {
+    position: 'absolute',
+    right: LuxurySpacing.md,
+    zIndex: 5,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  galleryModalGrid: {
+    paddingHorizontal: LuxurySpacing.lg,
+    gap: LuxurySpacing.md,
+  },
+  galleryModalTile: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0A1623',
+  },
+  galleryModalTileTall: {
+    height: 280,
+  },
+  galleryModalTileShort: {
+    height: 210,
+  },
+  fallbackGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: LuxurySpacing.lg,
+  },
+  fallbackIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    marginBottom: LuxurySpacing.md,
+  },
+  fallbackTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  fallbackSubtitle: {
+    color: 'rgba(230,250,255,0.64)',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

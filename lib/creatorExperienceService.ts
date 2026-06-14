@@ -145,6 +145,10 @@ function mapDoc(id: string, data: Record<string, unknown>): CreatorExperience {
     dailyPlan: normalizeDailyPlan(
       data.dailyPlan ?? data.itinerary ?? data.dayByDay ?? data.daily_plan
     ),
+    tripData:
+      data.tripData && typeof data.tripData === 'object'
+        ? (data.tripData as Record<string, unknown>)
+        : undefined,
     googleMapsUrl: (data.googleMapsUrl as string) ?? '',
     appleMapsUrl: (data.appleMapsUrl as string) ?? '',
     freePreview: Boolean(data.freePreview),
@@ -236,6 +240,30 @@ export async function submitExperienceForReview(
     savedCount: 0,
     createdAt: serverTimestamp(),
   });
+  return ref.id;
+}
+
+/**
+ * Creates and immediately publishes a new experience.
+ * Used by the end-user create-trip flow so the trip appears in My Journeys.
+ */
+export async function createPublishedExperience(
+  payload: ExperienceUploadPayload & { tripData?: Record<string, unknown> }
+): Promise<string> {
+  requireFirebase();
+  const db = getFirestoreDb();
+  const ref = await addDoc(collection(db, COLLECTION), {
+    ...payload,
+    status: 'published',
+    published: true,
+    views: 0,
+    unlocks: 0,
+    savedCount: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    publishedAt: serverTimestamp(),
+  });
+  await syncCreatorPublishedExperiencesCount(payload.creatorId);
   return ref.id;
 }
 

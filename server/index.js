@@ -35,7 +35,8 @@ const PORT = process.env.PORT || 3001;
 
 // ─── Middleware ────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // ─── Firebase Admin setup ────────────────────────────────────────
 let admin;
@@ -1349,6 +1350,222 @@ app.post('/api/ai/chat', async (req, res) => {
     return res.status(502).json({ success: false, fallback: true, error: 'AI service unavailable' });
   }
 });
+
+// ─── Experience title generation via OpenAI ──────────────────────
+// POST /api/ai/experience-title
+// Body: { category: 'food'|'places'|'activities', caption?: string }
+// Returns: { title: string }
+app.post('/api/ai/experience-title', async (req, res) => {
+  const rawCategory = typeof req.body?.category === 'string' ? req.body.category.trim().toLowerCase() : '';
+  const caption = typeof req.body?.caption === 'string' ? req.body.caption.trim() : '';
+  const allowed = ['food', 'places', 'activities'];
+
+  if (!allowed.includes(rawCategory)) {
+    return res.status(400).json({ error: 'category must be one of food, places, activities' });
+  }
+
+  const fallbackTitlesByCategory = {
+    food: 'Local Dining Experience',
+    activities: 'Adventure Experience',
+    places: 'Landmark Exploration',
+  };
+
+  if (!openaiClient) {
+    return res.json({ title: fallbackTitlesByCategory[rawCategory] });
+  }
+
+  try {
+    const prompt = [
+      'Generate one short travel experience title (2 to 5 words).',
+      `Category: ${rawCategory}`,
+      caption ? `Caption hint: ${caption.slice(0, 120)}` : 'Caption hint: none',
+      '',
+      'Rules:',
+      '- food -> dining-themed title.',
+      '- activities -> adventure-themed title.',
+      '- places -> culture/landmark-themed title.',
+      '- Return plain text title only. No quotes. No punctuation at the end.',
+      '',
+      'Examples:',
+      'Local Dining Experience',
+      'Cycling Through The City',
+      'Historic Church Visit',
+      'Landmark Exploration',
+      'Beach Relaxation',
+      'Museum Discovery',
+    ].join('\n');
+
+    const completion = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 24,
+      temperature: 0.6,
+    });
+
+    const rawTitle = completion.choices?.[0]?.message?.content?.trim() ?? '';
+    const safeTitle = rawTitle
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/^['"`]+|['"`]+$/g, '')
+      .trim()
+      .slice(0, 64);
+
+    return res.json({ title: safeTitle || fallbackTitlesByCategory[rawCategory] });
+  } catch (error) {
+    console.error('[ai/experience-title] error', error?.message || error);
+    return res.json({ title: fallbackTitlesByCategory[rawCategory] });
+  }
+});
+// ─── Photo classification via OpenAI Vision ──────────────────────
+// POST /api/classify-photo
+// Body: { imageUri?: string, imageBase64?: string }
+// Returns: { category: 'food'|'places'|'activities', confidence: number, reason: string }
+app.post('/api/classify-photo', async (req, res) => {
+  const { imageUri, imageBase64 } = req.body ?? {};
+  console.log('[classify-photo] request received', {
+    hasImageUri: Boolean(imageUri),
+    hasImageBase64: Boolean(imageBase64),
+    imageUriPrefix: typeof imageUri === 'string' ? imageUri.slice(0, 80) : undefined,
+  });
+
+  if ((!imageUri || typeof imageUri !== 'string') && (!imageBase64 || typeof imageBase64 !== 'string')) {
+    return res.status(400).json({
+      error: 'CLASSIFY_FAILED',
+      message: 'imageUri or imageBase64 is required',
+      fallbackCategory: 'places',
+    });
+  }
+
+  if (typeof imageUri === 'string' && imageUri.startsWith('file://') && (!imageBase64 || typeof imageBase64 !== 'string')) {
+    return res.status(400).json({
+      error: 'LOCAL_FILE_REQUIRES_BASE64',
+      message: 'Local file:// URIs must include imageBase64 payload',
+      fallbackCategory: 'places',
+    });
+  }
+
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) {
+    return res.status(503).json({ error: 'OPENAI_API_KEY not configured on server' });
+  }
+
+  try {
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey: openaiKey });
+
+    const normalizedImageUri = typeof imageUri === 'string' ? imageUri.trim() : '';
+    const normalizedImageBase64 = typeof imageBase64 === 'string' ? imageBase64.trim() : '';
+    console.log(
+      '[classify-photo] imageBase64 prefix',
+      normalizedImageBase64 ? normalizedImageBase64.substring(0, 100) : undefined,
+    );
+
+    const hasHeicExtension = /\.(heic|heif)(\?|$)/i.test(normalizedImageUri);
+    if (hasHeicExtension) {
+      return res.status(400).json({
+        error: 'UNSUPPORTED_HEIC',
+        message: 'Convert HEIC image to JPEG before classification',
+      });
+    }
+
+    const detectMimeTypeFromUri = (uri) => {
+      const lower = (uri || '').toLowerCase();
+      if (/\.(jpe?g)(\?|$)/i.test(lower)) return 'image/jpeg';
+      if (/\.png(\?|$)/i.test(lower)) return 'image/png';
+      if (/\.gif(\?|$)/i.test(lower)) return 'image/gif';
+      if (/\.webp(\?|$)/i.test(lower)) return 'image/webp';
+      return 'image/jpeg';
+    };
+
+    let imageUrlForModel = normalizedImageUri;
+    if (normalizedImageBase64.length > 0) {
+      let detectedMimeType = 'image/jpeg';
+      let imageDataUrl = normalizedImageBase64;
+
+      if (!normalizedImageBase64.startsWith('data:image/')) {
+        detectedMimeType = detectMimeTypeFromUri(normalizedImageUri);
+        imageDataUrl = `data:${detectedMimeType};base64,${normalizedImageBase64}`;
+      } else {
+        const match = normalizedImageBase64.match(/^data:(image\/[a-z0-9.+-]+);base64,/i);
+        if (match?.[1]) detectedMimeType = match[1].toLowerCase();
+      }
+
+      console.log('[classify-photo] detected mime type', detectedMimeType);
+      console.log('[classify-photo] imageDataUrl prefix', imageDataUrl.substring(0, 120));
+      imageUrlForModel = imageDataUrl;
+    } else if (typeof imageUri === 'string' && /^https?:\/\//i.test(imageUri)) {
+      imageUrlForModel = normalizedImageUri;
+    } else {
+      return res.status(400).json({
+        error: 'CLASSIFY_FAILED',
+        message: 'Unsupported image input format',
+        fallbackCategory: 'places',
+      });
+    }
+
+    const prompt = [
+      'Classify this travel marketplace photo into exactly one category: food, places, or activities.',
+      '',
+      'Category definitions:',
+      '- food: dishes, meals, drinks, restaurants, desserts.',
+      '- places: buildings, streets, bridges, churches, statues, fountains, landmarks, city views, landscapes.',
+      '- activities: only clear human/activity experiences such as hiking, boat ride, biking, swimming, skiing, concert, nightlife, or tour.',
+      '',
+      'Decision priority (strict):',
+      '1) If any visible food is present, choose food.',
+      '2) Otherwise choose places for architecture/city/landscape scenes.',
+      '3) Choose activities only when a clear activity is visibly happening.',
+      '4) If uncertain, default to places.',
+      '',
+      'Output requirements:',
+      '- Return only valid JSON (no markdown, no extra text).',
+      '- Use this exact shape:',
+      '{"category":"food"|"places"|"activities","confidence":0.0-1.0,"reason":"one short sentence"}',
+    ].join('\n');
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 80,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageUrlForModel } },
+          ],
+        },
+      ],
+    });
+
+    const raw = response.choices?.[0]?.message?.content?.trim() ?? '';
+
+    let parsed;
+    try {
+      const clean = raw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(clean);
+    } catch {
+      console.warn('[classify-photo] Could not parse model response:', raw);
+      return res.status(502).json({ error: 'Model returned unparseable response', raw });
+    }
+
+    const allowed = ['food', 'places', 'activities'];
+    const category = allowed.includes(parsed.category) ? parsed.category : 'places';
+    const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0.5;
+    const reason = typeof parsed.reason === 'string' ? parsed.reason : '';
+
+    const result = { category, confidence, reason };
+    console.log('[classify-photo] result', result);
+
+    return res.json(result);
+  } catch (error) {
+    console.error('[classify-photo] error', error);
+    return res.status(502).json({
+      error: 'CLASSIFY_FAILED',
+      message: error?.message || 'Classification failed',
+      fallbackCategory: 'places',
+    });
+  }
+});
+
 // ─── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n╔════════════════════════════════════════════════════════════╗`);
@@ -1361,5 +1578,6 @@ app.listen(PORT, () => {
   console.log(`║  Stripe:   POST /api/stripe/create-payment-intent          ║`);
   console.log(`║  Stripe:   POST /api/stripe/webhook                        ║`);
   console.log(`║  AI:       POST /api/ai/chat                               ║`);
+  console.log(`║  AI Vision: POST /api/classify-photo                       ║`);
   console.log(`╚════════════════════════════════════════════════════════════╝\n`);
 });

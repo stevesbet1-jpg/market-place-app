@@ -4,8 +4,7 @@
  * Legacy route — the creator application system has been replaced with an
  * open creator model. Any verified user can now become a creator instantly.
  *
- * This screen redirects to the Profile tab where the "Become a Creator"
- * activation button lives.
+ * This screen redirects to the creator setup flow.
  */
 
 import React, { useEffect } from 'react';
@@ -15,8 +14,7 @@ import { LuxuryColors } from '../../constants/luxuryTheme';
 
 export default function ApplyCreatorScreen() {
   useEffect(() => {
-    // Redirect to profile where "Become a Creator" button is available
-    router.replace('/(tabs)/profile');
+    router.replace('/(tabs)/creator-subscription');
   }, []);
 
   return (

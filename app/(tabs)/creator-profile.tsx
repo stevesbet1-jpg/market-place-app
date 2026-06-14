@@ -35,6 +35,22 @@ import { getFirebaseApp } from '../../lib/firebase';
 import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
 
+function dedupeExperiences(items: CreatorExperience[]): CreatorExperience[] {
+  const seenIds = new Set<string>();
+  const seenTitles = new Set<string>();
+  const unique: CreatorExperience[] = [];
+  for (const item of items) {
+    const normalizedId = (item.id ?? '').trim();
+    const normalizedTitle = (item.title ?? '').trim().toLowerCase();
+    if ((normalizedId.length > 0 && seenIds.has(normalizedId)) ||
+        (normalizedTitle.length > 0 && seenTitles.has(normalizedTitle))) continue;
+    if (normalizedId.length > 0) seenIds.add(normalizedId);
+    if (normalizedTitle.length > 0) seenTitles.add(normalizedTitle);
+    unique.push(item);
+  }
+  return unique;
+}
+
 function experienceImageSource(experience: CreatorExperience) {
   if (isValidRemoteImageUrl(experience.coverImage)) return { uri: experience.coverImage!.trim() };
   return null;
@@ -80,7 +96,7 @@ export default function CreatorProfileScreen() {
       if (!cancelled) { setCreator(c); setLoadingCreator(false); }
     });
     getPublishedExperiencesByCreator(creatorId).then((experiences) => {
-      if (!cancelled) setCreatorExperiences(experiences);
+      if (!cancelled) setCreatorExperiences(dedupeExperiences(experiences));
     });
     return () => { cancelled = true; };
   }, [id]);

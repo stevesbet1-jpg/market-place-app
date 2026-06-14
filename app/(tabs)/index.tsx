@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  TextInput,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -15,11 +17,11 @@ import {
   LuxurySpacing,
   LuxuryBorderRadius,
   LuxuryFontSize,
+  LuxuryShadow,
 } from '../../constants/luxuryTheme';
 import {
   getApprovedCreators,
   hasRealCreators,
-  getMyApprovedCreatorProfile,
   subscribeApprovedCreators,
 } from '../../lib/creatorService';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -27,123 +29,191 @@ import { getFirebaseApp } from '../../lib/firebase';
 import { getPublishedExperiences } from '../../lib/creatorExperienceService';
 import type { Creator } from '../../constants/creators';
 import type { CreatorExperience } from '../../constants/creatorExperienceModel';
+import { isValidRemoteImageUrl } from '../../lib/imageFallback';
 
-// ─── Creator Card ─────────────────────────────────────────────────────────────
+const CYAN = '#8AE6FF';
+const SKY = '#4EA8FF';
 
-function CreatorCard({ creator, authUid }: { creator: Creator; authUid: string | null }) {
-  const isCurrentUserCreator = Boolean(authUid && creator.userId && creator.userId === authUid);
+type ExploreFilterKey = 'all' | 'featured' | 'luxury' | 'adventure' | 'food';
+
+function dedupeExperiences(items: CreatorExperience[]): CreatorExperience[] {
+  const seenIds = new Set<string>();
+  const seenTitles = new Set<string>();
+  const unique: CreatorExperience[] = [];
+
+  for (const item of items) {
+    const normalizedId = (item.id ?? '').trim();
+    const normalizedTitle = (item.title ?? '').trim().toLowerCase();
+
+    const idAlreadySeen = normalizedId.length > 0 && seenIds.has(normalizedId);
+    const titleAlreadySeen = normalizedTitle.length > 0 && seenTitles.has(normalizedTitle);
+    if (idAlreadySeen || titleAlreadySeen) continue;
+
+    if (normalizedId.length > 0) seenIds.add(normalizedId);
+    if (normalizedTitle.length > 0) seenTitles.add(normalizedTitle);
+    unique.push(item);
+  }
+
+  return unique;
+}
+
+function deriveExperienceStat(exp: CreatorExperience): string {
+  if (exp.savedCount > 0) return `${exp.savedCount} saves`;
+  if (exp.unlocks > 0) return `${exp.unlocks} unlocks`;
+  if (exp.views > 0) return `${exp.views} views`;
+  return `${Math.max(exp.dailyPlan.length + exp.hiddenGems.length + exp.restaurants.length, 6)} moments`;
+}
+
+function deriveExperienceRating(exp: CreatorExperience): string {
+  if (exp.savedCount > 0) {
+    return Math.min(5, 4.6 + exp.savedCount / 100).toFixed(1);
+  }
+  if (exp.unlocks > 0) {
+    return Math.min(5, 4.5 + exp.unlocks / 150).toFixed(1);
+  }
+  return '4.9';
+}
+
+function deriveMemoryCount(exp: CreatorExperience): number {
+  return Math.max(
+    exp.dailyPlan.length + exp.hiddenGems.length + exp.restaurants.length + exp.hotels.length,
+    8,
+  );
+}
+
+function EmptyState({
+  title,
+  subtitle,
+  icon,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIconWrap}>
+        <Ionicons name={icon} size={30} color={CYAN} />
+      </View>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptySubtitle}>{subtitle}</Text>
+    </View>
+  );
+}
+
+function FilterChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
   return (
     <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.88}
-      onPress={() =>
-        router.push({ pathname: '/(tabs)/creator-profile', params: { id: creator.id } })
-      }
+      style={[styles.filterChip, active && styles.filterChipActive]}
+      activeOpacity={0.82}
+      onPress={onPress}
     >
-      {/* Avatar */}
-      <View style={styles.avatarWrap}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarInitials}>{creator.initials}</Text>
-        </View>
-        <View style={styles.ratingBadge}>
-          <Ionicons name="star" size={9} color={LuxuryColors.gold} />
-          <Text style={styles.ratingBadgeText}>{creator.rating.toFixed(1)}</Text>
-        </View>
-      </View>
-
-      {/* Info */}
-      <View style={styles.cardInfo}>
-        <View style={styles.nameRow}>
-          <Text style={styles.cardName}>{creator.name}</Text>
-          {creator.isDemo && (
-            <View style={styles.demoPill}>
-              <Text style={styles.demoPillText}>DEMO</Text>
-            </View>
-          )}
-        </View>
-        <Text style={styles.cardOwnershipText}>
-          {isCurrentUserCreator ? 'Your creator profile' : 'Public creator profile'}
-        </Text>
-        <Text style={styles.cardBio} numberOfLines={2}>{creator.bio}</Text>
-
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          {creator.followers > 0 && (
-            <>
-              <View style={styles.stat}>
-                <Ionicons name="people" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.statText}>
-                  {creator.followers >= 1000
-                    ? `${(creator.followers / 1000).toFixed(1)}K`
-                    : String(creator.followers)}
-                </Text>
-              </View>
-              <View style={styles.statDot} />
-            </>
-          )}
-          <View style={styles.stat}>
-            <Ionicons name="map" size={11} color={LuxuryColors.textTertiary} />
-            <Text style={styles.statText}>
-              {creator.publishedExperiencesCount} {creator.publishedExperiencesCount === 1 ? 'Published Journey' : 'Published Journeys'}
-            </Text>
-          </View>
-          {creator.instagram && (
-            <>
-              <View style={styles.statDot} />
-              <View style={styles.stat}>
-                <Ionicons name="logo-instagram" size={11} color={LuxuryColors.textTertiary} />
-                <Text style={styles.statText}>{creator.instagram}</Text>
-              </View>
-            </>
-          )}
-        </View>
-      </View>
-
-      {/* Chevron */}
-      <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
+      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-// ─── Demo notice banner ───────────────────────────────────────────────────────
+function JourneyCard({ exp }: { exp: CreatorExperience }) {
+  const imageSource = isValidRemoteImageUrl(exp.coverImage) ? { uri: exp.coverImage!.trim() } : null;
+  const memoryCount = deriveMemoryCount(exp);
+  const rating = deriveExperienceRating(exp);
+  const statusLabel = exp.published ? 'PUBLISHED' : 'FEATURED';
 
-function DemoNoticeBanner() {
   return (
-    <View style={styles.demoNotice}>
-      <Ionicons name="information-circle-outline" size={16} color={LuxuryColors.gold} />
-      <Text style={styles.demoNoticeText}>
-        These are placeholder profiles for UI testing. Real creators are joining soon.
-      </Text>
-    </View>
-  );
-}
+    <TouchableOpacity
+      style={styles.journeyCard}
+      activeOpacity={0.9}
+      onPress={() =>
+        router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
+      }
+    >
+      <View style={styles.journeyMediaWrap}>
+        {imageSource ? (
+          <Image source={imageSource} style={styles.journeyImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.journeyFallback}>
+            <Ionicons name="globe-outline" size={34} color={CYAN} />
+            <Text style={styles.journeyFallbackText}>{exp.city || exp.country || exp.title}</Text>
+          </View>
+        )}
+        <View style={styles.journeyImageShade} />
 
-// ─── Empty state — no creators yet ───────────────────────────────────────────
+        <View style={styles.journeyTopRow}>
+          <View style={styles.statusPill}>
+            <Text style={styles.statusPillText}>{statusLabel}</Text>
+          </View>
+          <TouchableOpacity style={styles.heartButton} activeOpacity={0.82}>
+            <Ionicons name="heart-outline" size={16} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
 
-function EmptyCreatorsState() {
-  return (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIconWrap}>
-        <Ionicons name="people-outline" size={36} color={LuxuryColors.textTertiary} />
+        <View style={styles.journeyBottomMeta}>
+          <View style={styles.ratingBadge}>
+            <Ionicons name="star" size={11} color={CYAN} />
+            <Text style={styles.ratingBadgeText}>{rating}</Text>
+          </View>
+          <View style={styles.memoryBadge}>
+            <Ionicons name="images-outline" size={11} color="#DFF8FF" />
+            <Text style={styles.memoryBadgeText}>{memoryCount} photos</Text>
+          </View>
+        </View>
       </View>
-      <Text style={styles.emptyTitle}>Creators are joining soon</Text>
-      <Text style={styles.emptySubtitle}>
-        We are onboarding the first wave of travel creators. Be among the first to publish
-        your journeys and reach thousands of premium travellers.
-      </Text>
-      <TouchableOpacity
-        style={styles.applyBtn}
-        onPress={() => router.push('/(tabs)/profile')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="create-outline" size={16} color={LuxuryColors.background} />
-        <Text style={styles.applyBtnText}>Become a Creator</Text>
-      </TouchableOpacity>
-    </View>
+
+      <View style={styles.journeyCardBody}>
+        <View style={styles.journeyTextBlock}>
+          <Text style={styles.journeyTitle} numberOfLines={2}>{exp.title}</Text>
+          <Text style={styles.journeyLocation} numberOfLines={1}>
+            {exp.city ? `${exp.city}, ` : ''}{exp.country}
+          </Text>
+        </View>
+
+        <View style={styles.journeyMetaRow}>
+          <View style={styles.metaBadge}>
+            <Ionicons name="time-outline" size={13} color={CYAN} />
+            <Text style={styles.metaBadgeText}>{exp.duration}</Text>
+          </View>
+          <View style={styles.metaBadge}>
+            <Ionicons name="sparkles-outline" size={13} color={CYAN} />
+            <Text style={styles.metaBadgeText}>{deriveExperienceStat(exp)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.journeyFooterRow}>
+          <View style={styles.creatorRow}>
+            <Text style={styles.creatorLabel}>by {exp.creatorName}</Text>
+            <Text style={styles.travelStyleText}>{exp.travelStyle ? travelStyleText(exp.travelStyle) : 'Curated'}</Text>
+          </View>
+          <View style={styles.arrowButton}>
+            <Ionicons name="arrow-forward" size={16} color={LuxuryColors.background} />
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+function travelStyleText(style: CreatorExperience['travelStyle']): string {
+  switch (style) {
+    case 'luxury':
+      return 'Luxury';
+    case 'adventure':
+      return 'Adventure';
+    case 'budget':
+      return 'Budget';
+    case 'family':
+      return 'Family';
+    case 'food':
+      return 'Food';
+  }
+}
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
@@ -152,24 +222,18 @@ export default function DiscoverScreen() {
   const [experiences, setExperiences] = useState<CreatorExperience[]>([]);
   const [showingDemo, setShowingDemo] = useState(false);
   const [loading, setLoading] = useState(true);
-  // true only when Firebase is configured but returned 0 approved creators
   const [reallyEmpty, setReallyEmpty] = useState(false);
-  // whether the current user has an active creator account
-  const [isCreator, setIsCreator] = useState(false);
-
-  // ── Auth state (avoids race condition where currentUser is null on cold start)
   const [authUid, setAuthUid] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<ExploreFilterKey>('all');
 
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
     return onAuthStateChanged(auth, (user) => {
       setAuthUid(user?.uid ?? null);
-      setAuthReady(true);
     });
   }, []);
 
-  // ── Load public data (no auth required) on focus
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -179,31 +243,31 @@ export default function DiscoverScreen() {
         getApprovedCreators(),
         hasRealCreators(),
         getPublishedExperiences(),
-      ]).then(
-        ([list, anyReal, exps]) => {
-          if (cancelled) return;
-          const allDemo = (list as Creator[]).every((c) => c.isDemo);
-          setCreators(list as Creator[]);
-          setExperiences(exps as CreatorExperience[]);
-          setShowingDemo(allDemo);
-          setReallyEmpty(anyReal === false && (list as Creator[]).length === 0);
-          setLoading(false);
+      ]).then(([list, anyReal, exps]) => {
+        if (cancelled) return;
+        const typedCreators = list as Creator[];
+        const typedExperiences = dedupeExperiences(exps as CreatorExperience[]);
+        const allDemo = typedCreators.every((c) => c.isDemo);
+        setCreators(typedCreators);
+        setExperiences(typedExperiences);
+        setShowingDemo(allDemo);
+        setReallyEmpty(anyReal === false && typedCreators.length === 0 && typedExperiences.length === 0);
+        setLoading(false);
 
-          unsubCreators = subscribeApprovedCreators(
-            (liveCreators) => {
-              if (cancelled) return;
-              const liveAllDemo = liveCreators.every((c) => c.isDemo);
-              setCreators(liveCreators);
-              setShowingDemo(liveAllDemo);
-            },
-            () => {
-              if (!cancelled) setLoading(false);
-            }
-          );
-        }
-      ).catch(() => {
+        unsubCreators = subscribeApprovedCreators(
+          (liveCreators) => {
+            if (cancelled) return;
+            setCreators(liveCreators);
+            setShowingDemo(liveCreators.every((c) => c.isDemo));
+          },
+          () => {
+            if (!cancelled) setLoading(false);
+          }
+        );
+      }).catch(() => {
         if (!cancelled) setLoading(false);
       });
+
       return () => {
         cancelled = true;
         unsubCreators?.();
@@ -211,14 +275,53 @@ export default function DiscoverScreen() {
     }, [])
   );
 
-  // ── Update isCreator once auth state is known
-  useEffect(() => {
-    if (!authReady) return;
-    if (!authUid) { setIsCreator(false); return; }
-    getMyApprovedCreatorProfile(authUid)
-      .then((profile) => setIsCreator(profile !== null))
-      .catch(() => setIsCreator(false));
-  }, [authReady, authUid]);
+  const q = searchQuery.trim().toLowerCase();
+
+  const myCreatorIds = useMemo(
+    () => new Set(
+      authUid
+        ? creators
+            .filter((c) => c.userId && c.userId === authUid)
+            .map((c) => c.id)
+        : []
+    ),
+    [authUid, creators]
+  );
+
+  // Keep Explore strictly public: published journeys from other creators with a valid detail id.
+  const publicExperiences = useMemo(
+    () => experiences.filter((exp) => {
+      const validId = typeof exp.id === 'string' && exp.id.trim().length > 0;
+      return exp.published === true && validId && !myCreatorIds.has(exp.creatorId);
+    }),
+    [experiences, myCreatorIds]
+  );
+
+  const searchFilteredExperiences = q
+    ? publicExperiences.filter((exp) =>
+        exp.title?.toLowerCase().includes(q) ||
+        exp.city?.toLowerCase().includes(q) ||
+        exp.country?.toLowerCase().includes(q) ||
+        exp.creatorName?.toLowerCase().includes(q)
+      )
+    : publicExperiences;
+
+  const filteredExperiences = useMemo(() => {
+    switch (activeFilter) {
+      case 'featured':
+        return [...searchFilteredExperiences].sort(
+          (a, b) => (b.savedCount + b.unlocks + b.views) - (a.savedCount + a.unlocks + a.views)
+        );
+      case 'luxury':
+      case 'adventure':
+      case 'food':
+        return searchFilteredExperiences.filter((exp) => exp.travelStyle === activeFilter);
+      default:
+        return searchFilteredExperiences;
+    }
+  }, [activeFilter, searchFilteredExperiences]);
+
+  const topSummaryText = `${publicExperiences.length} public ${publicExperiences.length === 1 ? 'journey' : 'journeys'} available`;
 
   return (
     <View style={styles.root}>
@@ -226,113 +329,85 @@ export default function DiscoverScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + LuxurySpacing.lg, paddingBottom: 80 + insets.bottom },
+          { paddingTop: insets.top + LuxurySpacing.lg, paddingBottom: 88 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerEyebrow}>TRAVEL CREATORS</Text>
-          <Text style={styles.headerTitle}>Discover</Text>
+          <Text style={styles.headerEyebrow}>CURATED DISCOVERY</Text>
+          <Text style={styles.headerTitle}>Explore Journeys</Text>
           <Text style={styles.headerSub}>
-            Browse handcrafted journeys from independent travel creators
+            Premium travel blueprints from independent creators, designed for travelers who want a faster path to unforgettable trips.
           </Text>
         </View>
 
+        <View style={styles.searchShell}>
+          <View style={styles.searchRow}>
+            <Ionicons name="search-outline" size={16} color={LuxuryColors.textTertiary} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by title, city, country, creator..."
+              placeholderTextColor={LuxuryColors.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={16} color={LuxuryColors.textTertiary} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={styles.filterHeaderRow}>
+            <Text style={styles.summaryText}>{topSummaryText}</Text>
+            <View style={styles.filterIconWrap}>
+              <Ionicons name="options-outline" size={15} color={CYAN} />
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            <FilterChip label="All" active={activeFilter === 'all'} onPress={() => setActiveFilter('all')} />
+            <FilterChip label="Featured" active={activeFilter === 'featured'} onPress={() => setActiveFilter('featured')} />
+            <FilterChip label="Luxury" active={activeFilter === 'luxury'} onPress={() => setActiveFilter('luxury')} />
+            <FilterChip label="Adventure" active={activeFilter === 'adventure'} onPress={() => setActiveFilter('adventure')} />
+            <FilterChip label="Food" active={activeFilter === 'food'} onPress={() => setActiveFilter('food')} />
+          </ScrollView>
+        </View>
+
         {loading ? (
-          <ActivityIndicator
-            color={LuxuryColors.gold}
-            style={styles.loader}
-          />
+          <ActivityIndicator color={LuxuryColors.gold} style={styles.loader} />
         ) : reallyEmpty ? (
-          <EmptyCreatorsState />
+          <EmptyState
+            icon="compass-outline"
+            title="No public journeys yet"
+            subtitle="Published journeys from creators will appear here once the first collections go live."
+          />
+        ) : filteredExperiences.length === 0 ? (
+          <EmptyState
+            icon={q.length > 0 ? 'search-outline' : 'map-outline'}
+            title={q.length > 0 ? 'No journeys match that search' : 'No journeys in this filter'}
+            subtitle={q.length > 0
+              ? 'Try a different city, country, title, or creator name.'
+              : 'Switch filters or check back soon for newly published journeys.'}
+          />
         ) : (
           <>
-            {/* Demo notice — shown while only seed data exists */}
-            {showingDemo && <DemoNoticeBanner />}
-
-            {/* Creator count */}
-            {!showingDemo && (
-              <View style={styles.countRow}>
-                <View style={styles.countBadge}>
-                  <Ionicons name="people" size={13} color={LuxuryColors.gold} />
-                  <Text style={styles.countText}>
-                    {creators.length} Creator{creators.length !== 1 ? 's' : ''}
-                  </Text>
-                </View>
+            {showingDemo ? (
+              <View style={styles.demoNotice}>
+                <Ionicons name="information-circle-outline" size={15} color={CYAN} />
+                <Text style={styles.demoNoticeText}>
+                  Demo creator profiles are still present, but this Explore feed is focused on public journeys only.
+                </Text>
               </View>
-            )}
+            ) : null}
 
-            {/* Creator list */}
-            <View style={styles.list}>
-              {creators.map((creator) => (
-                <CreatorCard key={creator.id} creator={creator} authUid={authUid} />
+            <View style={styles.cardsColumn}>
+              {filteredExperiences.map((exp) => (
+                <JourneyCard key={exp.id} exp={exp} />
               ))}
             </View>
-
-            {/* Creator CTA — routes to dashboard for active creators, profile otherwise */}
-            {isCreator ? (
-              <>
-                <TouchableOpacity
-                  style={styles.applyCtaRow}
-                  onPress={() => router.push('/(tabs)/creator-dashboard')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="briefcase-outline" size={16} color={LuxuryColors.gold} />
-                  <Text style={styles.applyCtaText}>Creator Dashboard</Text>
-                  <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.applyCtaRow}
-                  onPress={() => router.push('/(tabs)/create-experience')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="add-circle-outline" size={16} color={LuxuryColors.gold} />
-                  <Text style={styles.applyCtaText}>Create Experience</Text>
-                  <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <TouchableOpacity
-                style={styles.applyCtaRow}
-                onPress={() => router.push('/(tabs)/profile')}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="create-outline" size={16} color={LuxuryColors.gold} />
-                <Text style={styles.applyCtaText}>Become a Creator</Text>
-                <Ionicons name="chevron-forward" size={14} color={LuxuryColors.textTertiary} />
-              </TouchableOpacity>
-            )}
-
-            {/* Published Experiences section */}
-            {experiences.length > 0 && (
-              <View style={styles.expSection}>
-                <Text style={styles.expSectionTitle}>Creator Experiences</Text>
-                <Text style={styles.expSectionSub}>Curated travel blueprints from creators</Text>
-                {experiences.map((exp) => (
-                  <TouchableOpacity
-                    key={exp.id}
-                    style={styles.expCard}
-                    activeOpacity={0.85}
-                    onPress={() =>
-                      router.push({ pathname: '/(tabs)/experience-detail', params: { id: exp.id } })
-                    }
-                  >
-                    <View style={styles.expCardLeft}>
-                      <Ionicons name="globe-outline" size={22} color={LuxuryColors.gold} />
-                    </View>
-                    <View style={styles.expCardBody}>
-                      <Text style={styles.expCardTitle} numberOfLines={1}>{exp.title}</Text>
-                      <Text style={styles.expCardMeta} numberOfLines={1}>
-                        {exp.city ? `${exp.city}, ` : ''}{exp.country} · {exp.duration}
-                      </Text>
-                      <Text style={styles.expCardCreator} numberOfLines={1}>by {exp.creatorName}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={LuxuryColors.textTertiary} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
           </>
         )}
       </ScrollView>
@@ -340,52 +415,123 @@ export default function DiscoverScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: LuxuryColors.background,
   },
-  scroll: { flex: 1 },
+  scroll: {
+    flex: 1,
+  },
   scrollContent: {
     paddingHorizontal: LuxurySpacing.xl,
   },
   loader: {
     marginTop: 80,
   },
-
-  // Header
-  header: { marginBottom: LuxurySpacing.xl },
+  header: {
+    marginBottom: LuxurySpacing.xl,
+    gap: 8,
+  },
   headerEyebrow: {
     fontSize: 10,
     fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 2,
-    marginBottom: LuxurySpacing.xs,
+    color: CYAN,
+    letterSpacing: 2.2,
   },
   headerTitle: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '800',
     color: LuxuryColors.textPrimary,
-    letterSpacing: -0.5,
-    marginBottom: LuxurySpacing.sm,
+    letterSpacing: -0.8,
   },
   headerSub: {
     fontSize: LuxuryFontSize.sm,
     color: LuxuryColors.textSecondary,
     lineHeight: 20,
   },
-
-  // Demo notice
+  searchShell: {
+    marginBottom: LuxurySpacing.xl,
+    padding: LuxurySpacing.md,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.10)',
+    ...LuxuryShadow.soft,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(4,13,24,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.12)',
+    borderRadius: LuxuryBorderRadius.full,
+    paddingHorizontal: LuxurySpacing.md,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  searchIcon: {
+    flexShrink: 0,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: LuxuryFontSize.sm,
+    color: LuxuryColors.textPrimary,
+    padding: 0,
+  },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: LuxurySpacing.md,
+    marginBottom: LuxurySpacing.sm,
+  },
+  summaryText: {
+    fontSize: 12,
+    color: LuxuryColors.textTertiary,
+    letterSpacing: 0.2,
+  },
+  filterIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(138,230,255,0.10)',
+  },
+  filterRow: {
+    gap: 8,
+    paddingRight: LuxurySpacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(138,230,255,0.14)',
+    borderColor: 'rgba(138,230,255,0.30)',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: LuxuryColors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  filterChipTextActive: {
+    color: CYAN,
+  },
   demoNotice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: 'rgba(212,175,55,0.06)',
-    borderRadius: LuxuryBorderRadius.md,
+    backgroundColor: 'rgba(138,230,255,0.06)',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.15)',
+    borderColor: 'rgba(138,230,255,0.12)',
     padding: 12,
     marginBottom: LuxurySpacing.lg,
   },
@@ -395,242 +541,211 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-
-  // Count badge
-  countRow: { marginBottom: LuxurySpacing.lg },
-  countBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.xs,
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.20)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: LuxurySpacing.md,
-    paddingVertical: 5,
+  cardsColumn: {
+    gap: LuxurySpacing.lg,
   },
-  countText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-
-  // List
-  list: { gap: LuxurySpacing.md, marginBottom: LuxurySpacing.xl },
-
-  // Card
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.md,
+  journeyCard: {
+    borderRadius: 30,
+    overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: LuxuryBorderRadius.xl,
-    padding: LuxurySpacing.md,
+    borderColor: 'rgba(138,230,255,0.10)',
+    ...LuxuryShadow.medium,
   },
-
-  // Avatar
-  avatarWrap: { position: 'relative', alignSelf: 'flex-start' },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(212,175,55,0.30)',
+  journeyMediaWrap: {
+    height: 272,
+    position: 'relative',
+    backgroundColor: 'rgba(12,25,42,0.95)',
+  },
+  journeyImage: {
+    width: '100%',
+    height: '100%',
+  },
+  journeyFallback: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: LuxurySpacing.lg,
+    gap: 10,
+    backgroundColor: 'rgba(13,26,43,0.98)',
   },
-  avatarInitials: {
-    fontSize: LuxuryFontSize.md,
+  journeyFallbackText: {
+    color: LuxuryColors.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  journeyImageShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(4,11,20,0.32)',
+  },
+  journeyTopRow: {
+    position: 'absolute',
+    top: LuxurySpacing.md,
+    left: LuxurySpacing.md,
+    right: LuxurySpacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statusPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(8,18,30,0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.20)',
+  },
+  statusPillText: {
+    fontSize: 10,
     fontWeight: '800',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.5,
+    color: CYAN,
+    letterSpacing: 1.2,
+  },
+  heartButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(8,18,30,0.60)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  journeyBottomMeta: {
+    position: 'absolute',
+    left: LuxurySpacing.md,
+    right: LuxurySpacing.md,
+    bottom: LuxurySpacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   ratingBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    backgroundColor: LuxuryColors.background,
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.25)',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    backgroundColor: 'rgba(8,18,30,0.68)',
   },
   ratingBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.2,
-  },
-
-  // Card body
-  cardInfo: { flex: 1, gap: 4 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cardName: {
-    fontSize: LuxuryFontSize.md,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  demoPill: {
-    backgroundColor: 'rgba(122,118,104,0.2)',
-    borderRadius: LuxuryBorderRadius.full,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  demoPillText: {
-    color: LuxuryColors.textTertiary,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  cardBio: {
-    fontSize: 12,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 17,
-  },
-  cardOwnershipText: {
     fontSize: 11,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.2,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  statsRow: {
+  memoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 5,
-    marginTop: 2,
-  },
-  stat: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  statText: { fontSize: 10, fontWeight: '600', color: LuxuryColors.textTertiary },
-  statDot: {
-    width: 2,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: LuxuryColors.textTertiary,
-    opacity: 0.5,
-  },
-
-  // Empty state
-  emptyState: {
-    alignItems: 'center',
-    paddingTop: 48,
-    paddingBottom: 32,
-    gap: 16,
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: 'rgba(8,18,30,0.68)',
+  },
+  memoryBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#E6FAFF',
+  },
+  journeyCardBody: {
+    padding: LuxurySpacing.lg,
+    gap: LuxurySpacing.md,
+    backgroundColor: 'rgba(9,18,30,0.92)',
+  },
+  journeyTextBlock: {
+    gap: 5,
+  },
+  journeyTitle: {
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: '800',
+    color: LuxuryColors.textPrimary,
+    letterSpacing: -0.6,
+  },
+  journeyLocation: {
+    fontSize: 14,
+    color: LuxuryColors.textSecondary,
+  },
+  journeyMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+  metaBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#E8FAFF',
+  },
+  journeyFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: LuxurySpacing.md,
+  },
+  creatorRow: {
+    flex: 1,
+    gap: 2,
+  },
+  creatorLabel: {
+    fontSize: 13,
+    color: LuxuryColors.textPrimary,
+    fontWeight: '600',
+  },
+  travelStyleText: {
+    fontSize: 11,
+    color: CYAN,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
+  arrowButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    backgroundColor: CYAN,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 72,
+    paddingBottom: 48,
+    paddingHorizontal: LuxurySpacing.lg,
+  },
+  emptyIconWrap: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: 'rgba(138,230,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: LuxurySpacing.lg,
   },
   emptyTitle: {
     color: LuxuryColors.textPrimary,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     textAlign: 'center',
+    marginBottom: LuxurySpacing.sm,
   },
   emptySubtitle: {
     color: LuxuryColors.textSecondary,
     fontSize: 14,
-    textAlign: 'center',
     lineHeight: 22,
-    maxWidth: 300,
-  },
-  applyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: LuxuryColors.gold,
-    borderRadius: LuxuryBorderRadius.md,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    marginTop: 8,
-  },
-  applyBtnText: {
-    color: LuxuryColors.background,
-    fontWeight: '800',
-    fontSize: 15,
-  },
-
-  // Apply CTA row (bottom of filled list)
-  applyCtaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
-  },
-  applyCtaText: {
-    flex: 1,
-    color: LuxuryColors.gold,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  expSection: {
-    marginTop: LuxurySpacing.xl,
-    paddingTop: LuxurySpacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-  },
-  expSectionTitle: {
-    fontSize: LuxuryFontSize.lg,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    marginBottom: LuxurySpacing.xs,
-  },
-  expSectionSub: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textSecondary,
-    marginBottom: LuxurySpacing.md,
-  },
-  expCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: LuxuryColors.surface,
-    borderWidth: 1,
-    borderColor: LuxuryColors.glassBorder,
-    borderRadius: LuxuryBorderRadius.md,
-    padding: LuxurySpacing.md,
-    marginBottom: LuxurySpacing.sm,
-    gap: LuxurySpacing.sm,
-  },
-  expCardLeft: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: LuxuryColors.goldGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  expCardBody: {
-    flex: 1,
-    gap: 2,
-  },
-  expCardTitle: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '600',
-    color: LuxuryColors.textPrimary,
-  },
-  expCardMeta: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textTertiary,
-  },
-  expCardCreator: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.gold,
-    fontStyle: 'italic',
+    textAlign: 'center',
+    maxWidth: 320,
   },
 });

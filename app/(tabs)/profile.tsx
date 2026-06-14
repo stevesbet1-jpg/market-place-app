@@ -3,38 +3,18 @@ import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Act
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { useFocusEffect } from 'expo-router';
 import { LuxuryColors, LuxurySpacing, LuxuryBorderRadius, LuxuryFontSize, LuxuryShadow } from '../../constants/luxuryTheme';
 import { getFirebaseApp } from '../../lib/firebase';
 import { logoutFromFirebase } from '../../lib/firebaseAuth';
 import { getUserProfile, type UserProfile } from '../../lib/userProfile';
-import { getSavedIds, setJourneyStoreUid } from '../../constants/journeyStore';
-import { getJourneysByIds } from '../../lib/creatorJourneyService';
+import { setJourneyStoreUid } from '../../constants/journeyStore';
 import { setExperienceStoreUid } from '../../constants/experienceStore';
-import type { CreatorJourney } from '../../constants/creatorJourneyModel';
-import { getMyApprovedCreatorProfile } from '../../lib/creatorService';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [savedJourneys, setSavedJourneys] = useState<CreatorJourney[]>([]);
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [isCreator, setIsCreator] = useState<boolean | null>(null);
-  const [creatorName, setCreatorName] = useState<string | null>(null);
-  const [creatorStatusLoading, setCreatorStatusLoading] = useState(true);
-
-  // ── Saved journeys — reload on every tab focus ─────────────────────────────
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      getSavedIds().then(async (ids) => {
-        const journeys = await getJourneysByIds(ids);
-        if (!cancelled) setSavedJourneys(journeys);
-      });
-      return () => { cancelled = true; };
-    }, [])
-  );
 
   // ── Auth state listener ─────────────────────────────────────────────────────
   // onAuthStateChanged fires once Firebase has restored the persisted session
@@ -55,43 +35,10 @@ export default function ProfileScreen() {
   // so the previous account's data never briefly appears for a new account.
   useEffect(() => {
     setProfile(null);
-    setIsCreator(null);
-    setCreatorName(null);
-    setSavedJourneys([]);
-    setCreatorStatusLoading(true);
     setLoading(true);
     setJourneyStoreUid(authUid);
     setExperienceStoreUid(authUid);
   }, [authUid]);
-
-  // Load creator status — runs only after auth state is known
-  useEffect(() => {
-    if (!authReady) return;
-    let cancelled = false;
-    const loadCreatorStatus = async () => {
-      if (!authUid) {
-        console.log('[Profile:Creator] authReady but no uid — user is signed out');
-        if (!cancelled) { setIsCreator(false); setCreatorStatusLoading(false); }
-        return;
-      }
-      console.log('[Profile:Creator] Loading creator status for uid:', authUid);
-      try {
-        const creatorProfile = await getMyApprovedCreatorProfile(authUid);
-        console.log('[Profile:Creator] Creator profile result:', creatorProfile ? `found (${creatorProfile.name})` : 'null');
-        if (!cancelled) {
-          setIsCreator(creatorProfile !== null);
-          setCreatorName(creatorProfile?.name ?? null);
-        }
-      } catch (err: any) {
-        console.warn('[Profile:Creator] Error loading creator status:', err?.message);
-        if (!cancelled) setIsCreator(false);
-      } finally {
-        if (!cancelled) setCreatorStatusLoading(false);
-      }
-    };
-    loadCreatorStatus();
-    return () => { cancelled = true; };
-  }, [authReady, authUid]);
 
   // Load profile data — runs only after auth state is known
   useEffect(() => {
@@ -207,8 +154,6 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>Account</Text>
         {[
           { icon: 'person-outline', title: 'Personal Information', desc: 'Update your details' },
-          { icon: 'card-outline', title: 'Payment Methods', desc: 'Manage cards and wallets' },
-          { icon: 'shield-checkmark-outline', title: 'Security', desc: 'Password and 2FA' },
         ].map((item, index) => (
           <TouchableOpacity
             key={index}
@@ -232,8 +177,8 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>Preferences</Text>
         {[
           { icon: 'notifications-outline', title: 'Notifications', desc: 'Push and email alerts', route: '/(tabs)/notification-settings' as const },
-          { icon: 'language-outline', title: 'Language', desc: 'English (US)', route: null },
-          { icon: 'moon-outline', title: 'Dark Mode', desc: 'Always on', route: null },
+          { icon: 'options-outline', title: 'Travel Preferences', desc: 'Style, budget and destination interests', route: null },
+          { icon: 'moon-outline', title: 'Appearance', desc: 'Dark mode is always on', route: null },
         ].map((item, index) => (
           <TouchableOpacity
             key={index}
@@ -277,147 +222,28 @@ export default function ProfileScreen() {
         ))}
       </View>
 
-      {/* Saved Journeys */}
       <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Saved Journeys</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/trips')} activeOpacity={0.7}>
-            <Text style={styles.sectionLink}>Browse All</Text>
-          </TouchableOpacity>
-        </View>
-        {savedJourneys.length === 0 ? (
+        <Text style={styles.sectionTitle}>Legal</Text>
+        {[
+          { icon: 'document-text-outline', title: 'Terms of Service', desc: 'Membership and marketplace terms' },
+          { icon: 'lock-closed-outline', title: 'Privacy Policy', desc: 'How your data is handled' },
+        ].map((item, index) => (
           <TouchableOpacity
-            style={styles.emptyCard}
-            onPress={() => router.push('/(tabs)/trips')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="bookmark-outline" size={24} color={LuxuryColors.textTertiary} />
-            <Text style={styles.emptyCardText}>No saved journeys yet</Text>
-            <Text style={styles.emptyCardLink}>Explore journeys →</Text>
-          </TouchableOpacity>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.savedScroll}>
-            {savedJourneys.map((j) => (
-              <TouchableOpacity
-                key={j.id}
-                style={styles.savedCard}
-                onPress={() => router.push({ pathname: '/(tabs)/journey-detail', params: { id: j.id } })}
-                activeOpacity={0.85}
-              >
-                <View style={styles.savedCardThumb}>
-                  <Ionicons name="map-outline" size={22} color={LuxuryColors.gold} />
-                </View>
-                <Text style={styles.savedCardName} numberOfLines={2}>{j.title}</Text>
-                <Text style={styles.savedCardDest} numberOfLines={1}>{j.destination}</Text>
-                <View style={styles.savedCardRating}>
-                  <Ionicons name="star" size={10} color={LuxuryColors.gold} />
-                  <Text style={styles.savedCardRatingText}>{j.rating.toFixed(1)}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-
-      {/* Membership CTA */}
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.membershipCta}
-          onPress={() => router.push('/(tabs)/membership')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.membershipCtaLeft}>
-            <Ionicons name="diamond" size={20} color={LuxuryColors.gold} />
-            <View>
-              <Text style={styles.membershipCtaTitle}>Creator Membership</Text>
-              <Text style={styles.membershipCtaDesc}>Unlock every creator journey</Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={LuxuryColors.gold} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Creator — dynamic status section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Creator</Text>
-        {creatorStatusLoading ? (
-          <View style={styles.creatorStatusLoading}>
-            <ActivityIndicator size="small" color={LuxuryColors.gold} />
-          </View>
-        ) : isCreator ? (
-          // Active creator — show dashboard links
-          <>
-            <View style={styles.creatorStatusCard}>
-              <View style={[styles.creatorStatusIcon, { backgroundColor: 'rgba(46,213,115,0.12)', borderColor: 'rgba(46,213,115,0.3)' }]}>
-                <Ionicons name="checkmark-circle" size={24} color={LuxuryColors.success} />
-              </View>
-              <View style={styles.creatorStatusBody}>
-                <Text style={styles.creatorStatusTitle}>Creator Account Active</Text>
-                <Text style={styles.creatorStatusSub}>
-                  {creatorName ? `Welcome, ${creatorName}` : 'Your creator account is active'}
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/(tabs)/creator-dashboard')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuIcon}>
-                <Ionicons name="briefcase-outline" size={24} color={LuxuryColors.gold} />
-              </View>
-              <View style={styles.menuInfo}>
-                <Text style={styles.menuTitle}>Creator Dashboard</Text>
-                <Text style={styles.menuDesc}>Manage experiences and analytics</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/(tabs)/create-experience')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuIcon}>
-                <Ionicons name="add-circle-outline" size={24} color={LuxuryColors.gold} />
-              </View>
-              <View style={styles.menuInfo}>
-                <Text style={styles.menuTitle}>Create Experience</Text>
-                <Text style={styles.menuDesc}>Publish a new travel experience</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
-            </TouchableOpacity>
-          </>
-        ) : (
-          // Not yet a creator — show "Become a Creator" activation button
-          <TouchableOpacity
+            key={index}
             style={styles.menuItem}
-            onPress={async () => {
-              console.log('[Profile:Creator] "Become a Creator" tapped — authUid:', authUid ?? 'null', '| authReady:', authReady);
-              // Resolve current user at tap-time to avoid transient null from auth restore race.
-              const auth = getAuth(getFirebaseApp());
-              const resolvedUid = authUid ?? auth.currentUser?.uid ?? null;
-              if (!resolvedUid) {
-                console.warn('[Profile:Creator] No authUid — user is not authenticated. Redirecting to login.');
-                router.replace('/(auth)/login');
-                return;
-              }
-
-              // Creator onboarding/subscription flow starts from this screen.
-              // Activation occurs when the user continues in creator flows.
-              router.push('/(tabs)/creator-subscription');
-            }}
+            onPress={() => handleMenuItemPress(item.title)}
             activeOpacity={0.8}
           >
             <View style={styles.menuIcon}>
-              <Ionicons name="create-outline" size={24} color={LuxuryColors.gold} />
+              <Ionicons name={item.icon as any} size={24} color={LuxuryColors.textSecondary} />
             </View>
             <View style={styles.menuInfo}>
-              <Text style={styles.menuTitle}>Become a Creator</Text>
-              <Text style={styles.menuDesc}>Share your travel experiences — free to start</Text>
+              <Text style={styles.menuTitle}>{item.title}</Text>
+              <Text style={styles.menuDesc}>{item.desc}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={LuxuryColors.textTertiary} />
           </TouchableOpacity>
-        )}
+        ))}
       </View>
 
       {/* Sign Out */}
@@ -450,48 +276,51 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: LuxurySpacing.xl,
     paddingHorizontal: LuxurySpacing.xl,
-    paddingBottom: LuxurySpacing.xl,
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    marginBottom: LuxurySpacing.lg,
-    position: 'relative',
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: LuxuryColors.surfaceLight,
-    borderWidth: 2,
-    borderColor: LuxuryColors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...LuxuryShadow.gold,
-  },
-  avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 2,
-    borderColor: LuxuryColors.gold,
-  },
-  avatarInitials: {
-    fontSize: LuxuryFontSize.xxl,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-  },
-  providerBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
     borderRadius: 16,
     backgroundColor: LuxuryColors.violet,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: LuxuryColors.surface,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: LuxurySpacing.md,
+  },
+  avatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 2,
+    borderColor: LuxuryColors.gold,
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: LuxuryColors.surfaceLight,
+    borderWidth: 2,
+    borderColor: LuxuryColors.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: LuxuryFontSize.xl,
+    fontWeight: '700',
+    color: LuxuryColors.gold,
+  },
+  providerBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: LuxuryColors.surface,
+    borderWidth: 1,
+    borderColor: LuxuryColors.glassBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   name: {
     fontSize: LuxuryFontSize.xxl,
@@ -565,188 +394,6 @@ const styles = StyleSheet.create({
     fontSize: LuxuryFontSize.md,
     fontWeight: '600',
     color: LuxuryColors.gold,
-  },
-
-  // ── Saved Journeys ───────────────────────────────────────
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: LuxurySpacing.md,
-  },
-  sectionLink: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.gold,
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
-  emptyCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: LuxurySpacing.sm,
-    paddingVertical: LuxurySpacing.xl,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: LuxuryBorderRadius.xl,
-  },
-  emptyCardText: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.textTertiary,
-    letterSpacing: 0.1,
-  },
-  emptyCardLink: {
-    fontSize: LuxuryFontSize.sm,
-    color: LuxuryColors.gold,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  savedScroll: {
-    marginHorizontal: -LuxurySpacing.xl,
-    paddingHorizontal: LuxurySpacing.xl,
-  },
-  savedCard: {
-    width: 120,
-    marginRight: LuxurySpacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: LuxuryBorderRadius.lg,
-    padding: LuxurySpacing.sm,
-    gap: 4,
-  },
-  savedCardThumb: {
-    width: '100%',
-    height: 56,
-    borderRadius: LuxuryBorderRadius.md,
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  savedCardName: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  savedCardDest: {
-    fontSize: 10,
-    color: LuxuryColors.textSecondary,
-    letterSpacing: 0.1,
-  },
-  savedCardRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    marginTop: 2,
-  },
-  savedCardRatingText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.2,
-  },
-
-  // ── Membership CTA ───────────────────────────────────────
-  membershipCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(212,175,55,0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.30)',
-    borderRadius: LuxuryBorderRadius.xl,
-    padding: LuxurySpacing.md,
-  },
-  membershipCtaLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.md,
-  },
-  membershipCtaTitle: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-    letterSpacing: 0.1,
-  },
-  membershipCtaDesc: {
-    fontSize: 11,
-    color: LuxuryColors.textSecondary,
-    letterSpacing: 0.1,
-  },
-
-  // ── Creator status card ───────────────────────────────────
-  creatorStatusLoading: {
-    paddingVertical: LuxurySpacing.lg,
-    alignItems: 'center',
-  },
-  creatorStatusCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: LuxurySpacing.md,
-    backgroundColor: LuxuryColors.glass,
-    borderWidth: 1,
-    borderColor: LuxuryColors.glassBorder,
-    borderRadius: LuxuryBorderRadius.xl,
-    padding: LuxurySpacing.lg,
-    marginBottom: LuxurySpacing.md,
-  },
-  creatorStatusIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  creatorStatusBody: {
-    flex: 1,
-    gap: 3,
-  },
-  creatorStatusTitle: {
-    fontSize: LuxuryFontSize.sm,
-    fontWeight: '700',
-    color: LuxuryColors.textPrimary,
-  },
-  creatorStatusSub: {
-    fontSize: LuxuryFontSize.xs,
-    color: LuxuryColors.textSecondary,
-    lineHeight: 16,
-  },
-
-  // ── Legacy chip styles (kept for reference) ───────────────
-  creatorsRow: {
-    flexDirection: 'row',
-    gap: LuxurySpacing.md,
-  },
-  creatorChip: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-  },
-  creatorChipAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: LuxuryBorderRadius.full,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.28)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  creatorChipInitials: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: LuxuryColors.gold,
-    letterSpacing: 0.3,
-  },
-  creatorChipName: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: LuxuryColors.textSecondary,
-    letterSpacing: 0.1,
-    textAlign: 'center',
   },
 });
 

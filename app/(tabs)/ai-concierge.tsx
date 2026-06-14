@@ -12,7 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import {
@@ -24,7 +24,7 @@ import {
 } from '../../constants/luxuryTheme';
 import { JOURNEYS, ImageKey } from '../../constants/journeys';
 import { getCreatorById } from '../../constants/creators';
-import { toggleSaved, getSavedIds, setJourneyStoreUid } from '../../constants/journeyStore';
+import { setJourneyStoreUid } from '../../constants/journeyStore';
 import { getFirebaseApp } from '../../lib/firebase';
 
 const JOURNEY_IMAGES: Record<ImageKey, ReturnType<typeof require>> = {
@@ -85,7 +85,6 @@ export default function AIPlannerScreen() {
   const params = useLocalSearchParams<{ query?: string }>();
   const [query, setQuery] = useState(params.query ?? '');
   const [inputFocused, setInputFocused] = useState(false);
-  const [savedIds, setSavedIds] = useState<string[]>([]);
   const [aiReply, setAiReply] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -96,25 +95,8 @@ export default function AIPlannerScreen() {
     });
   }, []);
 
-  React.useEffect(() => {
-    getSavedIds().then(setSavedIds);
-  }, []);
-
   const handleChipPress = useCallback((chip: string) => {
     setQuery(chip);
-  }, []);
-
-  const handleJourneyPress = useCallback((id: string) => {
-    router.push({ pathname: '/(tabs)/journey-detail', params: { id } });
-  }, []);
-
-  const handleCreatorPress = useCallback((creatorId: string) => {
-    router.push({ pathname: '/(tabs)/creator-profile', params: { id: creatorId } });
-  }, []);
-
-  const handleSave = useCallback(async (id: string) => {
-    const newIds = await toggleSaved(id);
-    setSavedIds(newIds);
   }, []);
 
   const handleAskAI = useCallback(async () => {
@@ -273,11 +255,9 @@ export default function AIPlannerScreen() {
             const creator = getCreatorById(journey.creatorId);
 
             return (
-              <TouchableOpacity
+              <View
                 key={journey.id}
                 style={styles.journeyCard}
-                onPress={() => handleJourneyPress(journey.id)}
-                activeOpacity={0.88}
               >
                 {/* Thumbnail */}
                 <Image
@@ -295,16 +275,12 @@ export default function AIPlannerScreen() {
 
                   {/* Creator row */}
                   {creator && (
-                    <TouchableOpacity
-                      style={styles.creatorRow}
-                      onPress={() => handleCreatorPress(creator.id)}
-                      activeOpacity={0.7}
-                    >
+                    <View style={styles.creatorRow}>
                       <View style={styles.creatorAvatar}>
                         <Text style={styles.creatorAvatarText}>{creator.initials}</Text>
                       </View>
                       <Text style={styles.creatorName} numberOfLines={1}>{creator.name}</Text>
-                    </TouchableOpacity>
+                    </View>
                   )}
 
                   {/* Rating + budget */}
@@ -316,19 +292,7 @@ export default function AIPlannerScreen() {
                     <Text style={styles.budgetText}>{journey.dailyBudget}</Text>
                   </View>
                 </View>
-
-                <TouchableOpacity
-                  onPress={() => handleSave(journey.id)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={savedIds.includes(journey.id) ? 'bookmark' : 'bookmark-outline'}
-                    size={18}
-                    color={savedIds.includes(journey.id) ? LuxuryColors.gold : LuxuryColors.textTertiary}
-                  />
-                </TouchableOpacity>
-              </TouchableOpacity>
+              </View>
             );
           })}
         </View>
