@@ -55,6 +55,24 @@ function travelersLabel(n: number): string {
 type TripType = (typeof TRIP_TYPES)[number];
 type DateField = 'start' | 'end';
 
+function buildAutoTripTitle(destination: string, startDate: string, endDate: string): string {
+  const normalizedDestination = destination.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  if (normalizedDestination) {
+    return `${normalizedDestination} Adventure`;
+  }
+
+  const normalizedStartDate = startDate.trim();
+  const normalizedEndDate = endDate.trim();
+  if (normalizedStartDate && normalizedEndDate) {
+    return `Adventure ${normalizedStartDate} - ${normalizedEndDate}`;
+  }
+  if (normalizedStartDate) {
+    return `Adventure ${normalizedStartDate}`;
+  }
+
+  return 'My Adventure';
+}
+
 function SectionCard({ title, children, style }: { title: string; children: React.ReactNode; style?: object }) {
   return (
     <View style={[styles.card, style]}>
@@ -267,6 +285,12 @@ export default function CreateTripScreen() {
     galleryUris,
   ]);
 
+  useEffect(() => {
+    if (!destination.trim()) return;
+    if (tripTitle.trim()) return;
+    setTripTitle(buildAutoTripTitle(destination, startDate, endDate));
+  }, [destination, startDate, endDate, tripTitle]);
+
   const durationLabel = useMemo(() => {
     const start = parseTripDate(startDate);
     const end = parseTripDate(endDate);
@@ -368,13 +392,14 @@ export default function CreateTripScreen() {
   }, [activitiesCost, budget, flightCost, foodCost, stayCost]);
 
   const tripStats = useMemo(() => {
-    const photoCount = `${galleryUris.length + (coverUri ? 1 : 0)}`;
+    const selectedPhotos = galleryUris;
+    const photoCount = `${selectedPhotos.length}`;
     return [
       { icon: 'time-outline' as const, label: 'Duration', value: durationLabel },
       { icon: 'people-outline' as const, label: 'Travelers', value: travelers || '2' },
       { icon: 'images-outline' as const, label: 'Photos', value: photoCount },
     ];
-  }, [coverUri, durationLabel, galleryUris.length, travelers]);
+  }, [durationLabel, galleryUris, travelers]);
 
   if (checkingAuth) {
     return (
@@ -385,6 +410,43 @@ export default function CreateTripScreen() {
   }
 
   if (!authUid) return <AuthGate />;
+
+  const handleContinueToItinerary = async () => {
+    const finalTitle = tripTitle.trim() || buildAutoTripTitle(destination, startDate, endDate);
+    if (finalTitle !== tripTitle) {
+      setTripTitle(finalTitle);
+      try {
+        const start = parseTripDate(startDate);
+        const end = parseTripDate(endDate);
+        const earlier = start.getTime() <= end.getTime() ? start : end;
+        const later = start.getTime() <= end.getTime() ? end : start;
+        await patchCreateTripDraft({
+          tripInfo: {
+            destination,
+            startDate,
+            endDate,
+            tripTitle: finalTitle,
+            duration: durationLabelFromDates(earlier, later),
+            travelers,
+            tripType,
+            budget,
+            flightCost,
+            stayCost,
+            foodCost,
+            activitiesCost,
+            notes,
+            highlights,
+            coverUri,
+            galleryUris,
+          },
+        });
+      } catch {
+        // Continue navigation with local state if draft persistence fails.
+      }
+    }
+
+    router.push('/(tabs)/create-trip-itinerary');
+  };
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -669,7 +731,7 @@ export default function CreateTripScreen() {
       <View style={[styles.fixedDock, { paddingBottom: 4 }]}> 
         <TouchableOpacity
           style={styles.ctaButton}
-          onPress={() => router.push('/(tabs)/create-trip-itinerary')}
+          onPress={handleContinueToItinerary}
           activeOpacity={0.88}
         >
           <Text style={styles.ctaButtonText}>Continue to Itinerary</Text>
