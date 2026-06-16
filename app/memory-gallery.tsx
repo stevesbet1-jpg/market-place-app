@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import ImageViewing from 'react-native-image-viewing';
@@ -48,7 +47,6 @@ function mapCategory(value: string | undefined): Category {
 
 export default function MemoryGalleryScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
   const [photos, setPhotos] = useState<PhotoEntryDraft[]>([]);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
@@ -94,44 +92,44 @@ export default function MemoryGalleryScreen() {
     [photos],
   );
 
-  const TILE_GAP = 3;
-  const GRID_HORIZONTAL_PADDING = 3;
-  const tileSize = Math.floor((screenWidth - (GRID_HORIZONTAL_PADDING * 2) - (TILE_GAP * 2)) / 3);
-
   const renderItem = ({ item }: { item: GalleryTile; index: number }) => {
     return (
-      <TouchableOpacity
-        style={[styles.tile, { width: tileSize, height: tileSize }]}
-        activeOpacity={0.86}
-        onPress={() => {
-          setViewerIndex(item.index);
-          setViewerVisible(true);
-        }}
-      >
-        <Image source={{ uri: item.uri }} style={styles.tileImage} resizeMode="cover" />
-        <View style={styles.tileBadge}>
-          <Text style={styles.tileBadgeText}>{item.category}</Text>
-        </View>
-      </TouchableOpacity>
+      <View style={styles.cell}>
+        <TouchableOpacity
+          style={styles.tile}
+          activeOpacity={0.86}
+          onPress={() => {
+            setViewerIndex(item.index);
+            setViewerVisible(true);
+          }}
+        >
+          <Image source={{ uri: item.uri }} style={styles.tileImage} resizeMode="cover" />
+          <View style={styles.tileBadge}>
+            <Text style={styles.tileBadgeText}>{item.category}</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
     );
   };
+
+  const renderHeader = () => (
+    <View style={[styles.header, { paddingTop: 0 }]}>
+      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.84}>
+        <Ionicons name="arrow-back" size={18} color={LuxuryColors.textPrimary} />
+      </TouchableOpacity>
+      <View style={styles.headerCenter}>
+        <Text style={styles.title}>Memory Gallery</Text>
+        <Text style={styles.count}>{tiles.length} photos</Text>
+      </View>
+      <View style={styles.rightSlot} />
+    </View>
+  );
 
   return (
     <View style={styles.root}>
       <LinearGradient colors={['#071120', '#091A2A', '#06101D']} style={StyleSheet.absoluteFill} />
 
-      <View style={[styles.header, { paddingTop: insets.top }]}> 
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.84}>
-          <Ionicons name="arrow-back" size={18} color={LuxuryColors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.title}>Memory Gallery</Text>
-          <Text style={styles.count}>{tiles.length} photos</Text>
-        </View>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <FlatList
+      <FlatList<GalleryTile>
         data={tiles}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
@@ -140,13 +138,13 @@ export default function MemoryGalleryScreen() {
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
         automaticallyAdjustKeyboardInsets={false}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 16 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}
+        ListHeaderComponent={renderHeader}
         columnWrapperStyle={styles.columnWrap}
         showsVerticalScrollIndicator={false}
         initialNumToRender={21}
         maxToRenderPerBatch={12}
         windowSize={8}
-        removeClippedSubviews
         ListEmptyComponent={<Text style={styles.emptyText}>No photos available.</Text>}
       />
 
@@ -173,7 +171,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: LuxurySpacing.lg,
     paddingBottom: 8,
-    marginBottom: 0,
   },
   backBtn: {
     width: 40,
@@ -186,12 +183,18 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(138,230,255,0.16)',
   },
   headerCenter: { alignItems: 'center' },
-  headerSpacer: { width: 40 },
+  rightSlot: { width: 40, height: 40 },
   title: { color: LuxuryColors.textPrimary, fontSize: 18, fontWeight: '700' },
   count: { color: LuxuryColors.textSecondary, fontSize: 12, marginTop: 2 },
-  listContent: { paddingHorizontal: 3, paddingTop: 0 },
-  columnWrap: { gap: 3, marginBottom: 3 },
+  listContent: { paddingHorizontal: 2 },
+  columnWrap: { marginBottom: 0 },
+  cell: {
+    width: '33.3333%',
+    padding: 1.5,
+  },
   tile: {
+    width: '100%',
+    aspectRatio: 1,
     borderRadius: 4,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
