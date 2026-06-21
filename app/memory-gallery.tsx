@@ -27,11 +27,12 @@ import {
   LuxuryColors,
   LuxurySpacing,
 } from '../constants/luxuryTheme';
+import { normalizePhotoCategory as normalizeSharedPhotoCategory } from '../lib/photoCategory';
 import { MEMORY_GALLERY_SELECTION_KEY, sortPhotosByDate } from '../lib/sortPhotosByDate';
 
 const CYAN = '#8AE6FF';
 
-type Category = 'Place' | 'Food' | 'Activity' | 'Hotel' | 'Transport' | 'Other';
+type Category = 'Place' | 'Food' | 'Activity' | 'Other';
 
 type GalleryTile = {
   id: string;
@@ -41,12 +42,10 @@ type GalleryTile = {
 };
 
 function mapCategory(value: string | undefined): Category {
-  const normalized = (value ?? '').trim().toLowerCase();
-  if (normalized === 'places' || normalized === 'place') return 'Place';
+  const normalized = normalizeSharedPhotoCategory(value);
+  if (normalized === 'places') return 'Place';
   if (normalized === 'food') return 'Food';
-  if (normalized === 'activities' || normalized === 'activity') return 'Activity';
-  if (normalized === 'hotel' || normalized === 'stay') return 'Hotel';
-  if (normalized === 'transport' || normalized === 'travel') return 'Transport';
+  if (normalized === 'activities') return 'Activity';
   return 'Other';
 }
 

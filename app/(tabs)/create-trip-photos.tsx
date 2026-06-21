@@ -53,7 +53,7 @@ const ACTIVE_STEP = 2;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CLASSIFY_TIMEOUT_MS = 25_000;
 const MIN_CONFIDENCE = 0.4;
-const VALID_CATEGORIES: DisplayCategoryKey[] = ['places', 'food', 'activities'];
+const VALID_CATEGORIES: DisplayCategoryKey[] = ['places', 'food', 'activities', 'other'];
 const PHOTO_TABS = [
   { key: 'all', label: 'All' },
   { key: 'places', label: 'Places' },
@@ -82,6 +82,13 @@ function getClassifyApiBase(): string {
 
 // ── AI classification (backend, no API key in app) ─────────────
 const CLASSIFY_API = getClassifyApiBase();
+
+function getProvisionalCategory(activeTab: PhotoTab): DisplayCategoryKey {
+  if (activeTab === 'food') return 'food';
+  if (activeTab === 'activities') return 'activities';
+  if (activeTab === 'places') return 'places';
+  return 'other';
+}
 
 function parseConfidence(raw: unknown): { value: number | null; provided: boolean; source: string } {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
@@ -162,7 +169,7 @@ async function classifyPhotoViaAI(
     const res = await fetch(`${CLASSIFY_API}/api/classify-photo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageUri, imageBase64: imageBase64 ?? null }),
+      body: JSON.stringify({ photoId, imageUri, imageBase64: imageBase64 ?? null }),
       signal: controller.signal,
     });
     console.log('[CLASSIFY_HTTP]', { photoId, status: res.status, ok: res.ok });
@@ -263,11 +270,11 @@ async function classifyPhotoViaAI(
       fallbackReasonCode = 'low_confidence';
     }
 
-    const status: 'done' | 'failed' = category === 'other' ? 'failed' : 'done';
+    const status: 'done' | 'failed' = 'done';
 
     const result = {
       category,
-      reason: reason || (status === 'failed' ? 'Low confidence or unknown image' : ''),
+      reason: reason || (category === 'other' ? 'Low confidence or unclear travel signal' : ''),
       confidence,
       status,
     };
@@ -792,6 +799,7 @@ export default function CreateTripPhotosScreen() {
     if (result.canceled || !result.assets?.length) return;
 
     const pendingClassifications: Array<{ photoId: string; imageUri: string; fileName?: string; imageBase64?: string | null }> = [];
+    const provisionalCategory = getProvisionalCategory(activeTab);
 
     setPhotos((prev) => {
       const next = [...prev];
@@ -805,10 +813,10 @@ export default function CreateTripPhotosScreen() {
           uri: asset.uri,
           fileName: asset.fileName ?? undefined,
           caption: '',
-          category: 'other',
+          category: provisionalCategory,
           selected: true,
           createdAt: Date.now(),
-          categorySource: 'needs_review',
+          categorySource: 'fallback',
           classificationStatus: 'pending',
           classificationReason: '',
           confidence: 0,
@@ -816,8 +824,8 @@ export default function CreateTripPhotosScreen() {
         console.log('[PHOTO_SELECTED]', {
           id: photoId,
           uri: asset.uri,
-          category: 'other',
-          categorySource: 'needs_review',
+          category: provisionalCategory,
+          categorySource: 'fallback',
           classificationStatus: 'pending',
           classificationReason: '',
           confidence: 0,
@@ -834,7 +842,7 @@ export default function CreateTripPhotosScreen() {
 
     // Classify async after instant render.
     classifyInBackground(pendingClassifications);
-  }, [classifyInBackground]);
+  }, [activeTab, classifyInBackground]);
 
   const removePhoto = useCallback((id: string) => {
     setPhotos((prev) => prev.filter((p) => p.id !== id));

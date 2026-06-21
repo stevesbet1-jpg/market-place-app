@@ -516,7 +516,7 @@ export default function CreateTripReviewScreen() {
             ? photo.classificationStatus
             : categorySource === 'ai'
               ? 'done'
-              : 'pending';
+              : 'failed';
 
         return {
           ...photo,
