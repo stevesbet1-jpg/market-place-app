@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Keyboard, TouchableWithoutFeedback } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -249,7 +250,7 @@ export default function CreateTripItineraryScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.9,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;
@@ -379,90 +380,130 @@ export default function CreateTripItineraryScreen() {
       </ScrollView>
 
       <Modal visible={!!editingDay} transparent animationType="fade" onRequestClose={() => setEditingId(null)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Day</Text>
-              <TouchableOpacity onPress={() => setEditingId(null)}>
-                <Ionicons name="close" size={20} color={LuxuryColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          style={styles.modalKavRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={styles.modalBackdrop}>
+              <TouchableWithoutFeedback accessible={false}>
+                <View style={styles.modalCard}>
+                  {/* Header — always visible above keyboard */}
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Edit Day</Text>
+                    <TouchableOpacity onPress={() => setEditingId(null)} hitSlop={10}>
+                      <Ionicons name="close" size={22} color={LuxuryColors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
 
-            {editingDay ? (
-              <View style={styles.modalContent}>
-                <TextInput
-                  style={styles.modalInput}
-                  value={editingDay.dayLabel}
-                  onChangeText={(value) => updateDay(editingDay.id, { dayLabel: value })}
-                  placeholder="Day label"
-                  placeholderTextColor={LuxuryColors.textTertiary}
-                />
-                <TextInput
-                  style={styles.modalInput}
-                  value={editingDay.dateLabel}
-                  onChangeText={(value) => updateDay(editingDay.id, { dateLabel: value })}
-                  placeholder="Date label"
-                  placeholderTextColor={LuxuryColors.textTertiary}
-                />
-                <TextInput
-                  style={styles.modalInput}
-                  value={editingDay.title}
-                  onChangeText={(value) => updateDay(editingDay.id, { title: value })}
-                  placeholder="Day title"
-                  placeholderTextColor={LuxuryColors.textTertiary}
-                />
-                <TextInput
-                  style={[styles.modalInput, styles.modalTextarea]}
-                  value={editingDay.subtitle}
-                  onChangeText={(value) => updateDay(editingDay.id, { subtitle: value })}
-                  placeholder="Day subtitle"
-                  placeholderTextColor={LuxuryColors.textTertiary}
-                  multiline
-                />
+                  {editingDay ? (
+                    <>
+                      {/* Scrollable form body */}
+                      <ScrollView
+                        style={styles.modalScrollBody}
+                        contentContainerStyle={styles.modalScrollContent}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        nestedScrollEnabled
+                      >
+                        <TextInput
+                          style={styles.modalInput}
+                          value={editingDay.dayLabel}
+                          onChangeText={(value) => updateDay(editingDay.id, { dayLabel: value })}
+                          placeholder="Day label"
+                          placeholderTextColor={LuxuryColors.textTertiary}
+                          returnKeyType="done"
+                          blurOnSubmit
+                          onSubmitEditing={Keyboard.dismiss}
+                        />
+                        <TextInput
+                          style={styles.modalInput}
+                          value={editingDay.dateLabel}
+                          onChangeText={(value) => updateDay(editingDay.id, { dateLabel: value })}
+                          placeholder="Date label"
+                          placeholderTextColor={LuxuryColors.textTertiary}
+                          returnKeyType="done"
+                          blurOnSubmit
+                          onSubmitEditing={Keyboard.dismiss}
+                        />
+                        <TextInput
+                          style={styles.modalInput}
+                          value={editingDay.title}
+                          onChangeText={(value) => updateDay(editingDay.id, { title: value })}
+                          placeholder="Day title"
+                          placeholderTextColor={LuxuryColors.textTertiary}
+                          returnKeyType="done"
+                          blurOnSubmit
+                          onSubmitEditing={Keyboard.dismiss}
+                        />
+                        <TextInput
+                          style={[styles.modalInput, styles.modalTextarea]}
+                          value={editingDay.subtitle}
+                          onChangeText={(value) => updateDay(editingDay.id, { subtitle: value })}
+                          placeholder="Day subtitle"
+                          placeholderTextColor={LuxuryColors.textTertiary}
+                          multiline
+                          blurOnSubmit
+                          onSubmitEditing={Keyboard.dismiss}
+                        />
 
-                <View style={styles.modalSectionTop}>
-                  <Text style={styles.modalSectionTitle}>Activities</Text>
-                  <TouchableOpacity style={styles.inlineAddBtn} onPress={() => addActivity(editingDay.id)}>
-                    <Ionicons name="add" size={12} color={CYAN} />
-                    <Text style={styles.inlineAddText}>Add Activity</Text>
-                  </TouchableOpacity>
+                        <View style={styles.modalSectionTop}>
+                          <Text style={styles.modalSectionTitle}>Activities</Text>
+                          <TouchableOpacity style={styles.inlineAddBtn} onPress={() => addActivity(editingDay.id)}>
+                            <Ionicons name="add" size={12} color={CYAN} />
+                            <Text style={styles.inlineAddText}>Add Activity</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity style={styles.inlineAddBtn} onPress={() => pickDayImage(editingDay.id)}>
+                          <Ionicons name="camera-outline" size={12} color={CYAN} />
+                          <Text style={styles.inlineAddText}>Change Cover Image</Text>
+                        </TouchableOpacity>
+
+                        {editingDay.activities.map((activity, index) => (
+                          <View key={`${editingDay.id}-activity-${index}`} style={styles.activityRow}>
+                            <TextInput
+                              style={[styles.modalInput, styles.activityInput]}
+                              value={activity}
+                              onChangeText={(value) => updateActivity(editingDay.id, index, value)}
+                              placeholder="Activity name"
+                              placeholderTextColor={LuxuryColors.textTertiary}
+                              returnKeyType="done"
+                              blurOnSubmit
+                              onSubmitEditing={Keyboard.dismiss}
+                            />
+                            <TouchableOpacity style={styles.activityDeleteBtn} onPress={() => deleteActivity(editingDay.id, index)}>
+                              <Ionicons name="trash-outline" size={15} color="rgba(255,75,75,0.86)" />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </ScrollView>
+
+                      {/* Sticky footer — always reachable above keyboard */}
+                      <View style={styles.modalFooter}>
+                        <TouchableOpacity
+                          style={styles.modalCancelBtn}
+                          onPress={() => setEditingId(null)}
+                          activeOpacity={0.82}
+                        >
+                          <Text style={styles.modalCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.modalSaveBtn}
+                          onPress={() => { Keyboard.dismiss(); setEditingId(null); }}
+                          activeOpacity={0.88}
+                        >
+                          <Text style={styles.modalSaveText}>Save</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  ) : null}
                 </View>
-
-                <TouchableOpacity style={styles.inlineAddBtn} onPress={() => pickDayImage(editingDay.id)}>
-                  <Ionicons name="camera-outline" size={12} color={CYAN} />
-                  <Text style={styles.inlineAddText}>Change Cover Image</Text>
-                </TouchableOpacity>
-
-                <ScrollView
-                  style={styles.activitiesListScroll}
-                  contentContainerStyle={styles.activitiesListContent}
-                  showsVerticalScrollIndicator={false}
-                  nestedScrollEnabled
-                  keyboardShouldPersistTaps="handled"
-                >
-                  {editingDay.activities.map((activity, index) => (
-                    <View key={`${editingDay.id}-activity-${index}`} style={styles.activityRow}>
-                      <TextInput
-                        style={[styles.modalInput, styles.activityInput]}
-                        value={activity}
-                        onChangeText={(value) => updateActivity(editingDay.id, index, value)}
-                        placeholder="Activity name"
-                        placeholderTextColor={LuxuryColors.textTertiary}
-                      />
-                      <TouchableOpacity style={styles.activityDeleteBtn} onPress={() => deleteActivity(editingDay.id, index)}>
-                        <Ionicons name="trash-outline" size={15} color="rgba(255,75,75,0.86)" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </ScrollView>
-
-                <TouchableOpacity style={styles.doneBtn} onPress={() => setEditingId(null)} activeOpacity={0.88}>
-                  <Text style={styles.doneBtnText}>Done</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
-        </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       <View style={[styles.fixedDock, { paddingBottom: 4 }]}> 
@@ -612,7 +653,7 @@ const styles = StyleSheet.create({
   rowImageWrap: {
     width: 66,
     height: 66,
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(138,230,255,0.32)',
@@ -716,13 +757,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalCard: {
-    maxHeight: '82%',
+    maxHeight: '88%',
     borderRadius: LuxuryBorderRadius.xxl,
     borderWidth: 1,
     borderColor: 'rgba(138,230,255,0.16)',
     backgroundColor: 'rgba(7,17,32,0.98)',
     padding: 12,
+    overflow: 'hidden',
     ...LuxuryShadow.soft,
+  },
+  modalKavRoot: {
+    flex: 1,
+  },
+  modalScrollBody: {
+    flexShrink: 1,
+  },
+  modalScrollContent: {
+    gap: 8,
+    paddingBottom: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -731,7 +783,41 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   modalTitle: { color: LuxuryColors.textPrimary, fontSize: 16, fontWeight: '700' },
-  modalContent: { gap: 8, paddingBottom: 4 },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    marginTop: 4,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: LuxuryBorderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    color: LuxuryColors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modalSaveBtn: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: LuxuryBorderRadius.full,
+    backgroundColor: CYAN,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSaveText: {
+    color: '#051728',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   modalInput: {
     minHeight: 38,
     borderRadius: 11,
@@ -755,13 +841,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   modalSectionTitle: { color: LuxuryColors.textSecondary, fontSize: 11, fontWeight: '700' },
-  activitiesListScroll: {
-    maxHeight: 220,
-  },
-  activitiesListContent: {
-    gap: 8,
-    paddingBottom: 2,
-  },
   activityRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   activityInput: { flex: 1 },
   activityDeleteBtn: {
@@ -774,22 +853,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneBtn: {
-    minHeight: 34,
-    borderRadius: LuxuryBorderRadius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(138,230,255,0.34)',
-    backgroundColor: 'rgba(138,230,255,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  doneBtnText: {
-    color: CYAN,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
   fixedDock: {
     position: 'absolute',
     left: 0,

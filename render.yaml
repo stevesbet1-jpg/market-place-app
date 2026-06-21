@@ -6,6 +6,8 @@
 #   EMAIL_FROM                      = your sender email (e.g., onboarding@resend.dev)
 #   EXPO_PUBLIC_FIREBASE_API_KEY    = your Firebase web API key
 #   FIREBASE_SERVICE_ACCOUNT_JSON   = entire contents of your firebase-adminsdk-*.json file
+#   OPENAI_API_KEY                  = your OpenAI API key for /api/classify-photo
+#   MIGRATION_SECRET                = strong secret for POST /admin/migrate-legacy-fallback-photos
 
 services:
   - type: web
@@ -25,6 +27,10 @@ services:
       - key: EXPO_PUBLIC_FIREBASE_API_KEY
         sync: false
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MIGRATION_SECRET
         sync: false
     healthCheckPath: /api/health
     autoDeploy: true
