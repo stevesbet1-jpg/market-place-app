@@ -1,32 +1,42 @@
 {
   "expo": {
-    "name": "Matket-place",
-    "slug": "Matket-place",
+    "name": "Marketplace",
+    "slug": "marketplace",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "backgroundColor": "#071120",
+    "icon": "./assets/marketplace-logo.png",
+    "backgroundColor": "#061A2E",
     "userInterfaceStyle": "dark",
     "scheme": "marketplace",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#071120"
+      "backgroundColor": "#061A2E"
     },
     "ios": {
       "bundleIdentifier": "com.anonymous.Matketplace",
       "supportsTablet": true,
       "usesAppleSignIn": true,
       "userInterfaceStyle": "dark",
+      "splash": {
+        "image": "./assets/splash.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#061A2E"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIStatusBarStyle": "UIStatusBarStyleLightContent"
       }
     },
     "android": {
+      "splash": {
+        "image": "./assets/splash.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#061A2E"
+      },
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/marketplace-logo.png",
+        "backgroundColor": "#061A2E"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -39,6 +49,15 @@
       "expo-router",
       "expo-web-browser",
       "expo-apple-authentication",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#061A2E",
+          "image": "./assets/splash.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ],
       [
         "expo-image-picker",
         {
