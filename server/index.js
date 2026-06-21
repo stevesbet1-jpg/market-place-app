@@ -18,6 +18,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // ─── Load environment variables ────────────────────────────────────
 try {
@@ -151,6 +152,40 @@ function buildEmailBody(resetLink, email, template) {
     .replace(/\{\{EMAIL\}\}/g, email)
     .replace(/\{\{BRAND_NAME\}\}/g, 'Marketplace')
     .replace(/\{\{EXPIRES_HOURS\}\}/g, '1');
+}
+
+function incrementCount(counts, key) {
+  const normalized = String(key ?? 'null');
+  counts[normalized] = (counts[normalized] || 0) + 1;
+}
+
+function normalizeMigrationCategory(value) {
+  const category = String(value ?? '').trim().toLowerCase();
+  if (category === 'food' || category === 'places' || category === 'activities' || category === 'uncategorized') {
+    return category;
+  }
+  return 'uncategorized';
+}
+
+function readMigrationToken(req) {
+  const fromHeader = req.headers['x-migration-secret'];
+  if (typeof fromHeader === 'string' && fromHeader.trim().length > 0) return fromHeader.trim();
+
+  const authHeader = req.headers.authorization || '';
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice('Bearer '.length).trim();
+    return token.length > 0 ? token : null;
+  }
+
+  return null;
+}
+
+function safeTokenEquals(expected, provided) {
+  if (typeof expected !== 'string' || typeof provided !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(provided);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 // ─── Health check ────────────────────────────────────────────────
@@ -1418,34 +1453,74 @@ app.post('/api/ai/experience-title', async (req, res) => {
 // ─── Photo classification via OpenAI Vision ──────────────────────
 // POST /api/classify-photo
 // Body: { imageUri?: string, imageBase64?: string }
-// Returns: { category: 'food'|'places'|'activities', confidence: number, reason: string }
+// Returns: { category: 'food'|'places'|'activities'|'other', confidence: number, reason: string }
 app.post('/api/classify-photo', async (req, res) => {
-  const { imageUri, imageBase64 } = req.body ?? {};
-  console.log('[classify-photo] request received', {
-    hasImageUri: Boolean(imageUri),
-    hasImageBase64: Boolean(imageBase64),
-    imageUriPrefix: typeof imageUri === 'string' ? imageUri.slice(0, 80) : undefined,
+  const { photoId, imageUri, imageBase64 } = req.body ?? {};
+
+  const detectMimeTypeFromValue = (uri, base64Value) => {
+    const b64 = String(base64Value ?? '').trim();
+    const uriText = String(uri ?? '').trim().toLowerCase();
+    const dataUriMatch = b64.match(/^data:(image\/[a-z0-9.+-]+);base64,/i);
+    if (dataUriMatch?.[1]) return dataUriMatch[1].toLowerCase();
+    if (/\.(jpe?g)(\?|$)/i.test(uriText)) return 'image/jpeg';
+    if (/\.png(\?|$)/i.test(uriText)) return 'image/png';
+    if (/\.gif(\?|$)/i.test(uriText)) return 'image/gif';
+    if (/\.webp(\?|$)/i.test(uriText)) return 'image/webp';
+    return null;
+  };
+
+  const normalizedImageUriForLog = typeof imageUri === 'string' ? imageUri.trim() : '';
+  const normalizedImageBase64ForLog = typeof imageBase64 === 'string' ? imageBase64.trim() : '';
+  const imageSource = normalizedImageBase64ForLog.length > 0
+    ? 'base64'
+    : /^https?:\/\//i.test(normalizedImageUriForLog)
+      ? 'remote_url'
+      : normalizedImageUriForLog.startsWith('file://')
+        ? 'file_url'
+        : 'none';
+
+  console.log('[CLASSIFY_REQUEST]', {
+    photoId: typeof photoId === 'string' ? photoId : null,
+    imageSource,
+    imageUrlLength: normalizedImageUriForLog.length,
+    base64Length: normalizedImageBase64ForLog.length,
+    mimeType: detectMimeTypeFromValue(normalizedImageUriForLog, normalizedImageBase64ForLog),
   });
 
+  const openaiKey = process.env.OPENAI_API_KEY;
+  console.log(`[AI_CLASSIFY_SERVER_READY] hasKey=${Boolean(openaiKey)}`);
+
   if ((!imageUri || typeof imageUri !== 'string') && (!imageBase64 || typeof imageBase64 !== 'string')) {
+    console.error('[MISSING_IMAGE_INPUT]', {
+      photoId: typeof photoId === 'string' ? photoId : null,
+      imageUrlLength: normalizedImageUriForLog.length,
+      base64Length: normalizedImageBase64ForLog.length,
+    });
+    console.error('[AI_CLASSIFY_FAILED] reason=imageUri_or_imageBase64_required');
     return res.status(400).json({
       error: 'CLASSIFY_FAILED',
       message: 'imageUri or imageBase64 is required',
-      fallbackCategory: 'places',
+      fallbackCategory: 'uncategorized',
     });
   }
 
   if (typeof imageUri === 'string' && imageUri.startsWith('file://') && (!imageBase64 || typeof imageBase64 !== 'string')) {
+    console.error('[MISSING_IMAGE_INPUT]', {
+      photoId: typeof photoId === 'string' ? photoId : null,
+      imageUrlLength: normalizedImageUriForLog.length,
+      base64Length: normalizedImageBase64ForLog.length,
+    });
+    console.error('[AI_CLASSIFY_FAILED] reason=local_file_requires_base64');
     return res.status(400).json({
       error: 'LOCAL_FILE_REQUIRES_BASE64',
       message: 'Local file:// URIs must include imageBase64 payload',
-      fallbackCategory: 'places',
+      fallbackCategory: 'uncategorized',
     });
   }
 
-  const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
-    return res.status(503).json({ error: 'OPENAI_API_KEY not configured on server' });
+    console.error('[AI_CLASSIFY_FAILED] reason=OPENAI_API_KEY_not_configured');
+    return res.status(503).json({ error: 'OPENAI_API_KEY not configured on server', fallbackCategory: 'uncategorized' });
   }
 
   try {
@@ -1477,6 +1552,7 @@ app.post('/api/classify-photo', async (req, res) => {
     };
 
     let imageUrlForModel = normalizedImageUri;
+    let selectedMimeType = null;
     if (normalizedImageBase64.length > 0) {
       let detectedMimeType = 'image/jpeg';
       let imageDataUrl = normalizedImageBase64;
@@ -1492,34 +1568,101 @@ app.post('/api/classify-photo', async (req, res) => {
       console.log('[classify-photo] detected mime type', detectedMimeType);
       console.log('[classify-photo] imageDataUrl prefix', imageDataUrl.substring(0, 120));
       imageUrlForModel = imageDataUrl;
+      selectedMimeType = detectedMimeType;
     } else if (typeof imageUri === 'string' && /^https?:\/\//i.test(imageUri)) {
       imageUrlForModel = normalizedImageUri;
+      selectedMimeType = detectMimeTypeFromUri(normalizedImageUri);
     } else {
+      console.error('[MISSING_IMAGE_INPUT]', {
+        photoId: typeof photoId === 'string' ? photoId : null,
+        imageUrlLength: normalizedImageUri.length,
+        base64Length: normalizedImageBase64.length,
+      });
+      console.error('[AI_CLASSIFY_FAILED] reason=unsupported_image_input_format');
       return res.status(400).json({
         error: 'CLASSIFY_FAILED',
         message: 'Unsupported image input format',
-        fallbackCategory: 'places',
+        fallbackCategory: 'uncategorized',
       });
     }
 
+    const PROMPT_VERSION = 'travel_v2';
+    console.log('[CLASSIFY_PROMPT_VERSION] = ' + PROMPT_VERSION);
+    console.log('[OPENAI_IMAGE_PAYLOAD]', {
+      photoId: typeof photoId === 'string' ? photoId : null,
+      hasImageUrl: /^https?:\/\//i.test(imageUrlForModel) || imageUrlForModel.startsWith('data:image/'),
+      hasBase64: normalizedImageBase64.length > 0,
+      imageUrlPreview: imageUrlForModel ? imageUrlForModel.slice(0, 120) : null,
+      mimeType: selectedMimeType,
+    });
+
     const prompt = [
-      'Classify this travel marketplace photo into exactly one category: food, places, or activities.',
+      'You are a travel photo classifier.',
       '',
-      'Category definitions:',
-      '- food: dishes, meals, drinks, restaurants, desserts.',
-      '- places: buildings, streets, bridges, churches, statues, fountains, landmarks, city views, landscapes.',
-      '- activities: only clear human/activity experiences such as hiking, boat ride, biking, swimming, skiing, concert, nightlife, or tour.',
+      'Return ONLY one category:',
+      'Places',
+      'Food',
+      'Activities',
+      'Other',
       '',
-      'Decision priority (strict):',
-      '1) If any visible food is present, choose food.',
-      '2) Otherwise choose places for architecture/city/landscape scenes.',
-      '3) Choose activities only when a clear activity is visibly happening.',
-      '4) If uncertain, default to places.',
+      'Classification rules:',
       '',
-      'Output requirements:',
-      '- Return only valid JSON (no markdown, no extra text).',
-      '- Use this exact shape:',
-      '{"category":"food"|"places"|"activities","confidence":0.0-1.0,"reason":"one short sentence"}',
+      'Places:',
+      '- landmarks',
+      '- monuments',
+      '- statues',
+      '- churches',
+      '- historical buildings',
+      '- architecture',
+      '- streets',
+      '- city views',
+      '- skylines',
+      '- bridges',
+      '- rivers',
+      '- lakes',
+      '- beaches',
+      '- mountains',
+      '- parks',
+      '- gardens',
+      '- fountains',
+      '- scenic viewpoints',
+      '- travel destinations',
+      '- tourist attractions',
+      '',
+      'Food:',
+      '- meals',
+      '- drinks',
+      '- restaurants',
+      '- cafes',
+      '- desserts',
+      '- food closeups',
+      '',
+      'Activities:',
+      '- sports',
+      '- hiking',
+      '- cycling',
+      '- swimming',
+      '- skiing',
+      '- dancing',
+      '- performances',
+      '- people actively doing something',
+      '',
+      'Other:',
+      '- screenshots',
+      '- documents',
+      '- receipts',
+      '- random indoor objects',
+      '- blurry images',
+      '- unknown content',
+      '',
+      'IMPORTANT:',
+      'If an image contains any recognizable travel destination, landmark, architecture, cityscape, riverfront, fountain, park, statue, monument, church, skyline or scenic outdoor location, prefer Places instead of Other.',
+      '',
+      'Return JSON only:',
+      '{',
+      '  "category": "Places|Food|Activities|Other",',
+      '  "confidence": 0-1',
+      '}',
     ].join('\n');
 
     const response = await openai.chat.completions.create({
@@ -1537,31 +1680,198 @@ app.post('/api/classify-photo', async (req, res) => {
     });
 
     const raw = response.choices?.[0]?.message?.content?.trim() ?? '';
+    console.log('[OPENAI_RAW_RESPONSE]', {
+      photoId: typeof photoId === 'string' ? photoId : null,
+      rawResponse: raw,
+    });
+    console.log('[CLASSIFY_RESPONSE]', raw.slice(0, 400));
 
     let parsed;
     try {
       const clean = raw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
       parsed = JSON.parse(clean);
     } catch {
-      console.warn('[classify-photo] Could not parse model response:', raw);
+      console.error('[CLASSIFY_ERROR]', 'unparseable_model_response');
       return res.status(502).json({ error: 'Model returned unparseable response', raw });
     }
 
-    const allowed = ['food', 'places', 'activities'];
-    const category = allowed.includes(parsed.category) ? parsed.category : 'places';
-    const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0.5;
+    const allowed = ['food', 'places', 'activities', 'other'];
+    const rawCategory = String(parsed?.category ?? '').trim().toLowerCase();
+    const category = allowed.includes(rawCategory) ? rawCategory : 'other';
+    const confidenceRaw = typeof parsed?.confidence === 'number' ? parsed.confidence : Number(parsed?.confidence);
+    const confidence = Number.isFinite(confidenceRaw) ? Math.max(0, Math.min(1, confidenceRaw)) : 0.5;
     const reason = typeof parsed.reason === 'string' ? parsed.reason : '';
 
     const result = { category, confidence, reason };
-    console.log('[classify-photo] result', result);
+    console.log('[CLASSIFY_CATEGORY]', category);
+    console.log('[CLASSIFY_FINAL]', {
+      photoId: typeof photoId === 'string' ? photoId : null,
+      finalCategory: category,
+      confidence,
+    });
+    console.log('[AI_CLASSIFY_SUCCESS] category=' + category);
+    console.log('[CLASSIFY_RESPONSE]', result);
 
     return res.json(result);
   } catch (error) {
-    console.error('[classify-photo] error', error);
+    console.error('[CLASSIFY_ERROR]', error?.message || error);
+    console.error(`[AI_CLASSIFY_FAILED] reason=${error?.message || error}`);
     return res.status(502).json({
       error: 'CLASSIFY_FAILED',
       message: error?.message || 'Classification failed',
-      fallbackCategory: 'places',
+      fallbackCategory: 'uncategorized',
+    });
+  }
+});
+
+// ─── Admin: migrate legacy fallback photos ──────────────────────
+// POST /admin/migrate-legacy-fallback-photos
+// Protected by MIGRATION_SECRET via x-migration-secret (or Authorization: Bearer <secret>)
+app.post('/admin/migrate-legacy-fallback-photos', async (req, res) => {
+  const expectedSecret = process.env.MIGRATION_SECRET;
+  if (!expectedSecret) {
+    return res.status(503).json({
+      success: false,
+      error: 'MIGRATION_SECRET is not configured on server',
+    });
+  }
+
+  const providedSecret = readMigrationToken(req);
+  if (!providedSecret || !safeTokenEquals(expectedSecret, providedSecret)) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+    });
+  }
+
+  if (!initFirebaseAdmin()) {
+    return res.status(500).json({
+      success: false,
+      error: 'Firebase Admin SDK not initialized',
+    });
+  }
+
+  const db = admin.firestore();
+  const collectionRef = db.collection('creatorExperiences');
+  const pageSize = 200;
+  const maxWritesPerBatch = 350;
+
+  let scannedDocs = 0;
+  let totalPhotos = 0;
+  let photosToMigrate = 0;
+  let migratedPhotos = 0;
+  const categoryCountsBefore = {};
+  const categoryCountsAfter = {};
+
+  let pendingWrites = [];
+
+  const flushWrites = async () => {
+    if (!pendingWrites.length) return;
+    const batch = db.batch();
+    let pendingMigratedPhotos = 0;
+
+    for (const w of pendingWrites) {
+      batch.update(w.ref, {
+        'tripData.photos': w.photos,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      pendingMigratedPhotos += w.migratedCount;
+    }
+
+    await batch.commit();
+    migratedPhotos += pendingMigratedPhotos;
+    pendingWrites = [];
+  };
+
+  try {
+    let lastDoc = null;
+
+    while (true) {
+      let q = collectionRef
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(pageSize);
+
+      if (lastDoc) {
+        q = q.startAfter(lastDoc.id);
+      }
+
+      const snap = await q.get();
+      if (snap.empty) break;
+
+      for (const docSnap of snap.docs) {
+        scannedDocs += 1;
+
+        const data = docSnap.data() || {};
+        const tripData = data.tripData && typeof data.tripData === 'object' ? data.tripData : {};
+        const photos = Array.isArray(tripData.photos) ? tripData.photos : [];
+        totalPhotos += photos.length;
+
+        if (!photos.length) continue;
+
+        let changedInDoc = 0;
+        const nextPhotos = photos.map((photo) => {
+          const categoryBefore = normalizeMigrationCategory(photo?.category);
+          incrementCount(categoryCountsBefore, categoryBefore);
+
+          const sourceValue = String(photo?.categorySource ?? photo?.source ?? '').trim().toLowerCase();
+          const isLegacyFallback = categoryBefore === 'places' && sourceValue === 'fallback';
+
+          if (!isLegacyFallback) {
+            incrementCount(categoryCountsAfter, categoryBefore);
+            return photo;
+          }
+
+          photosToMigrate += 1;
+          changedInDoc += 1;
+
+          const migrated = {
+            ...photo,
+            category: 'uncategorized',
+            categorySource: 'needs_review',
+            classificationStatus: 'pending',
+          };
+          incrementCount(categoryCountsAfter, 'uncategorized');
+          return migrated;
+        });
+
+        if (changedInDoc > 0) {
+          pendingWrites.push({
+            ref: docSnap.ref,
+            photos: nextPhotos,
+            migratedCount: changedInDoc,
+          });
+        }
+
+        if (pendingWrites.length >= maxWritesPerBatch) {
+          await flushWrites();
+        }
+      }
+
+      lastDoc = snap.docs[snap.docs.length - 1];
+    }
+
+    await flushWrites();
+
+    return res.json({
+      success: true,
+      scannedDocs,
+      totalPhotos,
+      photosToMigrate,
+      migratedPhotos,
+      categoryCountsBefore,
+      categoryCountsAfter,
+    });
+  } catch (error) {
+    console.error('[admin/migrate-legacy-fallback-photos] migration failed:', error?.message || error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Migration failed',
+      scannedDocs,
+      totalPhotos,
+      photosToMigrate,
+      migratedPhotos,
+      categoryCountsBefore,
+      categoryCountsAfter,
     });
   }
 });

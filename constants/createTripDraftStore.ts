@@ -7,10 +7,16 @@ export type PhotoCategory =
   | 'places'
   | 'food'
   | 'activities'
+  | 'other'
   | 'uncategorized'
+  | 'place'
+  | 'activity'
   | 'Places'
   | 'Food'
-  | 'Activities';
+  | 'Activities'
+  | 'Place'
+  | 'Activity'
+  | 'Other';
 
 export type ItineraryDayDraft = {
   id: string;
@@ -27,6 +33,12 @@ export type PhotoEntryDraft = {
   uri: string;
   caption: string;
   category: PhotoCategory;
+  createdAt?: number;
+  categorySource?: 'ai' | 'fallback' | 'needs_review';
+  source?: 'ai' | 'fallback' | 'needs_review';
+  classificationStatus?: 'pending' | 'done' | 'failed';
+  classificationReason?: string;
+  confidence?: number;
 };
 
 export type ExperienceDraft = {
@@ -114,6 +126,63 @@ const EMPTY_DRAFT: CreateTripDraft = {
   updatedAt: Date.now(),
 };
 
+function normalizeDraftPhotoCategory(category: unknown): PhotoCategory {
+  const value = String(category ?? '').trim().toLowerCase();
+  if (value === 'places' || value === 'place') return 'places';
+  if (value === 'food') return 'food';
+  if (value === 'activities' || value === 'activity') return 'activities';
+  if (value === 'other' || value === 'uncategorized' || value === 'needs_review') return 'other';
+  return 'other';
+}
+
+function normalizeDraftPhotoSource(
+  source: unknown,
+  category: PhotoCategory,
+): 'ai' | 'fallback' | 'needs_review' {
+  const value = String(source ?? '').trim().toLowerCase();
+  if (value === 'ai' || value === 'fallback' || value === 'needs_review') return value;
+  return category === 'other' ? 'needs_review' : 'fallback';
+}
+
+function sanitizeDraftPhotoEntry(raw: unknown): PhotoEntryDraft | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const photo = raw as Partial<PhotoEntryDraft>;
+  const uri = typeof photo.uri === 'string' ? photo.uri.trim() : '';
+  if (!uri) return null;
+
+  const category = normalizeDraftPhotoCategory(photo.category);
+  const categorySource = normalizeDraftPhotoSource(photo.categorySource ?? photo.source, category);
+  const classificationStatus =
+    photo.classificationStatus === 'pending' || photo.classificationStatus === 'done' || photo.classificationStatus === 'failed'
+      ? photo.classificationStatus
+      : categorySource === 'ai'
+        ? 'done'
+        : 'failed';
+
+  const effectiveStatus = classificationStatus === 'pending' ? 'failed' : classificationStatus;
+  const confidence = typeof photo.confidence === 'number' && Number.isFinite(photo.confidence)
+    ? Math.max(0, Math.min(1, photo.confidence))
+    : undefined;
+
+  return {
+    id: typeof photo.id === 'string' && photo.id.trim().length > 0 ? photo.id : `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    uri,
+    caption: typeof photo.caption === 'string' ? photo.caption : '',
+    category,
+    createdAt: typeof photo.createdAt === 'number' ? photo.createdAt : undefined,
+    categorySource,
+    source: categorySource,
+    classificationStatus: effectiveStatus,
+    classificationReason:
+      typeof photo.classificationReason === 'string' && photo.classificationReason.trim().length > 0
+        ? photo.classificationReason
+        : effectiveStatus === 'failed'
+          ? 'Classification did not finish.'
+          : '',
+    confidence,
+  };
+}
+
 export async function getCreateTripDraft(): Promise<CreateTripDraft> {
   try {
     const raw = await AsyncStorage.getItem(CREATE_TRIP_DRAFT_KEY);
@@ -125,7 +194,11 @@ export async function getCreateTripDraft(): Promise<CreateTripDraft> {
         ...(parsed.tripInfo ?? {}),
       },
       itineraryDays: Array.isArray(parsed.itineraryDays) ? parsed.itineraryDays : [],
-      photos: Array.isArray(parsed.photos) ? parsed.photos : [],
+      photos: Array.isArray(parsed.photos)
+        ? parsed.photos
+          .map((photo) => sanitizeDraftPhotoEntry(photo))
+          .filter((photo): photo is PhotoEntryDraft => photo !== null)
+        : [],
       experiences: Array.isArray(parsed.experiences) ? parsed.experiences : [],
       updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now(),
     };
@@ -144,6 +217,12 @@ export async function saveCreateTripDraft(next: CreateTripDraft): Promise<void> 
 
 export async function patchCreateTripDraft(patch: Partial<CreateTripDraft>): Promise<CreateTripDraft> {
   const current = await getCreateTripDraft();
+  const patchedPhotos = Array.isArray(patch.photos)
+    ? patch.photos
+      .map((photo) => sanitizeDraftPhotoEntry(photo))
+      .filter((photo): photo is PhotoEntryDraft => photo !== null)
+    : current.photos;
+
   const merged: CreateTripDraft = {
     ...current,
     ...patch,
@@ -152,7 +231,7 @@ export async function patchCreateTripDraft(patch: Partial<CreateTripDraft>): Pro
       ...(patch.tripInfo ?? {}),
     },
     itineraryDays: Array.isArray(patch.itineraryDays) ? patch.itineraryDays : current.itineraryDays,
-    photos: Array.isArray(patch.photos) ? patch.photos : current.photos,
+    photos: patchedPhotos,
     experiences: Array.isArray(patch.experiences) ? patch.experiences : current.experiences,
     updatedAt: Date.now(),
   };

@@ -29,6 +29,7 @@ import {
   type ExperienceDraft,
   type PhotoEntryDraft,
 } from '../../constants/createTripDraftStore';
+import { normalizePhotoCategory as normalizeSharedPhotoCategory } from '../../lib/photoCategory';
 
 const CYAN = '#8AE6FF';
 const STEPS = [
@@ -178,11 +179,9 @@ function buildExperienceSubtitle(exp: Experience, distributedDate: Date | null):
 }
 
 function normalizePhotoCategory(category: string | undefined): 'food' | 'activities' | 'places' | null {
-  const value = (category ?? '').trim().toLowerCase();
-  if (value === 'food') return 'food';
-  if (value === 'activities') return 'activities';
-  if (value === 'places') return 'places';
-  return null;
+  const normalized = normalizeSharedPhotoCategory(category);
+  if (normalized === 'other') return null;
+  return normalized;
 }
 
 function pickGeneratedTitle(category: 'food' | 'activities' | 'places', idx: number): string {
@@ -366,7 +365,7 @@ export default function CreateTripExperiencesScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;

@@ -32,6 +32,7 @@ import {
   clearCreateTripDraft,
 } from '../../constants/createTripDraftStore';
 import { MEMORY_GALLERY_SELECTION_KEY, sortPhotosByDate } from '../../lib/sortPhotosByDate';
+import { normalizePhotoCategory as normalizeSharedPhotoCategory, normalizePhotoSource } from '../../lib/photoCategory';
 import { createPublishedExperience } from '../../lib/creatorExperienceService';
 import { getFirebaseApp } from '../../lib/firebase';
 
@@ -58,11 +59,13 @@ type ItineraryDay = {
 };
 
 function normalizePhotoCategory(category: string | undefined): 'food' | 'places' | 'activities' | null {
-  const value = (category ?? '').trim().toLowerCase();
-  if (value === 'food') return 'food';
-  if (value === 'places') return 'places';
-  if (value === 'activities') return 'activities';
-  return null;
+  const normalized = normalizePhotoCategoryShared(category);
+  if (normalized === 'other') return null;
+  return normalized;
+}
+
+function normalizePhotoCategoryShared(category: string | undefined): 'food' | 'places' | 'activities' | 'other' {
+  return normalizeSharedPhotoCategory(category);
 }
 
 function generateExperienceTitle(category: 'food' | 'places' | 'activities', index: number): string {
@@ -366,6 +369,17 @@ export default function CreateTripReviewScreen() {
   const foodPhotos = useMemo(() => sortedPhotos.filter((p) => normalizePhotoCategory(p.category) === 'food'), [sortedPhotos]);
   const activityPhotos = useMemo(() => sortedPhotos.filter((p) => normalizePhotoCategory(p.category) === 'activities'), [sortedPhotos]);
 
+  useEffect(() => {
+    console.log('[PHOTO_COUNTED]', {
+      all: sortedPhotos.length,
+      places: placePhotos.length,
+      food: foodPhotos.length,
+      activities: activityPhotos.length,
+      other: sortedPhotos.filter((p) => normalizePhotoCategoryShared(p.category) === 'other').length,
+      screen: 'create-trip-review',
+    });
+  }, [sortedPhotos, placePhotos.length, foodPhotos.length, activityPhotos.length]);
+
   const itineraryPreview = useMemo(() => {
     return itineraryRows.slice(0, 3).map((day, index) => ({
       id: day.id,
@@ -494,11 +508,40 @@ export default function CreateTripReviewScreen() {
         description: day.activities.filter((a) => a.trim().length > 0).join(', ') || day.subtitle || 'No activities yet',
       }));
 
+      const normalizedTripPhotos = latestDraft.photos.map((photo) => {
+        const category = normalizePhotoCategoryShared(photo.category);
+        const categorySource = normalizePhotoSource(photo.categorySource ?? photo.source, category);
+        const classificationStatus =
+          photo.classificationStatus === 'pending' || photo.classificationStatus === 'done' || photo.classificationStatus === 'failed'
+            ? photo.classificationStatus
+            : categorySource === 'ai'
+              ? 'done'
+              : 'pending';
+
+        return {
+          ...photo,
+          category,
+          categorySource,
+          source: categorySource,
+          classificationStatus,
+          classificationReason: photo.classificationReason ?? '',
+        };
+      });
+
+      console.log('[PHOTO_PERSISTED]', {
+        screen: 'create-trip-review',
+        count: normalizedTripPhotos.length,
+        places: normalizedTripPhotos.filter((p) => p.category === 'places').length,
+        food: normalizedTripPhotos.filter((p) => p.category === 'food').length,
+        activities: normalizedTripPhotos.filter((p) => p.category === 'activities').length,
+        other: normalizedTripPhotos.filter((p) => p.category === 'other').length,
+      });
+
       const tripData = {
         version: 1,
         tripInfo: info,
         itineraryDays: itinerary,
-        photos: latestDraft.photos,
+        photos: normalizedTripPhotos,
         galleryUris: info.galleryUris,
         coverUri: info.coverUri,
         experiences,
@@ -891,7 +934,8 @@ const styles = StyleSheet.create({
   itineraryThumb: {
     width: 58,
     height: 58,
-    borderRadius: 10,
+    borderRadius: 16,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
   },

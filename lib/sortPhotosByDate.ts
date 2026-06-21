@@ -15,8 +15,8 @@ export function sortPhotosByDate(photos: PhotoEntryDraft[]): PhotoEntryDraft[] {
       const aValid = Number.isFinite(aTime);
       const bValid = Number.isFinite(bTime);
 
-      // Newest first when timestamps are available.
-      if (aValid && bValid && aTime !== bTime) return bTime - aTime;
+      // Oldest first when timestamps are available.
+      if (aValid && bValid && aTime !== bTime) return aTime - bTime;
       if (aValid && !bValid) return -1;
       if (!aValid && bValid) return 1;
 
