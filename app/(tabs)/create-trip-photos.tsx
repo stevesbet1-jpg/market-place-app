@@ -53,22 +53,25 @@ const ACTIVE_STEP = 2;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CLASSIFY_TIMEOUT_MS = 25_000;
 const MIN_CONFIDENCE = 0.4;
-const VALID_CATEGORIES: DisplayCategoryKey[] = ['places', 'food', 'activities', 'other'];
+const VALID_CATEGORIES: DisplayCategoryKey[] = ['places', 'food', 'activities', 'beach', 'animals'];
 const PHOTO_TABS = [
   { key: 'all', label: 'All' },
   { key: 'places', label: 'Places' },
   { key: 'food', label: 'Food' },
   { key: 'activities', label: 'Activities' },
-  { key: 'other', label: 'Other' },
+  { key: 'beach', label: 'Beach' },
+  { key: 'animals', label: 'Animals' },
 ] as const;
 type PhotoTab = (typeof PHOTO_TABS)[number]['key'];
+type ImportCategory = Exclude<PhotoTab, 'all'>;
 type DisplayCategoryKey = NormalizedPhotoCategory;
 
 const CATEGORY_LABEL: Record<DisplayCategoryKey, string> = {
   places: 'Places',
   food: 'Food',
   activities: 'Activities',
-  other: 'Other',
+  beach: 'Beach',
+  animals: 'Animals',
 };
 
 function getClassifyApiBase(): string {
@@ -87,7 +90,9 @@ function getProvisionalCategory(activeTab: PhotoTab): DisplayCategoryKey {
   if (activeTab === 'food') return 'food';
   if (activeTab === 'activities') return 'activities';
   if (activeTab === 'places') return 'places';
-  return 'other';
+  if (activeTab === 'beach') return 'beach';
+  if (activeTab === 'animals') return 'animals';
+  return 'beach';
 }
 
 function parseConfidence(raw: unknown): { value: number | null; provided: boolean; source: string } {
@@ -140,13 +145,13 @@ async function classifyPhotoViaAI(
 
   if (!imageUri || imageUri.trim().length === 0) {
     const failed = {
-      category: 'other' as const,
+      category: 'beach' as const,
       reason: 'Invalid image URI',
       confidence: 0,
       status: 'failed' as const,
     };
     console.log('[CLASSIFY_RAW]', { photoId, raw: null, reason: failed.reason });
-    console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'other', isValidCategory: false });
+    console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'beach', isValidCategory: false });
     console.log('[CLASSIFY_CONFIDENCE]', {
       photoId,
       rawConfidence: null,
@@ -177,13 +182,13 @@ async function classifyPhotoViaAI(
     if (!res.ok) {
       const errText = await res.text();
       const failed = {
-        category: 'other' as const,
+        category: 'beach' as const,
         reason: `HTTP ${res.status}: ${errText.slice(0, 160)}`,
         confidence: 0,
         status: 'failed' as const,
       };
       console.log('[CLASSIFY_RAW]', { photoId, raw: errText.slice(0, 300) });
-      console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'other', isValidCategory: false });
+      console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'beach', isValidCategory: false });
       console.log('[CLASSIFY_CONFIDENCE]', {
         photoId,
         rawConfidence: null,
@@ -203,13 +208,13 @@ async function classifyPhotoViaAI(
       data = await res.json();
     } catch {
       const failed = {
-        category: 'other' as const,
+        category: 'beach' as const,
         reason: 'Invalid JSON response',
         confidence: 0,
         status: 'failed' as const,
       };
       console.log('[CLASSIFY_RAW]', { photoId, raw: 'INVALID_JSON' });
-      console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'other', isValidCategory: false });
+      console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'beach', isValidCategory: false });
       console.log('[CLASSIFY_CONFIDENCE]', {
         photoId,
         rawConfidence: null,
@@ -263,10 +268,10 @@ async function classifyPhotoViaAI(
     let fallbackReasonCode: string | null = null;
 
     if (!isValidCategory) {
-      category = 'other';
+      category = 'beach';
       fallbackReasonCode = 'invalid_or_unknown_category';
     } else if (!gatePassed) {
-      category = 'other';
+      category = 'beach';
       fallbackReasonCode = 'low_confidence';
     }
 
@@ -274,7 +279,7 @@ async function classifyPhotoViaAI(
 
     const result = {
       category,
-      reason: reason || (category === 'other' ? 'Low confidence or unclear travel signal' : ''),
+      reason: reason || (category === 'beach' ? 'Low confidence or unclear travel signal' : ''),
       confidence,
       status,
     };
@@ -287,10 +292,10 @@ async function classifyPhotoViaAI(
       finalCategory: result.category,
     });
 
-    if (category === 'other') {
+    if (category === 'beach') {
       console.log('[CLASSIFY_FALLBACK_OTHER_REASON]', {
         photoId,
-        reasonCode: fallbackReasonCode ?? 'category_other',
+        reasonCode: fallbackReasonCode ?? 'category_beach',
         normalizedCategory,
         confidence,
         confidenceProvided: confidenceInfo.provided,
@@ -305,13 +310,13 @@ async function classifyPhotoViaAI(
     const err = error as { name?: string; message?: string };
     const timedOut = err?.name === 'AbortError';
     const failed = {
-      category: 'other' as const,
+      category: 'beach' as const,
       reason: timedOut ? 'Classification timeout' : (err?.message || 'Network error'),
       confidence: 0,
       status: 'failed' as const,
     };
     console.log('[CLASSIFY_RAW]', { photoId, raw: null, error: err?.message || String(error) });
-    console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'other', isValidCategory: false });
+    console.log('[CLASSIFY_NORMALIZED]', { photoId, rawCategory: null, normalizedCategory: 'beach', isValidCategory: false });
     console.log('[CLASSIFY_CONFIDENCE]', {
       photoId,
       rawConfidence: null,
@@ -352,7 +357,7 @@ type PhotoEntry = {
 type CategoryCounts = Record<DisplayCategoryKey | 'all', number>;
 
 function buildCategoryCounts(list: PhotoEntry[]): CategoryCounts {
-  const base: CategoryCounts = { all: 0, places: 0, food: 0, activities: 0, other: 0 };
+  const base: CategoryCounts = { all: 0, places: 0, food: 0, activities: 0, beach: 0, animals: 0 };
   for (const photo of list) {
     const c = normalizePhotoCategory(photo.category);
     base.all += 1;
@@ -438,8 +443,7 @@ export default function CreateTripPhotosScreen() {
       try {
         const draft = await getCreateTripDraft();
         if (!alive) return;
-        setPhotos(
-          draft.photos.map((photo) => ({
+        const hydratedPhotos = draft.photos.map((photo) => ({
             ...photo,
             fileName: undefined,
             category: normalizePhotoCategory(photo.category),
@@ -450,7 +454,8 @@ export default function CreateTripPhotosScreen() {
             classificationStatus:
               photo.classificationStatus === 'pending' || photo.classificationStatus === 'done' || photo.classificationStatus === 'failed'
                 ? (photo.classificationStatus === 'pending' ? 'failed' : photo.classificationStatus)
-                : normalizePhotoSource(photo.categorySource ?? photo.source, normalizePhotoCategory(photo.category)) === 'ai'
+                : (normalizePhotoSource(photo.categorySource ?? photo.source, normalizePhotoCategory(photo.category)) === 'ai'
+                  || normalizePhotoSource(photo.categorySource ?? photo.source, normalizePhotoCategory(photo.category)) === 'manual')
                   ? 'done'
                   : 'failed',
             classificationReason:
@@ -461,9 +466,10 @@ export default function CreateTripPhotosScreen() {
               typeof photo.confidence === 'number' && Number.isFinite(photo.confidence)
                 ? Math.max(0, Math.min(1, photo.confidence))
                 : 0,
-          }))
-        );
-        draft.photos.forEach((photo) => {
+          }));
+
+        setPhotos(hydratedPhotos);
+        hydratedPhotos.forEach((photo) => {
           console.log('[PHOTO_RESTORED]', {
             id: photo.id,
             uri: photo.uri,
@@ -499,7 +505,8 @@ export default function CreateTripPhotosScreen() {
         classificationStatus:
           p.classificationStatus === 'pending' || p.classificationStatus === 'done' || p.classificationStatus === 'failed'
             ? p.classificationStatus
-            : normalizePhotoSource(p.categorySource ?? p.source, normalizePhotoCategory(p.category)) === 'ai'
+            : (normalizePhotoSource(p.categorySource ?? p.source, normalizePhotoCategory(p.category)) === 'ai'
+              || normalizePhotoSource(p.categorySource ?? p.source, normalizePhotoCategory(p.category)) === 'manual')
               ? 'done'
               : 'failed',
         classificationReason: p.classificationReason ?? '',
@@ -569,11 +576,11 @@ export default function CreateTripPhotosScreen() {
             console.log('[PHOTO_CLASSIFIED]', {
               id: item.photoId,
               uri: item.imageUri,
-              category: 'other',
+              category: 'beach',
               status: 'failed',
               confidence: ai.confidence,
             });
-            return { id: item.photoId, category: 'other' as const, reason: ai.reason || 'Classification failed', source: 'needs_review' as const, status: 'failed' as const, confidence: ai.confidence };
+            return { id: item.photoId, category: 'beach' as const, reason: ai.reason || 'Classification failed', source: 'needs_review' as const, status: 'failed' as const, confidence: ai.confidence };
           }),
         ));
 
@@ -582,23 +589,26 @@ export default function CreateTripPhotosScreen() {
             const hit = results.find((r) => r.id === photo.id);
 
             if (!hit) return photo;
+            const manualCategory = photo.categorySource === 'manual' ? normalizePhotoCategory(photo.category) : null;
+            const finalCategory = manualCategory ?? hit.category;
+            const finalSource: NormalizedPhotoSource = manualCategory ? 'manual' : hit.source;
             console.log('[PHOTO_CATEGORY_UPDATED]', {
               id: photo.id,
               uri: photo.uri,
-              category: hit.category,
-              categorySource: hit.source,
+              category: finalCategory,
+              categorySource: finalSource,
               classificationStatus: hit.status,
               classificationReason: hit.reason,
               confidence: hit.confidence,
             });
             return {
               ...photo,
-              category: hit.category,
+              category: finalCategory,
               selected: true,
-              categorySource: hit.source,
-              source: hit.source,
+              categorySource: finalSource,
+              source: finalSource,
               classificationStatus: hit.status,
-              classificationReason: hit.reason,
+              classificationReason: manualCategory ? `Manual category override (${CATEGORY_LABEL[manualCategory]}). ${hit.reason || ''}`.trim() : hit.reason,
               confidence: hit.confidence,
             };
           }),
@@ -647,7 +657,7 @@ export default function CreateTripPhotosScreen() {
       string,
       {
         category: DisplayCategoryKey;
-        source: 'ai' | 'needs_review';
+        source: 'ai' | 'needs_review' | 'manual';
         status: 'done' | 'failed';
         reason: string;
         confidence: number;
@@ -689,7 +699,7 @@ export default function CreateTripPhotosScreen() {
 
             return {
               id: photo.id,
-              category: 'other' as const,
+              category: 'beach' as const,
               source: 'needs_review' as const,
               status: 'failed' as const,
               reason: ai.reason || 'Classification failed',
@@ -715,7 +725,8 @@ export default function CreateTripPhotosScreen() {
         places: 0,
         food: 0,
         activities: 0,
-        other: 0,
+        beach: 0,
+        animals: 0,
         failed: 0,
         averageConfidence: 0,
       };
@@ -725,7 +736,8 @@ export default function CreateTripPhotosScreen() {
         if (result.category === 'places') summaryCounts.places += 1;
         else if (result.category === 'food') summaryCounts.food += 1;
         else if (result.category === 'activities') summaryCounts.activities += 1;
-        else summaryCounts.other += 1;
+        else if (result.category === 'beach') summaryCounts.beach += 1;
+        else summaryCounts.animals += 1;
 
         if (result.status === 'failed') summaryCounts.failed += 1;
         confidenceSum += Number.isFinite(result.confidence) ? result.confidence : 0;
@@ -742,13 +754,16 @@ export default function CreateTripPhotosScreen() {
         const next = prev.map((photo) => {
           const hit = resultsById.get(photo.id);
           if (!hit) return photo;
+          const manualCategory = photo.categorySource === 'manual' ? normalizePhotoCategory(photo.category) : null;
+          const finalCategory = manualCategory ?? hit.category;
+          const finalSource: NormalizedPhotoSource = manualCategory ? 'manual' : hit.source;
           return {
             ...photo,
-            category: hit.category,
-            categorySource: hit.source,
-            source: hit.source,
+            category: finalCategory,
+            categorySource: finalSource,
+            source: finalSource,
             classificationStatus: hit.status,
-            classificationReason: hit.reason,
+            classificationReason: manualCategory ? `Manual category override (${CATEGORY_LABEL[manualCategory]}). ${hit.reason || ''}`.trim() : hit.reason,
             confidence: hit.confidence,
           };
         });
@@ -773,7 +788,7 @@ export default function CreateTripPhotosScreen() {
 
       Alert.alert(
         'Reclassification Complete',
-        `Scanned ${candidates.length} photos.\nAI classified ${successful}.\nPlaces ${before.places} → ${after.places}\nFood ${before.food} → ${after.food}\nActivities ${before.activities} → ${after.activities}`,
+        `Scanned ${candidates.length} photos.\nAI classified ${successful}.\nPlaces ${before.places} → ${after.places}\nFood ${before.food} → ${after.food}\nActivities ${before.activities} → ${after.activities}\nBeach ${before.beach} → ${after.beach}\nAnimals ${before.animals} → ${after.animals}`,
       );
     } finally {
       setIsReclassifying(false);
@@ -781,7 +796,13 @@ export default function CreateTripPhotosScreen() {
     }
   }, [beginAnalyze, endAnalyze, isReclassifying, photos]);
 
-  const pickImages = useCallback(async () => {
+  const pickImages = useCallback(async (selectedCategory: ImportCategory) => {
+    const remainingSlots = Math.max(0, MAX_PHOTOS - photos.length);
+    if (remainingSlots <= 0) {
+      Alert.alert('Limit Reached', `You can add up to ${MAX_PHOTOS} photos.`);
+      return;
+    }
+
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert('Permission Needed', 'Allow photo access to add images.');
@@ -791,58 +812,54 @@ export default function CreateTripPhotosScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
-      selectionLimit: MAX_PHOTOS,
+      selectionLimit: remainingSlots,
       quality: 0.5,
-      base64: true,
+      base64: false,
     });
 
     if (result.canceled || !result.assets?.length) return;
 
-    const pendingClassifications: Array<{ photoId: string; imageUri: string; fileName?: string; imageBase64?: string | null }> = [];
-    const provisionalCategory = getProvisionalCategory(activeTab);
-
+    const selected = getProvisionalCategory(selectedCategory);
     setPhotos((prev) => {
       const next = [...prev];
       for (let i = 0; i < result.assets.length; i += 1) {
         const asset = result.assets[i];
         if (!asset?.uri) continue;
         if (next.find((p) => p.uri === asset.uri)) continue;
-        const photoId = uid();
+        if (next.length >= MAX_PHOTOS) break;
+
         next.push({
-          id: photoId,
+          id: uid(),
           uri: asset.uri,
           fileName: asset.fileName ?? undefined,
           caption: '',
-          category: provisionalCategory,
+          category: selected,
           selected: true,
           createdAt: Date.now(),
-          categorySource: 'fallback',
-          classificationStatus: 'pending',
-          classificationReason: '',
-          confidence: 0,
-        });
-        console.log('[PHOTO_SELECTED]', {
-          id: photoId,
-          uri: asset.uri,
-          category: provisionalCategory,
-          categorySource: 'fallback',
-          classificationStatus: 'pending',
-          classificationReason: '',
-          confidence: 0,
-        });
-        pendingClassifications.push({
-          photoId,
-          imageUri: asset.uri,
-          fileName: asset.fileName ?? undefined,
-          imageBase64: asset.base64 ?? null,
+          categorySource: 'manual',
+          source: 'manual',
+          classificationStatus: 'done',
+          classificationReason: `Manual category assignment (${CATEGORY_LABEL[selected]}).`,
+          confidence: 1,
         });
       }
       return next.slice(0, MAX_PHOTOS);
     });
+  }, [photos.length]);
 
-    // Classify async after instant render.
-    classifyInBackground(pendingClassifications);
-  }, [activeTab, classifyInBackground]);
+  const handleAddMorePhotos = useCallback(() => {
+    if (activeTab === 'all') {
+      Alert.alert('Choose Category First', 'Select Places, Food, Activities, Beach, or Animals before picking photos.');
+      return;
+    }
+    void pickImages(activeTab);
+  }, [activeTab, pickImages]);
+
+  const handleCategoryChipPress = useCallback((tab: PhotoTab) => {
+    setActiveTab(tab);
+    if (tab === 'all') return;
+    void pickImages(tab);
+  }, [pickImages]);
 
   const removePhoto = useCallback((id: string) => {
     setPhotos((prev) => prev.filter((p) => p.id !== id));
@@ -932,7 +949,9 @@ export default function CreateTripPhotosScreen() {
               <TouchableOpacity
                 key={tab.key}
                 style={[styles.tabBtn, active && styles.tabBtnActive]}
-                onPress={() => setActiveTab(tab.key)}
+                onPress={() => {
+                  void handleCategoryChipPress(tab.key);
+                }}
                 activeOpacity={0.86}
               >
                 <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label} ({tabCounts[tab.key]})</Text>
@@ -950,7 +969,7 @@ export default function CreateTripPhotosScreen() {
               <Text style={styles.reclassifyMeta}>{reclassifyCandidates.length} photos</Text>
             </View>
             <Text style={styles.reclassifySub}>
-              Re-run AI on every selected photo and persist final Places/Food/Activities/Other results.
+              Re-run AI on every selected photo and persist Places/Food/Activities/Beach/Animals results.
             </Text>
             <TouchableOpacity
               style={[styles.reclassifyBtn, isReclassifying && styles.reclassifyBtnDisabled]}
@@ -1003,7 +1022,7 @@ export default function CreateTripPhotosScreen() {
               </TouchableOpacity>
             ))}
 
-            <TouchableOpacity style={[styles.photoCell, styles.addTile]} onPress={pickImages} activeOpacity={0.88}>
+            <TouchableOpacity style={[styles.photoCell, styles.addTile]} onPress={handleAddMorePhotos} activeOpacity={0.88}>
               <View style={styles.addTileCircle}>
                 <Ionicons name="add" size={20} color={CYAN} />
               </View>
@@ -1014,7 +1033,6 @@ export default function CreateTripPhotosScreen() {
         </View>
       </ScrollView>
 
-      {/* Fullscreen gallery preview modal */}
       <Modal
         visible={viewerState.viewerVisible}
         transparent

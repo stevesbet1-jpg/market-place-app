@@ -1,6 +1,6 @@
-export type NormalizedPhotoCategory = 'places' | 'food' | 'activities' | 'other';
+export type NormalizedPhotoCategory = 'places' | 'food' | 'activities' | 'beach' | 'animals';
 
-export type NormalizedPhotoSource = 'ai' | 'fallback' | 'needs_review';
+export type NormalizedPhotoSource = 'ai' | 'fallback' | 'needs_review' | 'manual';
 
 export function normalizePhotoCategory(value: string | undefined | null): NormalizedPhotoCategory {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -8,9 +8,11 @@ export function normalizePhotoCategory(value: string | undefined | null): Normal
   if (normalized === 'places' || normalized === 'place') return 'places';
   if (normalized === 'food') return 'food';
   if (normalized === 'activities' || normalized === 'activity') return 'activities';
-  if (normalized === 'other' || normalized === 'uncategorized' || normalized === 'needs_review') return 'other';
+  if (normalized === 'beach' || normalized === 'beaches') return 'beach';
+  if (normalized === 'animals' || normalized === 'animal' || normalized === 'wildlife') return 'animals';
+  if (normalized === 'other' || normalized === 'uncategorized' || normalized === 'needs_review') return 'beach';
 
-  return 'other';
+  return 'beach';
 }
 
 export function normalizePhotoSource(
@@ -18,8 +20,8 @@ export function normalizePhotoSource(
   category: NormalizedPhotoCategory,
 ): NormalizedPhotoSource {
   const normalized = String(value ?? '').trim().toLowerCase();
-  if (normalized === 'ai' || normalized === 'fallback' || normalized === 'needs_review') {
+  if (normalized === 'ai' || normalized === 'fallback' || normalized === 'needs_review' || normalized === 'manual') {
     return normalized;
   }
-  return category === 'other' ? 'needs_review' : 'fallback';
+  return category === 'beach' ? 'needs_review' : 'fallback';
 }

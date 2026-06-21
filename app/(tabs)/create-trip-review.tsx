@@ -60,11 +60,11 @@ type ItineraryDay = {
 
 function normalizePhotoCategory(category: string | undefined): 'food' | 'places' | 'activities' | null {
   const normalized = normalizePhotoCategoryShared(category);
-  if (normalized === 'other') return null;
+  if (normalized === 'beach' || normalized === 'animals') return null;
   return normalized;
 }
 
-function normalizePhotoCategoryShared(category: string | undefined): 'food' | 'places' | 'activities' | 'other' {
+function normalizePhotoCategoryShared(category: string | undefined): 'food' | 'places' | 'activities' | 'beach' | 'animals' {
   return normalizeSharedPhotoCategory(category);
 }
 
@@ -368,6 +368,8 @@ export default function CreateTripReviewScreen() {
   const placePhotos = useMemo(() => sortedPhotos.filter((p) => normalizePhotoCategory(p.category) === 'places'), [sortedPhotos]);
   const foodPhotos = useMemo(() => sortedPhotos.filter((p) => normalizePhotoCategory(p.category) === 'food'), [sortedPhotos]);
   const activityPhotos = useMemo(() => sortedPhotos.filter((p) => normalizePhotoCategory(p.category) === 'activities'), [sortedPhotos]);
+  const beachPhotos = useMemo(() => sortedPhotos.filter((p) => normalizePhotoCategoryShared(p.category) === 'beach'), [sortedPhotos]);
+  const animalPhotos = useMemo(() => sortedPhotos.filter((p) => normalizePhotoCategoryShared(p.category) === 'animals'), [sortedPhotos]);
 
   useEffect(() => {
     console.log('[PHOTO_COUNTED]', {
@@ -375,10 +377,11 @@ export default function CreateTripReviewScreen() {
       places: placePhotos.length,
       food: foodPhotos.length,
       activities: activityPhotos.length,
-      other: sortedPhotos.filter((p) => normalizePhotoCategoryShared(p.category) === 'other').length,
+      beach: beachPhotos.length,
+      animals: animalPhotos.length,
       screen: 'create-trip-review',
     });
-  }, [sortedPhotos, placePhotos.length, foodPhotos.length, activityPhotos.length]);
+  }, [sortedPhotos, placePhotos.length, foodPhotos.length, activityPhotos.length, beachPhotos.length, animalPhotos.length]);
 
   const itineraryPreview = useMemo(() => {
     return itineraryRows.slice(0, 3).map((day, index) => ({
@@ -514,7 +517,7 @@ export default function CreateTripReviewScreen() {
         const classificationStatus =
           photo.classificationStatus === 'pending' || photo.classificationStatus === 'done' || photo.classificationStatus === 'failed'
             ? photo.classificationStatus
-            : categorySource === 'ai'
+            : categorySource === 'ai' || categorySource === 'manual'
               ? 'done'
               : 'failed';
 
@@ -534,7 +537,8 @@ export default function CreateTripReviewScreen() {
         places: normalizedTripPhotos.filter((p) => p.category === 'places').length,
         food: normalizedTripPhotos.filter((p) => p.category === 'food').length,
         activities: normalizedTripPhotos.filter((p) => p.category === 'activities').length,
-        other: normalizedTripPhotos.filter((p) => p.category === 'other').length,
+        beach: normalizedTripPhotos.filter((p) => p.category === 'beach').length,
+        animals: normalizedTripPhotos.filter((p) => p.category === 'animals').length,
       });
 
       const tripData = {

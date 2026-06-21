@@ -7,15 +7,21 @@ export type PhotoCategory =
   | 'places'
   | 'food'
   | 'activities'
+  | 'beach'
+  | 'animals'
   | 'other'
   | 'uncategorized'
   | 'place'
   | 'activity'
+  | 'animal'
   | 'Places'
   | 'Food'
   | 'Activities'
+  | 'Beach'
+  | 'Animals'
   | 'Place'
   | 'Activity'
+  | 'Animal'
   | 'Other';
 
 export type ItineraryDayDraft = {
@@ -34,8 +40,8 @@ export type PhotoEntryDraft = {
   caption: string;
   category: PhotoCategory;
   createdAt?: number;
-  categorySource?: 'ai' | 'fallback' | 'needs_review';
-  source?: 'ai' | 'fallback' | 'needs_review';
+  categorySource?: 'ai' | 'fallback' | 'needs_review' | 'manual';
+  source?: 'ai' | 'fallback' | 'needs_review' | 'manual';
   classificationStatus?: 'pending' | 'done' | 'failed';
   classificationReason?: string;
   confidence?: number;
@@ -131,17 +137,19 @@ function normalizeDraftPhotoCategory(category: unknown): PhotoCategory {
   if (value === 'places' || value === 'place') return 'places';
   if (value === 'food') return 'food';
   if (value === 'activities' || value === 'activity') return 'activities';
-  if (value === 'other' || value === 'uncategorized' || value === 'needs_review') return 'other';
-  return 'other';
+  if (value === 'beach' || value === 'beaches') return 'beach';
+  if (value === 'animals' || value === 'animal' || value === 'wildlife') return 'animals';
+  if (value === 'other' || value === 'uncategorized' || value === 'needs_review') return 'beach';
+  return 'beach';
 }
 
 function normalizeDraftPhotoSource(
   source: unknown,
   category: PhotoCategory,
-): 'ai' | 'fallback' | 'needs_review' {
+): 'ai' | 'fallback' | 'needs_review' | 'manual' {
   const value = String(source ?? '').trim().toLowerCase();
-  if (value === 'ai' || value === 'fallback' || value === 'needs_review') return value;
-  return category === 'other' ? 'needs_review' : 'fallback';
+  if (value === 'ai' || value === 'fallback' || value === 'needs_review' || value === 'manual') return value;
+  return category === 'beach' ? 'needs_review' : 'fallback';
 }
 
 function sanitizeDraftPhotoEntry(raw: unknown): PhotoEntryDraft | null {
@@ -155,7 +163,7 @@ function sanitizeDraftPhotoEntry(raw: unknown): PhotoEntryDraft | null {
   const classificationStatus =
     photo.classificationStatus === 'pending' || photo.classificationStatus === 'done' || photo.classificationStatus === 'failed'
       ? photo.classificationStatus
-      : categorySource === 'ai'
+      : categorySource === 'ai' || categorySource === 'manual'
         ? 'done'
         : 'failed';
 

@@ -180,7 +180,7 @@ function buildExperienceSubtitle(exp: Experience, distributedDate: Date | null):
 
 function normalizePhotoCategory(category: string | undefined): 'food' | 'activities' | 'places' | null {
   const normalized = normalizeSharedPhotoCategory(category);
-  if (normalized === 'other') return null;
+  if (normalized === 'beach' || normalized === 'animals') return null;
   return normalized;
 }
 

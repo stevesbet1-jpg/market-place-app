@@ -32,7 +32,7 @@ import { MEMORY_GALLERY_SELECTION_KEY, sortPhotosByDate } from '../lib/sortPhoto
 
 const CYAN = '#8AE6FF';
 
-type Category = 'Place' | 'Food' | 'Activity' | 'Other';
+type Category = 'Place' | 'Food' | 'Activity' | 'Beach' | 'Animals';
 
 type GalleryTile = {
   id: string;
@@ -46,7 +46,8 @@ function mapCategory(value: string | undefined): Category {
   if (normalized === 'places') return 'Place';
   if (normalized === 'food') return 'Food';
   if (normalized === 'activities') return 'Activity';
-  return 'Other';
+  if (normalized === 'beach') return 'Beach';
+  return 'Animals';
 }
 
 export default function MemoryGalleryScreen() {
