@@ -89,7 +89,7 @@ function AuthGate() {
       router.back();
       return;
     }
-    router.replace('/(tabs)/explore');
+    router.replace('/(tabs)');
   };
 
   return (
@@ -144,7 +144,7 @@ export default function CreateTripScreen() {
       router.back();
       return;
     }
-    router.replace('/(tabs)/explore');
+    router.replace('/(tabs)');
   }, []);
 
   const [checkingAuth, setCheckingAuth] = useState(true);
