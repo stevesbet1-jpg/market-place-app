@@ -1,17 +1,17 @@
 {
   "expo": {
     "name": "Marketplace",
-    "slug": "marketplace",
+    "slug": "Matket-place",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/marketplace-logo.png",
-    "backgroundColor": "#031B34",
+    "backgroundColor": "#021B35",
     "userInterfaceStyle": "dark",
     "scheme": "marketplace",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#031B34"
+      "backgroundColor": "#021B35"
     },
     "ios": {
       "bundleIdentifier": "com.anonymous.Matketplace",
@@ -21,7 +21,7 @@
       "splash": {
         "image": "./assets/splash.png",
         "resizeMode": "contain",
-        "backgroundColor": "#031B34"
+        "backgroundColor": "#021B35"
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -32,15 +32,18 @@
       "splash": {
         "image": "./assets/splash.png",
         "resizeMode": "contain",
-        "backgroundColor": "#031B34"
+        "backgroundColor": "#021B35"
       },
       "adaptiveIcon": {
-        "foregroundImage": "./assets/marketplace-logo.png",
-        "backgroundColor": "#031B34"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#021B35"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.Matketplace"
+      "package": "com.anonymous.Matketplace",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -52,7 +55,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#031B34",
+          "backgroundColor": "#021B35",
           "image": "./assets/splash.png",
           "imageWidth": 220,
           "resizeMode": "contain"
