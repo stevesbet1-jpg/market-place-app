@@ -1,0 +1,70 @@
+diff --git a/node_modules/react-native-image-viewing/dist/hooks/usePanResponder.js b/node_modules/react-native-image-viewing/dist/hooks/usePanResponder.js
+index 99dcbc7..ba47873 100644
+--- a/node_modules/react-native-image-viewing/dist/hooks/usePanResponder.js
++++ b/node_modules/react-native-image-viewing/dist/hooks/usePanResponder.js
+@@ -15,6 +15,7 @@ const MIN_DIMENSION = Math.min(SCREEN_WIDTH, SCREEN_HEIGHT);
+ const SCALE_MAX = 2;
+ const DOUBLE_TAP_DELAY = 300;
+ const OUT_BOUND_MULTIPLIER = 0.75;
++const SCALE_EPSILON = 0.001;
+ const usePanResponder = ({ initialScale, initialTranslate, onZoom, doubleTapToZoomEnabled, onLongPress, delayLongPress, }) => {
+     let numberInitialTouches = 1;
+     let initialTouches = [];
+@@ -153,19 +154,18 @@ const usePanResponder = ({ initialScale, initialTranslate, onZoom, doubleTapToZo
+                  * slow down this transition by applying OUT_BOUND_MULTIPLIER
+                  */
+                 if (nextScale < initialScale) {
+-                    nextScale =
+-                        nextScale + (initialScale - nextScale) * OUT_BOUND_MULTIPLIER;
++                    nextScale = initialScale;
+                 }
+                 /**
+                  * In case image is scaling down -> move it in direction of initial position
+                  */
+                 if (currentScale > initialScale && currentScale > nextScale) {
+                     const k = (currentScale - initialScale) / (currentScale - nextScale);
+-                    const nextTranslateX = nextScale < initialScale
++                    const nextTranslateX = nextScale <= initialScale
+                         ? initialTranslate.x
+                         : currentTranslate.x -
+                             (currentTranslate.x - initialTranslate.x) / k;
+-                    const nextTranslateY = nextScale < initialScale
++                    const nextTranslateY = nextScale <= initialScale
+                         ? initialTranslate.y
+                         : currentTranslate.y -
+                             (currentTranslate.y - initialTranslate.y) / k;
+@@ -234,6 +234,10 @@ const usePanResponder = ({ initialScale, initialTranslate, onZoom, doubleTapToZo
+                 const [topBound, leftBound, bottomBound, rightBound] = getBounds(currentScale);
+                 let nextTranslateX = x;
+                 let nextTranslateY = y;
++                if (currentScale <= initialScale + SCALE_EPSILON) {
++                    nextTranslateX = initialTranslate.x;
++                    nextTranslateY = initialTranslate.y;
++                }
+                 if (!fitsScreenByWidth()) {
+                     if (nextTranslateX > leftBound) {
+                         nextTranslateX = leftBound;
+@@ -250,6 +254,10 @@ const usePanResponder = ({ initialScale, initialTranslate, onZoom, doubleTapToZo
+                         nextTranslateY = bottomBound;
+                     }
+                 }
++                if (currentScale <= initialScale + SCALE_EPSILON) {
++                    nextTranslateX = initialTranslate.x;
++                    nextTranslateY = initialTranslate.y;
++                }
+                 Animated.parallel([
+                     Animated.timing(translateValue.x, {
+                         toValue: nextTranslateX,
+diff --git a/node_modules/react-native-image-viewing/dist/utils.js b/node_modules/react-native-image-viewing/dist/utils.js
+index 69aae88..b00fe18 100644
+--- a/node_modules/react-native-image-viewing/dist/utils.js
++++ b/node_modules/react-native-image-viewing/dist/utils.js
+@@ -37,7 +37,7 @@ export const getImageTransform = (image, screen) => {
+     }
+     const wScale = screen.width / image.width;
+     const hScale = screen.height / image.height;
+-    const scale = Math.min(wScale, hScale);
++    const scale = Math.max(wScale, hScale);
+     const { x, y } = getImageTranslate(image, screen);
+     return [{ x, y }, scale];
+ };

@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server/index.js",
     "lint": "node --check server/index.js && tsc --noEmit",
-    "postinstall": "node scripts/ensure-expo-module-scripts-tsconfig-base.js",
+    "postinstall": "patch-package && node scripts/ensure-expo-module-scripts-tsconfig-base.js",
     "expo": "expo start --lan --port 8081",
     "expo:go": "expo start --lan --port 8081 --go",
     "android": "expo run:android",
@@ -58,6 +58,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
   "private": true,

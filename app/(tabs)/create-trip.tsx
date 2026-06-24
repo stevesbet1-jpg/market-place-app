@@ -18,6 +18,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
+import ImageViewing from 'react-native-image-viewing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirebaseApp } from '../../lib/firebase';
@@ -175,6 +176,8 @@ export default function CreateTripScreen() {
   const [pendingEndDate, setPendingEndDate] = useState<Date>(parseTripDate(endDate));
   const pendingEndDateRef = useRef<Date>(parseTripDate(endDate));
   const [travelersPickerVisible, setTravelersPickerVisible] = useState(false);
+  const [galleryViewerIndex, setGalleryViewerIndex] = useState(0);
+  const [galleryViewerVisible, setGalleryViewerVisible] = useState(false);
 
   useEffect(() => {
     const auth = getAuth(getFirebaseApp());
@@ -380,6 +383,17 @@ export default function CreateTripScreen() {
     });
   }, []);
 
+  const handleRemoveGalleryPhoto = useCallback((uriToRemove: string) => {
+    setGalleryUris((current) => current.filter((uri) => uri !== uriToRemove));
+  }, []);
+
+  const openGalleryViewer = useCallback((uri: string) => {
+    const index = galleryUris.findIndex((item) => item === uri);
+    if (index < 0) return;
+    setGalleryViewerIndex(index);
+    setGalleryViewerVisible(true);
+  }, [galleryUris]);
+
   const toggleHighlight = useCallback((value: string) => {
     setHighlights((current) => (current.includes(value) ? current.filter((x) => x !== value) : [...current, value]));
   }, []);
@@ -557,7 +571,20 @@ export default function CreateTripScreen() {
               </View>
             ) : null}
             {galleryUris.map((uri) => (
-              <Image key={uri} source={{ uri }} style={styles.galleryThumb} resizeMode="cover" />
+              <TouchableOpacity key={uri} style={styles.galleryThumbWrap} onPress={() => openGalleryViewer(uri)} activeOpacity={0.92}>
+                <Image source={{ uri }} style={styles.galleryThumb} resizeMode="cover" />
+                <TouchableOpacity
+                  style={styles.galleryThumbDeleteBtn}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    handleRemoveGalleryPhoto(uri);
+                  }}
+                  activeOpacity={0.86}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Ionicons name="close" size={10} color={LuxuryColors.textPrimary} />
+                </TouchableOpacity>
+              </TouchableOpacity>
             ))}
           </ScrollView>
         </SectionCard>
@@ -727,6 +754,30 @@ export default function CreateTripScreen() {
           </View>
         </View>
       </Modal>
+
+      <ImageViewing
+        images={galleryUris.map((uri) => ({ uri }))}
+        imageIndex={galleryViewerIndex}
+        visible={galleryViewerVisible}
+        onRequestClose={() => setGalleryViewerVisible(false)}
+        presentationStyle="overFullScreen"
+        backgroundColor={LuxuryColors.background}
+        animationType="fade"
+        swipeToCloseEnabled={false}
+        doubleTapToZoomEnabled
+        HeaderComponent={() => (
+          <View style={[styles.viewerHeader, { paddingTop: insets.top + 8 }]}> 
+            <TouchableOpacity style={styles.viewerIconBtn} onPress={() => setGalleryViewerVisible(false)}>
+              <Ionicons name="close" size={22} color={LuxuryColors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        )}
+        FooterComponent={({ imageIndex }) => (
+          <View style={styles.viewerFooterInfo}>
+            <Text style={styles.viewerFooterText}>{imageIndex + 1}/{Math.max(1, galleryUris.length)}</Text>
+          </View>
+        )}
+      />
 
       <View style={[styles.fixedDock, { paddingBottom: 4 }]}> 
         <TouchableOpacity
@@ -1112,6 +1163,61 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
+  },
+  galleryThumbWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    position: 'relative',
+  },
+  galleryThumbDeleteBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(7,17,32,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(138,230,255,0.30)',
+  },
+  viewerHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 12,
+  },
+  viewerFooterInfo: {
+    position: 'absolute',
+    bottom: 18,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  viewerFooterText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  viewerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   budgetGrid: {
     flexDirection: 'row',

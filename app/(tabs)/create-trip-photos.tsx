@@ -1,13 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Dimensions,
-  FlatList,
   Image,
   KeyboardAvoidingView,
-  Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -21,6 +16,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import ImageViewing from 'react-native-image-viewing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   LuxuryBorderRadius,
@@ -50,7 +46,6 @@ const STEPS = [
   { label: 'Review', route: '/(tabs)/create-trip-review' },
 ] as const;
 const ACTIVE_STEP = 2;
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CLASSIFY_TIMEOUT_MS = 25_000;
 const MIN_CONFIDENCE = 0.4;
 const VALID_CATEGORIES: DisplayCategoryKey[] = ['places', 'food', 'activities', 'beach', 'animals'];
@@ -404,7 +399,6 @@ function Stepper() {
 
 export default function CreateTripPhotosScreen() {
   const insets = useSafeAreaInsets();
-  const viewerListRef = useRef<FlatList<PhotoEntry> | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [activeTab, setActiveTab] = useState<PhotoTab>('all');
@@ -898,25 +892,6 @@ export default function CreateTripPhotosScreen() {
     setViewerState({ viewerVisible: false, viewerIndex: 0, viewerPhotos: [] });
   }, []);
 
-  const handleViewerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offsetX = event.nativeEvent.contentOffset.x;
-    const nextIndex = Math.round(offsetX / SCREEN_WIDTH);
-    setViewerState((prev) => {
-      if (nextIndex < 0 || nextIndex >= prev.viewerPhotos.length) return prev;
-      if (prev.viewerIndex === nextIndex) return prev;
-      return { ...prev, viewerIndex: nextIndex };
-    });
-  }, []);
-
-  const handleViewerScrollToIndexFailed = useCallback(() => {
-    requestAnimationFrame(() => {
-      viewerListRef.current?.scrollToOffset({
-        offset: viewerState.viewerIndex * SCREEN_WIDTH,
-        animated: false,
-      });
-    });
-  }, [viewerState.viewerIndex]);
-
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <LinearGradient colors={['#071120', '#091A2A', '#06101D']} style={StyleSheet.absoluteFill} />
@@ -942,7 +917,11 @@ export default function CreateTripPhotosScreen() {
 
         <Stepper />
 
-        <View style={styles.tabsRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsRow}
+        >
           {PHOTO_TABS.map((tab) => {
             const active = activeTab === tab.key;
             return (
@@ -954,11 +933,11 @@ export default function CreateTripPhotosScreen() {
                 }}
                 activeOpacity={0.86}
               >
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label} ({tabCounts[tab.key]})</Text>
+                <Text numberOfLines={1} style={[styles.tabText, active && styles.tabTextActive]}>{tab.label} ({tabCounts[tab.key]})</Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         <Text style={styles.galleryCountText}>{selectedPhotos.length}/{MAX_PHOTOS} selected</Text>
 
@@ -1033,45 +1012,29 @@ export default function CreateTripPhotosScreen() {
         </View>
       </ScrollView>
 
-      <Modal
+      <ImageViewing
+        images={viewerState.viewerPhotos.map((photo) => ({ uri: photo.uri }))}
+        imageIndex={viewerState.viewerIndex}
         visible={viewerState.viewerVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
         onRequestClose={closeViewer}
-      >
-        <View style={styles.viewerModalBg}>
-          <FlatList
-            ref={viewerListRef}
-            data={viewerState.viewerPhotos}
-            keyExtractor={(item) => item.id}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={handleViewerMomentumEnd}
-            initialScrollIndex={viewerState.viewerIndex}
-            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
-            windowSize={4}
-            initialNumToRender={2}
-            maxToRenderPerBatch={4}
-            removeClippedSubviews={false}
-            onScrollToIndexFailed={handleViewerScrollToIndexFailed}
-            renderItem={({ item }) => (
-              <View style={styles.viewerPage}>
-                <Image source={{ uri: item.uri }} style={styles.viewerModalImage} resizeMode="cover" />
-              </View>
-            )}
-          />
-          <View style={styles.viewerFooterInfo}>
-            <Text style={styles.viewerFooterText}>{viewerState.viewerIndex + 1}/{Math.max(1, viewerState.viewerPhotos.length)}</Text>
-          </View>
+        presentationStyle="overFullScreen"
+        backgroundColor="#071120"
+        animationType="fade"
+        swipeToCloseEnabled={false}
+        doubleTapToZoomEnabled
+        HeaderComponent={() => (
           <View style={[styles.viewerHeader, { paddingTop: insets.top + 8 }]}> 
             <TouchableOpacity style={styles.viewerIconBtn} onPress={closeViewer}>
               <Ionicons name="close" size={22} color={LuxuryColors.textPrimary} />
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        )}
+        FooterComponent={({ imageIndex }) => (
+          <View style={styles.viewerFooterInfo}>
+            <Text style={styles.viewerFooterText}>{imageIndex + 1}/{Math.max(1, viewerState.viewerPhotos.length)}</Text>
+          </View>
+        )}
+      />
 
       {!viewerState.viewerVisible ? <View style={[styles.dock, { paddingBottom: 4 }]}> 
         <TouchableOpacity style={styles.cta} onPress={() => router.push('/(tabs)/create-trip-experiences')} activeOpacity={0.88}>
@@ -1107,19 +1070,20 @@ const styles = StyleSheet.create({
   stepTextActive: { color: LuxuryColors.textPrimary },
   stepLine: { width: 10, flexShrink: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(138,230,255,0.18)', marginHorizontal: 1 },
 
-  tabsRow: { flexDirection: 'row', gap: 8 },
+  tabsRow: { flexDirection: 'row', gap: 8, paddingRight: 2 },
   tabBtn: {
-    flex: 1,
     minHeight: 34,
+    minWidth: 96,
     borderRadius: LuxuryBorderRadius.full,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
     backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabBtnActive: { borderColor: 'rgba(138,230,255,0.42)', backgroundColor: 'rgba(138,230,255,0.14)' },
-  tabText: { color: LuxuryColors.textSecondary, fontSize: 12, fontWeight: '700' },
+  tabText: { color: LuxuryColors.textSecondary, fontSize: 11, fontWeight: '700' },
   tabTextActive: { color: CYAN },
   galleryCountText: {
     color: LuxuryColors.textSecondary,
@@ -1249,21 +1213,6 @@ const styles = StyleSheet.create({
   addTileTitle: { color: CYAN, fontSize: 10, fontWeight: '700', textAlign: 'center' },
   addTileSub: { color: LuxuryColors.textSecondary, fontSize: 9, textAlign: 'center' },
 
-  viewerModalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.92)',
-  },
-  viewerPage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#000000',
-  },
-  viewerModalImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-  },
   viewerHeader: {
     position: 'absolute',
     top: 0,
